@@ -15,7 +15,7 @@ export default function TransformSection() {
 
       {/* Bottom-left Text */}
       <div className="relative z-10 px-6 sm:px-16 pb-10 text-left">
-        <h2 className="text-3xl sm:text-xl md:text-4xl leading-relaxed max-w-lg">
+        <h2 className="text-3xl text-[#CBCBCB] sm:text-xl md:text-4xl leading-relaxed max-w-lg">
           Transforming Rent Management <br /> through AI and Automation.
         </h2>
       </div>

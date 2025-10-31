@@ -15,10 +15,10 @@ export default function ChatWidget() {
   className="absolute bottom-6 right-6 flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1ebe5d] text-white px-6 py-2 rounded-full shadow-lg transition-all duration-200 z-50 whitespace-nowrap"
 >
   <Image
-    src="/images/Whatsap.png"
+    src="/images/wp.png"
     alt="whatsapp"
-    width={24}
-    height={24}
+    width={20}
+    height={20}
   />
   <span className=" hidden sm:inline">Chat with Us</span>
 </button>

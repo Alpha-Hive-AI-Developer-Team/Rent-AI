@@ -11,7 +11,7 @@ export default function Hero() {
         Automate Rent Tracking & Arrears Detection with AI
       </h1>
 
-      <p className="text-gray-400 mb-8 max-w-2xl text-sm md:text-base">
+      <p className="text-[#CBCBCB] mb-8 max-w-2xl text-sm md:text-base">
         RentAI uses Open Banking and AI to automate rent payments, detect
         arrears, and reduce manual work.
       </p>
