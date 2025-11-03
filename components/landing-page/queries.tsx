@@ -44,7 +44,7 @@ export default function PopularQueries() {
   };
 
   return (
-    <section className="bg-black text-white py-20 px-6">
+    <section className="bg-black text-white py-20 px-6" id="about">
       <div className="max-w-4xl mx-auto text-center mb-14">
         {/* Green pill */}
           <p className="inline-block bg-green-300/20 text-[#027A48] px-4 py-1 rounded-full font-medium mb-3">

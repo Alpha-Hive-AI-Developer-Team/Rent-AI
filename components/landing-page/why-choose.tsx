@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import {Zap} from "lucide-react";
+import { Zap } from "lucide-react";
 
 interface Feature {
   id: string;
@@ -17,7 +17,9 @@ export default function WhyChooseRentAI() {
       title: "Save Hours Weekly",
       description:
         "Reclaim hours each week by eliminating manual reconciliation tasks.",
-      image: <Image src="/images/box1.png" alt="Clock" width={32} height={32} />,
+      image: (
+        <Image src="/images/box1.png" alt="Clock" width={32} height={32} />
+      ),
     },
     {
       id: "accuracy",
@@ -31,31 +33,23 @@ export default function WhyChooseRentAI() {
       title: "Scale Effortlessly",
       description:
         "Scale effortlessly to hundreds of tenants from one dashboard.",
-      image: <Image src="/images/box-2.png" alt="Network" width={32} height={32} />,
+      image: (
+        <Image src="/images/box-2.png" alt="Network" width={32} height={32} />
+      ),
     },
     {
       id: "learning",
       title: "Continuous Learning",
       description:
         "Continuously improves its accuracy by learning from your actions.",
-      image: <Image src="/images/box-3.png" alt="Brain" width={32} height={32} />,
+      image: (
+        <Image src="/images/box-3.png" alt="Brain" width={32} height={32} />
+      ),
     },
   ];
 
-  const StarDecoration = ({ className }: { className: string }) => (
-    <svg
-      className={className}
-      width="4"
-      height="4"
-      viewBox="0 0 4 4"
-      fill="none"
-    >
-      <circle cx="2" cy="2" r="2" fill="currentColor" />
-    </svg>
-  );
-
   return (
-    <section className="bg-black text-white py-20 px-6">
+    <section className="bg-black text-white py-20 px-4 sm:px-6 md:px-8" id="how">
       <div className="max-w-6xl mx-auto text-center">
         {/* Feature tag */}
         <p className="inline-block bg-green-300/20 text-[#027A48] px-4 py-1 rounded-full font-medium mb-3">
@@ -73,33 +67,40 @@ export default function WhyChooseRentAI() {
           communication — automatically.
         </p>
 
-        <div className="relative w-full px-4 py-20 sm:py-32">
-          {/* Background grid effect */}
-          <div className="absolute inset-0 bg-gradient-to-b from-slate-900/0 via-slate-900/5 to-slate-900/0 pointer-events-none" />
+        {/* Main layout container */}
+        <div className="relative flex flex-col items-center justify-center gap-6">
+          {/* Top Box */}
+          <div className="w-full max-w-sm">
+            <FeatureBox feature={features[0]} />
+          </div>
 
-          <div className="relative max-w-7xl mx-auto">
-            {/* Feature Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">
-              {/* Top Center - Save Hours Weekly */}
-              <div className="md:col-start-2 md:col-span-1">
-                <FeatureBox feature={features[0]} StarDecoration={StarDecoration} />
-              </div>
+          {/* Middle row with left, center, right */}
+          <div className="flex flex-col lg:flex-row items-center justify-center gap-10 lg:gap-28 w-full">
+            <div className="w-full max-w-sm">
+              <FeatureBox feature={features[1]} />
+            </div>
 
-              {/* Left - AI Accuracy */}
-              <div className="md:row-start-2">
-                <FeatureBox feature={features[1]} StarDecoration={StarDecoration} />
-              </div>
-
-              {/* Center - Scale Effortlessly */}
-              <div className="md:col-start-2 md:row-start-2">
-                <FeatureBox feature={features[2]} StarDecoration={StarDecoration} />
-              </div>
-
-              {/* Right - Continuous Learning */}
-              <div className="md:col-start-3 md:row-start-2">
-                <FeatureBox feature={features[3]} StarDecoration={StarDecoration} />
+            {/* Center circle with chess */}
+            <div className="flex items-center justify-center my-6 lg:my-0">
+              <div className="w-32 h-32 sm:w-40 sm:h-40 md:w-44 md:h-44 rounded-full bg-[#111111] border border-[#2A2A2A] flex items-center justify-center">
+                <Image
+                  src="/images/logo-transparent.png"
+                  alt="Chess"
+                  width={96}
+                  height={96}
+                  className="opacity-90"
+                />
               </div>
             </div>
+
+            <div className="w-full max-w-sm">
+              <FeatureBox feature={features[2]} />
+            </div>
+          </div>
+
+          {/* Bottom Box */}
+          <div className="w-full max-w-sm">
+            <FeatureBox feature={features[3]} />
           </div>
         </div>
       </div>
@@ -107,33 +108,18 @@ export default function WhyChooseRentAI() {
   );
 }
 
-function FeatureBox({
-  feature,
-  StarDecoration,
-}: {
-  feature: Feature;
-  StarDecoration: React.FC<{ className: string }>;
-}) {
+function FeatureBox({ feature }: { feature: Feature }) {
   return (
-    <div className="group relative flex flex-col items-center border border-slate-700 rounded-xl p-6">
-      <div className="absolute -top-8 -left-12 text-slate-600">
-        <StarDecoration className="w-1 h-1" />
+    <div className="bg-[#0f0f0f] border border-slate-800 rounded-2xl p-10 sm:p-12 md:p-14 flex flex-col items-center text-center hover:border-slate-600 transition">
+      <div className="w-16 h-16 flex items-center justify-center border border-slate-800 rounded-full bg-[#181818] mb-4">
+        {feature.image}
       </div>
-
-      <div className="relative mb-8">
-        <div className="w-24 h-24 rounded-full border border-slate-700 bg-slate-900/40 backdrop-blur flex items-center justify-center">
-          <div className="text-slate-400">{feature.image}</div>
-        </div>
-      </div>
-
-      <div className="text-center">
-        <h3 className="text-md font-semibold text-slate-300 mb-2 flex items-center justify-center gap-1">
-          <span><Zap className="w-4 h-4"/></span> {feature.title}
-        </h3>
-        <p className="text-xs text-[#CACACA] leading-relaxed max-w-xs">
-          {feature.description}
-        </p>
-      </div>
+      <h3 className="text-base font-semibold text-slate-100 flex items-center justify-center gap-1 mb-2">
+        <Zap className="w-4 h-4 text-white" /> {feature.title}
+      </h3>
+      <p className="text-sm text-[#A3A3A3] leading-relaxed">
+        {feature.description}
+      </p>
     </div>
   );
 }

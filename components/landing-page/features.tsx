@@ -4,7 +4,7 @@ import Image from "next/image";
 
 export default function Features() {
   return (
-    <section className="bg-black text-white px-6 md:px-16 py-20">
+    <section className="bg-black text-white px-6 md:px-16 py-20" id="features">
       {/* Heading */}
       <div className="text-left mb-16 max-w-2xl">
         <h2 className="text-3xl md:text-4xl font-bold mb-4">

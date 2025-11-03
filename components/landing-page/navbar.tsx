@@ -24,7 +24,7 @@ export default function Navbar() {
           <Link href="#how" className="hover:text-white transition">
             How It Works
           </Link>
-          <Link href="#pricing" className="hover:text-white transition">
+          <Link href="#about" className="hover:text-white transition">
             Pricing
           </Link>
           <Link href="#about" className="hover:text-white transition">
@@ -38,13 +38,13 @@ export default function Navbar() {
         {/* Desktop Auth Buttons */}
         <div className="hidden md:flex text-sm items-center space-x-4">
           <Link
-            href="/login"
+            href="/auth/sign-in"
             className="text-white hover:text-white transition"
           >
             Login
           </Link>
           <Link
-            href="/signup"
+            href="/auth/splash-screen"
             className="bg-gradient-to-b from-[#027A48] to-green-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#02653d] transition"
           >
             Start Free
@@ -77,7 +77,7 @@ export default function Navbar() {
               How It Works
             </Link>
             <Link
-              href="#pricing"
+              href="#about"
               onClick={() => setMenuOpen(false)}
               className="hover:text-white transition"
             >
@@ -98,14 +98,14 @@ export default function Navbar() {
               Contact
             </Link>
             <Link
-              href="/login"
+              href="/auth/sign-in"
               onClick={() => setMenuOpen(false)}
               className="hover:text-white transition"
             >
               Login
             </Link>
             <Link
-              href="/signup"
+              href="/auth/splash-screen"
               onClick={() => setMenuOpen(false)}
               className="bg-gradient-to-b from-green-500 to-green-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:opacity-90 transition"
             >
