@@ -1,10 +1,11 @@
 "use client";
 
-import { Button } from "@/components/ui/button"; // optional if you already have a button component
+import { Button } from "@/components/ui/button"; 
+import Link from "next/link";
 
 export default function GetStarted() {
   return (
-    <section className="relative bg-black text-white flex flex-col items-center justify-center min-h-[80vh] px-6 text-center overflow-hidden">
+    <section className="relative bg-black text-white flex flex-col items-center justify-center min-h-[80vh] px-6 text-center overflow-hidden" id="contact">
       {/* Top white line + centered glow effect */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-6xl">
         {/* White line */}
@@ -29,9 +30,11 @@ export default function GetStarted() {
         </p>
 
         {/* Button */}
+        <Link href="/auth/splash-screen">
         <button className="bg-[#027A48] hover:bg-[#02653d] text-white px-6 py-2 rounded-md text-sm font-medium transition">
           Get Started
         </button>
+        </Link>
       </div>
     </section>
   );
