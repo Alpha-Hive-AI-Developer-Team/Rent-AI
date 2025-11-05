@@ -20,6 +20,7 @@ interface ChartCardProps {
     name?: string;
   }[];
   footer?: string;
+  timeOptions?: string[];
 }
 
 export default function LineChartCard({

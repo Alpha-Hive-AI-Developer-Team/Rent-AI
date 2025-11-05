@@ -12,29 +12,52 @@ export default function Sidebar() {
   const menuItems = [
     {
       name: "Dashboard",
-      path: "/admin/dashboard",
+      path: "/user/dashboard",
       icon: "/images/home.png",
       activeIcon: "/images/home.png",
     },
     {
-      name: "Landlord Management",
-      path: "/admin/landlords",
+      name: "Tenants",
+      path: "/user/tenants",
       icon: "/images/Vector.png",
       activeIcon: "/images/Vector.png",
     },
     {
-      name: "Tenant Management",
-      path: "/admin/tenants",
+      name: "Transactions",
+      path: "/user/transactions",
       icon: "/images/CreditCard.png",
       activeIcon: "/images/CreditCard.png",
     },
     {
+      name: "Reconcile",
+      path: "/user/reconcile",
+      icon: "/images/clipcheck.png",
+      activeIcon: "/images/clipcheck.png",
+    },
+    {
+      name: "Arrears",
+      path: "/user/arrears",
+      icon: "/images/help.png",
+      activeIcon: "/images/help.png",
+    },
+    {
       name: "Referrals",
-      path: "/admin/referrals",
+      path: "/user/referrals",
       icon: "/images/Vector.png",
       activeIcon: "/images/Vector.png",
     },
-   
+    {
+      name: "Notifications",
+      path: "/user/notification",
+      icon: "/images/bell.png",
+      activeIcon: "/images/bell.png",
+    },
+    {
+      name: "Payment",
+      path: "/user/payment",
+      icon: "/images/CreditCard.png",
+      activeIcon: "/images/CreditCard.png",
+    },
   ];
 
   // Detect screen size (lg breakpoint)
