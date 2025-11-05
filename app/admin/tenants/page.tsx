@@ -14,12 +14,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export default function TenantManagement() {
-  const stats = [
-    { title: "Total Tenants", value: "2,847", trend: 12.5 },
-    { title: "Paid On Time", value: "7,945", trend: -20 },
-    { title: "Partial Payments", value: "243", trend: 12.5 },
-    { title: "In Arrears", value: "113", trend: -4.5 },
-  ];
+ const stats = [
+  { title: "Total Tenants", value: "2,847", trend: 12.5, description: "Total registered tenants", subtext: "Across all landlords" },
+  { title: "Paid On Time", value: "7,945", trend: -20, description: "Tenants paid before due date", subtext: "Last 30 days" },
+  { title: "Partial Payments", value: "243", trend: 12.5, description: "Tenants paid partially", subtext: "Current billing cycle" },
+  { title: "In Arrears", value: "113", trend: -4.5, description: "Late payments", subtext: "Overdue tenants" },
+];
+
 
   // Dropdown states
   const [landlord, setLandlord] = useState("All Landlords");
