@@ -2,17 +2,41 @@
 
 import LineChartCard from "@/components/admin/chart-card";
 import StatCard from "@/components/admin/analytics-card";
-import AlertsCard from "@/components/admin/alert-card";
+import TodaySection from "@/components/user/today-section";
 import Image from "next/image";
 import { Bell } from "lucide-react";
 import TransactionVolumeChart from "@/components/admin/volume-chart";
 
 export default function DashboardPage() {
   const stats = [
-    { title: "Expected (Oct)", value: "£24,500", trend: 12.5, description: "Trending up this month", subtext: "Visitors for the last 6 months" },
-    { title: "Collected", value: "£22,300", trend: -20, description: "Down 20% this period", subtext: "Acquisition needs attention" },
-    { title: "Arrears", value: "£2,200", trend: 12.5, description: "Strong user retention", subtext: "Engagement exceed targets" },
-    { title: "Late Tenants", value: "17", trend: 4.5, description: "Steady performance increase", subtext: "Meets growth projections" },
+    {
+      title: "Expected (Oct)",
+      value: "£24,500",
+      trend: 12.5,
+      description: "Trending up this month",
+      subtext: "Visitors for the last 6 months",
+    },
+    {
+      title: "Collected",
+      value: "£22,300",
+      trend: -20,
+      description: "Down 20% this period",
+      subtext: "Acquisition needs attention",
+    },
+    {
+      title: "Arrears",
+      value: "£2,200",
+      trend: 12.5,
+      description: "Strong user retention",
+      subtext: "Engagement exceed targets",
+    },
+    {
+      title: "Late Tenants",
+      value: "17",
+      trend: 4.5,
+      description: "Steady performance increase",
+      subtext: "Meets growth projections",
+    },
   ];
 
   const transactionData = [
@@ -61,25 +85,57 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Charts */}
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-             <TransactionVolumeChart />
-     
-             <LineChartCard
-               title="Arrears Trends"
-               subtitle="January - June 2024"
-               data={arrearsData}
-               lines={[
-                 { key: "series1", color: "#00C6FF", name: "Current" },
-                 { key: "series2", color: "#FF6B00", name: "Previous" },
-               ]}
-               footer="Trending up by 5.2% this month"
-             />
-           </div>
-         
-           {/* Recent Alerts Section */}
-           <AlertsCard />
-         </div>
-       );
-     }
-     
+     {/* Charts Section — full width */}
+<div className="space-y-6">
+  {/* Chart with filter buttons */}
+  <div className="bg-[#111] text-white rounded-xl p-4 md:p-6 border border-gray-800/50 shadow-md w-full">
+    <div className="flex items-center justify-between mb-4">
+      <div>
+        <h3 className="text-sm font-medium text-gray-200">Expected (Oct)</h3>
+        <p className="text-xs text-gray-500 mt-1">Total for the last 3 months</p>
+      </div>
+
+      {/* Filter Buttons */}
+      <div className="flex items-center gap-2">
+        {["Last 3 months", "Last 30 days", "Last 7 days"].map((label, i) => (
+          <button
+            key={i}
+            className={`px-3 py-1.5 text-xs rounded-md transition-all duration-200
+              ${i === 0
+                ? "bg-[#1e1e1e] text-white border border-gray-700"
+                : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
+              }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    {/* Chart itself */}
+    <TransactionVolumeChart
+      title=""
+      subtitle=""
+    />
+  </div>
+
+  {/* Second chart */}
+  <div className="w-full">
+    <LineChartCard
+      title="Collected"
+      subtitle="January - June 2024"
+      data={arrearsData}
+      lines={[
+        { key: "series1", color: "#00C6FF", name: "Current" },
+        { key: "series2", color: "#FF6B00", name: "Previous" },
+      ]}
+      footer="Trending up by 5.2% this month"
+    />
+  </div>
+</div>
+
+      {/* Recent Alerts Section */}
+      <TodaySection />
+    </div>
+  );
+}
