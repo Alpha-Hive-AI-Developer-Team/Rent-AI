@@ -7,7 +7,7 @@ import { useState, useEffect } from "react";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const [isDesktop, setIsDesktop] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(true);
 
   const menuItems = [
     {
@@ -53,7 +53,7 @@ export default function Sidebar() {
       activeIcon: "/images/bell.png",
     },
     {
-      name: "Payment",
+      name: "Payment Plans",
       path: "/user/payment",
       icon: "/images/CreditCard.png",
       activeIcon: "/images/CreditCard.png",

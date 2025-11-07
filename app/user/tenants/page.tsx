@@ -94,7 +94,7 @@ export default function TenantsPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8 relative overflow-hidden">
+    <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-6 relative overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-end gap-4">
         <h1 className="text-xl font-semibold mr-auto">Tenants</h1>

@@ -88,22 +88,24 @@ export default function DashboardPage() {
      {/* Charts Section — full width */}
 <div className="space-y-6">
   {/* Chart with filter buttons */}
-  <div className="bg-[#111] text-white rounded-xl p-4 md:p-6 border border-gray-800/50 shadow-md w-full">
-    <div className="flex items-center justify-between mb-4">
+  <div className="bg-[#111] text-white rounded-xl p-4 sm:p-5 md:p-6 border border-gray-800/50 shadow-md w-full">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+      {/* Left side — text */}
       <div>
-        <h3 className="text-sm font-medium text-gray-200">Expected (Oct)</h3>
-        <p className="text-xs text-gray-500 mt-1">Total for the last 3 months</p>
+        <h3 className="text-sm md:text-base font-medium text-gray-200">Expected (Oct)</h3>
+        <p className="text-xs md:text-sm text-gray-500 mt-1">Total for the last 3 months</p>
       </div>
 
-      {/* Filter Buttons */}
-      <div className="flex items-center gap-2">
+      {/* Right side — Filter Buttons */}
+      <div className="flex flex-wrap justify-start sm:justify-end gap-2">
         {["Last 3 months", "Last 30 days", "Last 7 days"].map((label, i) => (
           <button
             key={i}
-            className={`px-3 py-1.5 text-xs rounded-md transition-all duration-200
-              ${i === 0
-                ? "bg-[#1e1e1e] text-white border border-gray-700"
-                : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
+            className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200
+              ${
+                i === 0
+                  ? "bg-[#1e1e1e] text-white border border-gray-700"
+                  : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
               }`}
           >
             {label}
@@ -113,11 +115,12 @@ export default function DashboardPage() {
     </div>
 
     {/* Chart itself */}
-    <TransactionVolumeChart
-      title=""
-      subtitle=""
-    />
+    <div className="w-full overflow-x-auto">
+      <TransactionVolumeChart title="" subtitle="" />
+    </div>
   </div>
+
+
 
   {/* Second chart */}
   <div className="w-full">

@@ -19,11 +19,14 @@ export default function DataTable<T extends { id: number | string }>({
 }: DataTableProps<T>) {
   return (
     <div className="w-full overflow-x-auto border border-gray-800/60 rounded-lg">
-      <table className="w-full text-sm border-collapse border border-gray-800/60 rounded-xl overflow-hidden">
+      <table className="min-w-full text-sm border-collapse border border-gray-800/60 rounded-xl overflow-hidden">
         <thead className="bg-[#0c0c0c]">
           <tr className="text-gray-400 text-left">
             {columns.map((col) => (
-              <th key={col.key as string} className="py-3 px-4 font-medium">
+              <th
+                key={col.key as string}
+                className="py-3 px-4 font-medium whitespace-nowrap text-sm md:text-base"
+              >
                 {col.label}
               </th>
             ))}
@@ -37,7 +40,10 @@ export default function DataTable<T extends { id: number | string }>({
               className="border-t border-gray-800 hover:bg-[#111] transition"
             >
               {columns.map((col) => (
-                <td key={col.key as string} className="py-3 px-4 text-gray-300">
+                <td
+                  key={col.key as string}
+                  className="py-3 px-4 text-gray-300 whitespace-nowrap text-sm md:text-base"
+                >
                   {col.render ? col.render(item) : (item[col.key as keyof T] as any)}
                 </td>
               ))}

@@ -14,15 +14,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="flex bg-[#0a0a0a] text-white min-h-screen">
+      <body className="bg-[#0a0a0a] text-white min-h-screen">
         <Sidebar />
+
+        {/* Main content area — account for sidebar width */}
         <main
           className="
-            flex-1
-            lg:ml-72  /* match desktop sidebar width */
-            md:ml-20  /* match tablet/sidebar icon-only width */
-            ml-20     /* mobile same as compact sidebar */
-            transition-all
+            transition-all duration-300
+            ml-20           /* default sidebar compact (mobile) */
+            lg:ml-72        /* desktop sidebar width */
+           
           "
         >
           {children}
