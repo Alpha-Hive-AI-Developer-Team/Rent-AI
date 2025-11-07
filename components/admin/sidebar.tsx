@@ -7,7 +7,7 @@ import { useState, useEffect } from "react";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const [isDesktop, setIsDesktop] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(true);
 
   const menuItems = [
     {

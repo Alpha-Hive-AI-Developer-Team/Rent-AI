@@ -20,7 +20,6 @@ interface ChartCardProps {
     name?: string;
   }[];
   footer?: string;
-  timeOptions?: string[];
 }
 
 export default function LineChartCard({
@@ -31,33 +30,23 @@ export default function LineChartCard({
   footer,
 }: ChartCardProps) {
   return (
-    <div className="bg-[#111] text-white rounded-xl border border-gray-800/50 p-4 md:p-6 shadow-md flex flex-col">
+    <div className="bg-[#111] text-white rounded-xl border border-gray-800/50 p-4 md:p-6 shadow-md">
       <div className="mb-4">
         <h3 className="text-sm text-gray-300">{title}</h3>
         <p className="text-xs text-gray-500 mt-2">{subtitle}</p>
       </div>
 
-      <div className="flex-1 h-56">
+      <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
-            <CartesianGrid
-              stroke="#2a2a2a"
-              strokeDasharray="0"
-              horizontal={true}
-              vertical={false}
-            />
-
+            <CartesianGrid stroke="#2a2a2a" vertical={false} />
             <XAxis
               dataKey="name"
               tick={{ fill: "#666", fontSize: 11 }}
               axisLine={false}
               tickLine={false}
             />
-            {/* <YAxis
-              tick={{ fill: "#666", fontSize: 11 }}
-              axisLine={false}
-              tickLine={false}
-            /> */}
+            <YAxis hide />
             <Tooltip
               contentStyle={{
                 backgroundColor: "#1a1a1a",
@@ -74,6 +63,7 @@ export default function LineChartCard({
                 stroke={line.color}
                 strokeWidth={2}
                 dot={false}
+                activeDot={{ r: 4, fill: line.color }}
                 name={line.name}
               />
             ))}
