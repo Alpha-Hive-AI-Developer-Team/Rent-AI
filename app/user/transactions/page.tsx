@@ -72,7 +72,15 @@ export default function TransactionsPage() {
       key: "confidence",
       label: "Confidence",
       render: (t: Transaction) => (
-        <span className={` inline-flex items-center px-2 border-[1px] py-1 justify-center rounded-full text-xs font-medium ${t.confidence === '96%' ? 'bg-emerald-900/20 text-emerald-400 border border-emerald-700' : t.confidence === '71%' ? 'bg-sky-900/20 text-sky-300 border border-sky-700' : 'bg-amber-900/20 text-amber-300 border border-amber-700'}`}>
+        <span
+          className={`inline-flex items-center px-2 border py-1 rounded-full text-xs font-medium ${
+            t.confidence === "96%"
+              ? "bg-emerald-900/20 text-emerald-400 border-emerald-700"
+              : t.confidence === "71%"
+              ? "bg-sky-900/20 text-sky-300 border-sky-700"
+              : "bg-amber-900/20 text-amber-300 border-amber-700"
+          }`}
+        >
           {t.confidence}
         </span>
       ),
@@ -81,7 +89,9 @@ export default function TransactionsPage() {
       key: "status",
       label: "Status",
       render: (t: Transaction) => (
-        <span className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[t.status]}`}>
+        <span
+          className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[t.status]}`}
+        >
           {t.status}
         </span>
       ),
@@ -90,19 +100,19 @@ export default function TransactionsPage() {
       key: "actions",
       label: "Action",
       render: () => (
-        <div className="flex items-center gap-3">
-          {/* Approve button: green text, rounded pill, right-side green circular icon */}
-          <button className="flex items-center justify-between gap-1 bg-transparent border border-[#111] text-emerald-400 px-3 py-1 rounded-full text-sm hover:bg-emerald-900/5 transition ">
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* Approve */}
+          <button className="flex items-center gap-1 bg-transparent border border-[#111] text-emerald-400 px-3 py-1 rounded-full text-xs md:text-sm hover:bg-emerald-900/5 transition">
             <span className="whitespace-nowrap">Approve</span>
-            <span className="flex items-center justify-center  rounded-full bg-emerald-900/25 border border-emerald-700">
+            <span className="flex items-center justify-center rounded-full bg-emerald-900/25 border border-emerald-700 p-0.5">
               <Check className="w-3 h-3 text-emerald-400" />
             </span>
           </button>
 
-          {/* Reject button: dark pill, white/gray text, right-side circular X */}
-          <button className="flex items-center justify-between gap-3 bg-[#0b0b0b] border border-[#111] text-gray-300 px-3 py-1 rounded-full text-sm hover:bg-white/2 transition ">
+          {/* Reject */}
+          <button className="flex items-center gap-2 bg-[#0b0b0b] border border-[#111] text-gray-300 px-3 py-1 rounded-full text-xs md:text-sm hover:bg-white/5 transition">
             <span className="whitespace-nowrap">Reject</span>
-            <span className="flex items-center justify-center  rounded-full bg-transparent border border-gray-600">
+            <span className="flex items-center justify-center rounded-full border border-gray-600 p-0.5">
               <X className="w-3 h-3 text-gray-300" />
             </span>
           </button>
@@ -113,59 +123,53 @@ export default function TransactionsPage() {
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8">
-      {/* Top header: title + right stacked actions */}
 
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-xl font-semibold">Transactions</h1>
 
-      <div className="flex items-center justify-end gap-4">
-        <h1 className="text-xl font-semibold mr-auto">Transactions</h1>
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <Bell className="w-6 h-6 text-gray-300" />
+            <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+              2
+            </span>
+          </div>
 
-        <div className="relative">
-          <Bell className="w-6 h-6 text-gray-300" />
-          <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
-            2
-          </span>
+          <Image
+            src="/images/pexels.png"
+            alt="User Avatar"
+            width={36}
+            height={36}
+            className="rounded-full border border-gray-700"
+          />
         </div>
-
-        <Image
-          src="/images/pexels.png"
-          alt="User Avatar"
-          width={36}
-          height={36}
-          className="rounded-full border border-gray-700"
-        />
       </div>
 
-
-      <div className="flex items-start justify-between">
+      {/* Section title + Quick Action */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold">Transactions</h1>
+          <h1 className="text-xl font-semibold">Transactions</h1>
           <p className="text-sm text-gray-400 mt-1">Interactive mockup</p>
         </div>
 
-        <div className="flex flex-col items-end gap-3">
-          <button className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-4 py-2 rounded-full text-sm hover:bg-emerald-900/5 transition">
-            <Plus className="w-4 h-4 text-emerald-400" />
-            <span>Quick Action</span>
-          </button>
-
-          
-        </div>
+        <button className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-4 py-2 rounded-full text-sm hover:bg-emerald-900/5 transition w-full sm:w-auto">
+          <Plus className="w-4 h-4 text-emerald-400" />
+          <span>Quick Action</span>
+        </button>
       </div>
 
-      {/* Transactions Inbox row with Sync Bank Feed opposite, search below */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold">Transactions Inbox</h2>
-        </div>
+      {/* Inbox + Sync */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h2 className="text-base font-semibold">Transactions Inbox</h2>
 
-        <div>
-          <button className="bg-transparent text-emerald-400 text-sm border border-emerald-600 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition w-fit">
-            Sync Bank Feed
-          </button>
-        </div>
+        <button className="bg-transparent text-emerald-400 text-sm border border-emerald-600 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition w-full sm:w-auto">
+          Sync Bank Feed
+        </button>
       </div>
 
-      {/* <div className="mt-3 w-full md:w-1/4 relative">
+      {/* Search */}
+      <div className="mt-3 w-full sm:w-72 relative">
         <Search className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
         <input
           type="text"
@@ -174,10 +178,10 @@ export default function TransactionsPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="w-full bg-[#0c0c0c] border border-gray-800 rounded-lg py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
         />
-      </div> */}
+      </div>
 
-      {/* Table Section */}
-      <div className="mt-4">
+      {/* Table */}
+      <div className="w-full overflow-x-auto bg-black/20 rounded-xl border border-gray-800 p-2 md:p-4">
         <DataTable columns={columns} data={filtered} />
       </div>
     </div>

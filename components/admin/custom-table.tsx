@@ -16,7 +16,11 @@ interface CustomTableProps {
   total?: string;
 }
 
-export default function CustomTable({ data, columns, total }: CustomTableProps) {
+export default function CustomTable({
+  data,
+  columns,
+  total,
+}: CustomTableProps) {
   return (
     <div className="w-full">
       {/* Responsive wrapper for table scroll */}
@@ -52,13 +56,9 @@ export default function CustomTable({ data, columns, total }: CustomTableProps) 
                   </td>
                 ))}
                 <td className="p-3 sm:p-4">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-gray-400 hover:text-white p-1 border border-gray-800 hover:bg-gray-900/30"
-                  >
-                    <EllipsisVertical className="w-4 h-4" />
-                  </Button>
+                  <button className="text-xs bg-transparent border border-emerald-700 px-3 py-1 rounded-full text-emerald-400 hover:bg-emerald-900/5 transition">
+                    Open <span className="ml-2 text-emerald-400">›</span>
+                  </button>
                 </td>
               </tr>
             ))}

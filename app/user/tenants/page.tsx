@@ -94,12 +94,13 @@ export default function TenantsPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-6 relative overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-end gap-4">
-        <h1 className="text-xl font-semibold mr-auto">Tenants</h1>
+    <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-6">
 
+      {/* Top Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <h1 className="text-xl font-semibold">Tenants</h1>
 
+        <div className="flex items-center gap-4">
           <div className="relative">
             <Bell className="w-6 h-6 text-gray-300" />
             <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
@@ -114,17 +115,18 @@ export default function TenantsPage() {
             height={36}
             className="rounded-full border border-gray-700"
           />
-       
+        </div>
       </div>
 
-      {/* Label, Search and Add New Tenant button (label left, controls right) */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold">Tenants</h2>
-        </div>
+      {/* Search + New Tenant */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 
-        <div className="flex items-center gap-3">
-          <div className="relative w-[280px] md:w-96">
+        <h2 className="text-base font-semibold">Tenants</h2>
+
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+
+          {/* Search */}
+          <div className="relative w-full sm:w-72 md:w-96">
             <Search className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
             <input
               type="text"
@@ -135,9 +137,10 @@ export default function TenantsPage() {
             />
           </div>
 
+          {/* Add New Tenant */}
           <button
             onClick={() => setDrawerOpen(true)}
-            className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition"
+            className="flex items-center justify-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition w-full sm:w-auto"
           >
             <Plus className="w-4 h-4 text-emerald-400" />
             <span className="text-sm">New Tenant</span>
@@ -145,8 +148,10 @@ export default function TenantsPage() {
         </div>
       </div>
 
-      {/* Table Section */}
-      <DataTable columns={columns} data={filtered} />
+      {/* Table */}
+      <div className="w-full overflow-x-auto bg-black/20 rounded-xl border border-gray-800 p-2 md:p-4">
+        <DataTable columns={columns} data={filtered} />
+      </div>
 
       {/* Drawer */}
       <TenantDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />

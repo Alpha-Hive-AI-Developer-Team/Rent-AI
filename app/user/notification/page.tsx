@@ -23,10 +23,12 @@ export default function NotificationPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8">
+    <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-end gap-4">
-        <h1 className="text-xl font-semibold mr-auto">Notifications</h1>
+      <div className="flex items-center justify-end gap-4 flex-wrap">
+        <h1 className="text-xl md:text-2xl font-semibold mr-auto">
+          Notifications
+        </h1>
 
         <div className="relative">
           <Bell className="w-6 h-6 text-gray-300" />
@@ -44,50 +46,41 @@ export default function NotificationPage() {
         />
       </div>
 
-      {/* Tabs */}
-      {/* <div className="flex border-b border-gray-800 text-sm">
-        <button className="px-4 py-2 text-white border-b-2 border-white">
-          All
-        </button>
-        <button className="px-4 py-2 text-gray-400 hover:text-white">
-          Unread
-        </button>
-        <button className="px-4 py-2 text-gray-400 hover:text-white">
-          Read
-        </button>
-      </div> */}
-
-      {/* Notification List (card) */}
+      {/* Notifications Card */}
       <div className="mt-4">
         <div className="bg-[#111] rounded-2xl border border-[#1a1a1a] p-4 md:p-6">
-          {/* In-card label matching screenshot */}
-          <div className="mb-3">
-            <p className="text-md font-semibold text-white">Notifications</p>
+          {/* Title inside card */}
+          <div className="mb-4">
+            <p className="text-lg md:text-xl font-semibold text-white">
+              Notifications
+            </p>
           </div>
 
           <div className="flex flex-col gap-3">
             {notifications.map((item, index) => {
-              const isLast = index === notifications.length - 1;
+              const Icon =
+                index === 0
+                  ? CheckCircle
+                  : index === 1
+                  ? Gift
+                  : AlertTriangle;
+
               return (
                 <div
                   key={index}
-                  className={
-                    "w-full flex items-center justify-between p-3 rounded-xl border border-[#1f1f1f] bg-transparent"
-                  }
+                  className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-[#1f1f1f] bg-transparent"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center">
-                      {index === 0 && <CheckCircle className="w-4 h-4 text-emerald-400" />}
-                      {index === 1 && <Gift className="w-4 h-4 text-emerald-400" />}
-                      {index === 2 && <AlertTriangle className="w-4 h-4 text-emerald-400" />}
-                    </div>
+                  {/* Left side */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Icon className="w-4 h-4 text-emerald-400 shrink-0" />
 
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{item.title}</p>
-                    </div>
+                    <p className="text-sm md:text-base font-medium text-white truncate">
+                      {item.title}
+                    </p>
                   </div>
 
-                  <div className="text-xs text-gray-400 ml-4 whitespace-nowrap">
+                  {/* Time (right) */}
+                  <div className="text-xs text-gray-400 whitespace-nowrap">
                     {item.time}
                   </div>
                 </div>
