@@ -1,27 +1,24 @@
 "use client";
 
 import Image from "next/image";
-import { Bell } from "lucide-react";
+import { Bell, CheckCircle, Gift, AlertTriangle } from "lucide-react";
 
 export default function NotificationPage() {
   const notifications = [
     {
       title: "Payment matched – Jack Leah (Oct)",
-      description:
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt",
-      time: "5 hours ago",
+      type: "success",
+      time: "08:12",
     },
     {
       title: "New referral activated +10%",
-      description:
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt",
-      time: "5 hours ago",
+      type: "promo",
+      time: "09:04",
     },
     {
       title: "3 tenants moved to D7–13",
-      description:
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt",
-      time: "5 hours ago",
+      type: "alert",
+      time: "Yesterday",
     },
   ];
 
@@ -48,7 +45,7 @@ export default function NotificationPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-800 text-sm">
+      {/* <div className="flex border-b border-gray-800 text-sm">
         <button className="px-4 py-2 text-white border-b-2 border-white">
           All
         </button>
@@ -58,24 +55,46 @@ export default function NotificationPage() {
         <button className="px-4 py-2 text-gray-400 hover:text-white">
           Read
         </button>
-      </div>
+      </div> */}
 
-      {/* Notification List */}
-      <div className="space-y-3 mt-4">
-        {notifications.map((item, index) => (
-          <div
-            key={index}
-            className="bg-[#0B0B0B] p-4 rounded-xl border border-[#1a1a1a] flex items-start justify-between hover:bg-[#111111] transition-colors"
-          >
-            <div>
-              <p className="font-medium text-sm mb-1">{item.title}</p>
-              <p className="text-xs text-gray-400">{item.description}</p>
-            </div>
-            <p className="text-xs text-gray-500 whitespace-nowrap ml-4">
-              {item.time}
-            </p>
+      {/* Notification List (card) */}
+      <div className="mt-4">
+        <div className="bg-[#111] rounded-2xl border border-[#1a1a1a] p-4 md:p-6">
+          {/* In-card label matching screenshot */}
+          <div className="mb-3">
+            <p className="text-md font-semibold text-white">Notifications</p>
           </div>
-        ))}
+
+          <div className="flex flex-col gap-3">
+            {notifications.map((item, index) => {
+              const isLast = index === notifications.length - 1;
+              return (
+                <div
+                  key={index}
+                  className={
+                    "w-full flex items-center justify-between p-3 rounded-xl border border-[#1f1f1f] bg-transparent"
+                  }
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center">
+                      {index === 0 && <CheckCircle className="w-4 h-4 text-emerald-400" />}
+                      {index === 1 && <Gift className="w-4 h-4 text-emerald-400" />}
+                      {index === 2 && <AlertTriangle className="w-4 h-4 text-emerald-400" />}
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{item.title}</p>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-gray-400 ml-4 whitespace-nowrap">
+                    {item.time}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );

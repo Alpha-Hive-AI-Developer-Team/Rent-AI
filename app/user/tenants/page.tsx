@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Bell, Search } from "lucide-react";
+import { Bell, Search, Plus } from "lucide-react";
 import { useState } from "react";
 import TenantDrawer from "@/components/user/tenant-drawer";
 import DataTable from "@/components/user/data-table";
@@ -86,8 +86,8 @@ export default function TenantsPage() {
       key: "actions",
       label: "",
       render: () => (
-        <button className="text-xs bg-[#1a1a1a] border border-gray-700 px-3 py-1 rounded-full text-gray-300 hover:bg-[#222] transition">
-          View Details
+        <button className="text-xs bg-transparent border border-emerald-700 px-3 py-1 rounded-full text-emerald-400 hover:bg-emerald-900/5 transition">
+          Open <span className="ml-2 text-emerald-400">›</span>
         </button>
       ),
     },
@@ -99,41 +99,50 @@ export default function TenantsPage() {
       <div className="flex items-center justify-end gap-4">
         <h1 className="text-xl font-semibold mr-auto">Tenants</h1>
 
-        <div className="relative">
-          <Bell className="w-6 h-6 text-gray-300" />
-          <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
-            3
-          </span>
-        </div>
 
-        <Image
-          src="/images/pexels.png"
-          alt="User Avatar"
-          width={36}
-          height={36}
-          className="rounded-full border border-gray-700"
-        />
+          <div className="relative">
+            <Bell className="w-6 h-6 text-gray-300" />
+            <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+              3
+            </span>
+          </div>
+
+          <Image
+            src="/images/pexels.png"
+            alt="User Avatar"
+            width={36}
+            height={36}
+            className="rounded-full border border-gray-700"
+          />
+       
       </div>
 
-      {/* 🔍 Search and Add Tenant Section */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <div className="relative w-full md:w-1/4">
-          <Search className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
-          <input
-            type="text"
-            placeholder="Search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-[#0c0c0c] border border-gray-800 rounded-lg py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-          />
+      {/* Label, Search and Add New Tenant button (label left, controls right) */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold">Tenants</h2>
         </div>
 
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className="bg-[#1a1a1a] text-sm border border-gray-700 rounded-full px-4 py-2 hover:bg-[#222] transition w-fit"
-        >
-          Add New Tenant
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="relative w-[280px] md:w-96">
+            <Search className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search tenants..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-[#0c0c0c] border border-gray-800 rounded-lg py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+            />
+          </div>
+
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition"
+          >
+            <Plus className="w-4 h-4 text-emerald-400" />
+            <span className="text-sm">New Tenant</span>
+          </button>
+        </div>
       </div>
 
       {/* Table Section */}
