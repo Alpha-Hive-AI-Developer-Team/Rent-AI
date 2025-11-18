@@ -27,7 +27,7 @@ export default function Sidebar() {
     { name: "Tenants", path: "/user/tenants", Icon: Users },
     { name: "Transactions", path: "/user/transactions", Icon: CreditCard },
     { name: "Reconcile", path: "/user/reconcile", Icon: LineChart },
-    { name: "Tenant Detail", path: "/user/tenant-detail", Icon: UserIcon },
+    
     { name: "Arrears", path: "/user/arrears", Icon: AlertTriangle },
     { name: "Referrals", path: "/user/referrals", Icon: Gift },
     { name: "Payment Plans", path: "/user/payment", Icon: CreditCard },
