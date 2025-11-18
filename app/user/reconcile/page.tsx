@@ -37,90 +37,76 @@ export default function ReconcilePage() {
         </button>
       </div>
 
-      {/* Expected Rents */}
-      <section className="bg-[#111] rounded-xl p-4 md:p-6 space-y-4">
-        <h2 className="text-lg font-medium text-gray-300">Expected Rents</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2].map((i) => (
-            <div
-              key={i}
-              className="bg-black border border-gray-800 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-            >
-              <div>
-                <p className="font-medium text-sm sm:text-base">Tom Walker</p>
-                <p className="text-gray-400 text-xs sm:text-sm">
-                  Due 2025-10-01
-                </p>
+      {/* Three-column layout (Expected Rents | AI Matches | Bank Transactions) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-2">
+        {/* Expected Rents */}
+        <div className="bg-[#0B0B0B] rounded-2xl border border-[#1a1a1a] p-4">
+          <h3 className="text-sm font-medium text-gray-300">Expected Rents</h3>
+          <div className="mt-3 space-y-3">
+            {[{ name: 'Tom Walker', due: '2025-10-01', amt: '£950' }, { name: 'Amira K.', due: '2025-10-01', amt: '£1450' }].map((r, i) => (
+              <div key={i} className="bg-black border border-gray-800 rounded-lg p-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">{r.name}</p>
+                  <p className="text-gray-400 text-xs">Due {r.due}</p>
+                </div>
+                <div className="text-lg font-semibold">{r.amt}</div>
               </div>
-              <p className="text-lg sm:text-xl font-semibold text-right sm:text-left">
-                £950
-              </p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </section>
 
-      {/* AI Matches */}
-      <section className="bg-[#111] rounded-xl p-4 md:p-6 space-y-4">
-        <h2 className="text-lg font-medium text-gray-300">AI Matches</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2].map((i) => (
-            <div
-              key={i}
-              className="bg-black border border-gray-800 rounded-lg p-4 flex flex-col justify-between"
-            >
-              <span className="text-xs bg-[#111] border border-gray-800/30 text-yellow-400 px-2 py-1 rounded-full w-fit">
-                Score 71%
-              </span>
+        {/* AI Matches */}
+        <div className="bg-[#0B0B0B] rounded-2xl border border-[#1a1a1a] p-4">
+          <h3 className="text-sm font-medium text-gray-300">AI Matches</h3>
+          <div className="mt-3 space-y-3">
+            {[{
+              title: 'FPS WALKER TOM RENT 22 NORTH', tx: 'TX-82', party: 'Tom Walker', amt: '£950', score: '71%'
+            },{
+              title: 'FPI AMIRA K RENT 52 OAK', tx: 'TX-83', party: 'Amira K.', amt: '£1450', score: '22%'
+            }].map((m, i) => (
+              <div key={i} className="bg-black border border-gray-800 rounded-lg p-3">
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0 pr-3">
+                    <p className="text-sm font-medium uppercase leading-snug">{m.title}</p>
+                    <p className="text-gray-400 text-xs">tx {m.tx}</p>
+                    <p className="text-gray-400 text-xs mt-2">→ {m.party} / {m.amt}</p>
+                  </div>
 
-              <div className="mt-3 space-y-1">
-                <p className="font-medium text-sm sm:text-base">
-                  {i === 1
-                    ? "FPS WALKER TOM RENT 22 NORTH"
-                    : "FPI AMIRA K RENT 52 OAK"}
-                </p>
-                <p className="text-gray-400 text-xs sm:text-sm">tx TX-8</p>
-                <p className="text-gray-400 text-xs sm:text-sm">
-                  → Tom Walker / £950
-                </p>
+                  <div className={
+                    "flex-shrink-0 text-sm font-normal px-3 py-1 rounded-full border " +
+                    (m.score === '71%'
+                      ? 'bg-[#07142a] border-[#11325a] text-sky-300'
+                      : 'bg-[#2b1a05] border-[#4b2f05] text-amber-300')
+                  }>
+                    Score {m.score}
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <button className="bg-black border border-gray-800 text-emerald-400 px-3 py-1 rounded-full text-sm">Accept + Learn</button>
+                  <button className="bg-black border border-gray-800 text-gray-300 px-3 py-1 rounded-full text-sm">Reject</button>
+                </div>
               </div>
-
-              <div className="flex flex-col sm:flex-row gap-2 mt-4 w-full">
-                <button className="w-full sm:w-auto flex-1 bg-[#111] border border-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-full text-sm transition">
-                  Accept + Learn
-                </button>
-                <button className="w-full sm:w-auto flex-1 bg-[#111] border border-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-2 rounded-full text-sm transition">
-                  Reject
-                </button>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </section>
 
-      {/* Bank Transactions */}
-      <section className="bg-[#111] rounded-xl p-4 md:p-6 space-y-4">
-        <h2 className="text-lg font-medium text-gray-300">Bank Transactions</h2>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2].map((i) => (
-            <div
-              key={i}
-              className="bg-black border border-gray-800 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-            >
-              <div>
-                <p className="font-medium text-sm sm:text-base">
-                  FPI JACK LEAH 119AV RENT
-                </p>
-                <p className="text-gray-400 text-xs sm:text-sm">2025-10-02</p>
+        {/* Bank Transactions */}
+        <div className="bg-[#0B0B0B] rounded-2xl border border-[#1a1a1a] p-4">
+          <h3 className="text-sm font-medium text-gray-300">Bank Transactions</h3>
+          <div className="mt-3 space-y-3">
+            {[{ title: 'FPI JACK LEAH 119AV RENT', date: '2025-10-01', amount: '£1200' }, { title: 'FPS WALKER TOM RENT 22 NORTH', date: '2025-10-02', amount: '£600' }, { title: 'FPI AMIRA K RENT 52 OAK', date: '2025-10-08', amount: '£1450' }].map((t, i) => (
+              <div key={i} className="bg-black border border-gray-800 rounded-lg p-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">{t.title}</p>
+                  <p className="text-gray-400 text-xs">{t.date}</p>
+                </div>
+                <div className="text-lg font-semibold">{t.amount}</div>
               </div>
-              <p className="text-lg sm:text-xl font-semibold text-right sm:text-left">
-                £1200
-              </p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </section>
+      </div>
     </div>
   );
 }
