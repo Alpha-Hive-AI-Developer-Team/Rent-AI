@@ -2,12 +2,32 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Bell, ChevronDown, ChevronUp } from "lucide-react";
+import { Bell } from "lucide-react";
 
 export default function ArrearsPage() {
   const [openSection, setOpenSection] = useState<string | null>("Day 0");
 
-  const sections = ["Day 0", "Day 1-6", "Day 7-13", "Day 14-27"];
+  const sections = ["Day 0", "Day 1-6", "Day 7-13", "Day 14-27", "Day 28+"];
+
+  // Dummy arrears data keyed by section
+  const arrearsData: Record<string, { id: number; name: string; unit?: string; days: number; template: string }[]> = {
+    "Day 0": [
+      { id: 1, name: "Tom Walker", unit: "Unit 17 - Room A", days: 0, template: "Friendly / Firm" },
+    ],
+    "Day 1-6": [
+      { id: 2, name: "Amira K.", unit: "52 Oak St - 1F", days: 3, template: "Friendly / Firm" },
+      { id: 3, name: "Jack Leah", unit: "119 The Avenue - R3", days: 5, template: "Friendly / Firm" },
+    ],
+    "Day 7-13": [
+      { id: 4, name: "Sara M.", unit: "5 Park View - 2B", days: 9, template: "Friendly / Firm" },
+    ],
+    "Day 14-27": [
+      { id: 5, name: "Tom Walker", unit: "22 North Rd - R2", days: 18, template: "Firm" },
+    ],
+    "Day 28+": [
+      { id: 6, name: "Amira K.", unit: "52 Oak St - 1F", days: 32, template: "Legal / Final" },
+    ],
+  };
 
   const toggleSection = (section: string) => {
     setOpenSection(openSection === section ? null : section);
@@ -45,62 +65,52 @@ export default function ArrearsPage() {
         </button>
       </div>
 
-      {/* Accordion Sections */}
-      <div className="space-y-3">
-        {sections.map((section) => (
-          <div
-            key={section}
-            className="bg-[#111] rounded-lg overflow-hidden border border-gray-800"
+      {/* Filter pills */}
+      <div className="mt-4 flex items-center gap-3">
+        {sections.map((s) => (
+          <button
+            key={s}
+            onClick={() => toggleSection(s)}
+            className={`text-xs px-3 py-1 rounded-full border ${
+              openSection === s
+                ? "border-emerald-600 text-emerald-400"
+                : "border-gray-700 text-gray-300"
+            }`}
           >
-            {/* Accordion Header */}
-            <button
-              onClick={() => toggleSection(section)}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-900 transition-colors text-left"
-            >
-              <span className="font-medium text-base sm:text-lg">
-                {section}
-              </span>
-              {openSection === section ? (
-                <ChevronUp className="w-5 h-5 text-gray-400" />
-              ) : (
-                <ChevronDown className="w-5 h-5 text-gray-400" />
-              )}
-            </button>
+            {s}
+          </button>
+        ))}
+      </div>
 
-            {/* Expanded Content */}
-            {openSection === section && (
-              <div className="p-4 border-t border-gray-800">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {/* Example Cards */}
-                  {[1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className="bg-black border border-gray-800 rounded-lg p-4 flex flex-col justify-between"
-                    >
-                      <div>
-                        <p className="text-gray-200 font-medium mb-1 text-sm sm:text-base">
-                          Reminder scheduled 16:00
-                        </p>
-                        <p className="text-gray-400 text-xs sm:text-sm mb-4 leading-relaxed">
-                          Auto-reminder template: Friendly / Firm
-                        </p>
-                      </div>
+      {/* Cards for selected section */}
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {openSection ? (
+          (arrearsData[openSection] || []).length > 0 ? (
+            (arrearsData[openSection] || []).map((item) => (
+              <div key={item.id} className="rounded-2xl bg-[#0B0B0B] border border-[#1a1a1a] p-4">
+                <div>
+                  <p className="text-gray-200 font-medium mb-1 text-sm">
+                    {item.name} {item.unit ? `· ${item.unit}` : ""} ({item.days} days)
+                  </p>
+                  <p className="text-gray-400 text-xs mb-4">Auto-reminder template: {item.template}</p>
+                </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        <button className="border border-gray-800 hover:bg-gray-700 text-sm px-3 py-1.5 rounded-full flex-1 sm:flex-none text-center">
-                          Open
-                        </button>
-                        <button className="border border-gray-800 hover:bg-gray-700 text-sm px-3 py-1.5 rounded-full flex-1 sm:flex-none text-center">
-                          Send Notifications
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex items-center gap-3">
+                  <button className="text-xs bg-transparent border border-emerald-700 px-3 py-1 rounded-full text-emerald-400 hover:bg-emerald-900/5 transition">
+                    Open
+                  </button>
+                  <button className="text-xs bg-[#111] border border-gray-800 px-3 py-1 rounded-full text-gray-300 hover:bg-[#222] transition">
+                    Send Now
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
-        ))}
+            ))
+          ) : (
+            <div className="text-gray-400">No items for {openSection}</div>
+          )
+        ) : (
+          <div className="text-gray-400">Select a period to show arrears</div>
+        )}
       </div>
     </div>
   );
