@@ -4,16 +4,16 @@ interface StatCardProps {
   title: string;
   value: string;
   trend: number;
-  description: string;
-  subtext: string;
+  // description: string;
+  // subtext: string;
 }
 
 export default function StatCard({
   title,
   value,
   trend,
-  description,
-  subtext,
+  // description,
+  // subtext,
 }: StatCardProps) {
   const isPositive = trend >= 0;
 
@@ -34,8 +34,8 @@ export default function StatCard({
         </div>
       </div>
       <h2 className="text-2xl md:text-3xl font-semibold mb-2">{value}</h2>
-      <p className="text-sm text-white mt-2">{description}</p>
-      <p className="text-xs text-gray-500 mt-1">{subtext}</p>
+      {/* <p className="text-sm text-white mt-2">{description}</p>
+      <p className="text-xs text-gray-500 mt-1">{subtext}</p> */}
     </div>
   );
 }
