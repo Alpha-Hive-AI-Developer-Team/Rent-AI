@@ -4,37 +4,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
+import { Home, Building2, Users, Gift } from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const [isDesktop, setIsDesktop] = useState(true);
 
-  const menuItems = [
-    {
-      name: "Dashboard",
-      path: "/admin/dashboard",
-      icon: "/images/home.png",
-      activeIcon: "/images/home.png",
-    },
-    {
-      name: "Landlord Management",
-      path: "/admin/landlords",
-      icon: "/images/Vector.png",
-      activeIcon: "/images/Vector.png",
-    },
-    {
-      name: "Tenant Management",
-      path: "/admin/tenants",
-      icon: "/images/CreditCard.png",
-      activeIcon: "/images/CreditCard.png",
-    },
-    {
-      name: "Referrals",
-      path: "/admin/referrals",
-      icon: "/images/Vector.png",
-      activeIcon: "/images/Vector.png",
-    },
-   
+  const menuItems: { name: string; path: string; Icon: React.ElementType }[] = [
+    { name: "Dashboard", path: "/admin/dashboard", Icon: Home },
+    { name: "Landlord Management", path: "/admin/landlords", Icon: Building2 },
+    { name: "Tenant Management", path: "/admin/tenants", Icon: Users },
+    { name: "Referrals", path: "/admin/referrals", Icon: Gift },
   ];
 
   // Detect screen size (lg breakpoint)
@@ -49,7 +29,7 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`fixed top-0 left-0 h-screen bg-[#111] text-gray-400 flex flex-col border-r border-gray-800/50 transition-all duration-300 z-50
+      className={`fixed top-0 left-0 h-screen bg-[#0A0A0A] text-gray-400 flex flex-col border-r border-gray-900/60 transition-all duration-300 z-50
         ${isDesktop ? "w-72" : "w-20"}
       `}
     >
@@ -78,36 +58,32 @@ export default function Sidebar() {
       )}
 
       {/* 📋 Navigation */}
-      <nav className="flex-1 px-2 py-6 space-y-2">
-        {menuItems.map((item) => {
-          // ✅ Default to Dashboard if pathname is empty or "/"
-          const isActive =
-            pathname === item.path || (pathname === "" && item.path === "/");
-
-          return (
-            <Link
-              key={item.name}
-              href={item.path}
-              className={`relative flex items-center gap-3 px-3 py-2 rounded-md text-sm transition group
-                ${isActive ? "text-white bg-gray-900/30" : "hover:text-white"}
-                ${!isDesktop ? "justify-center" : ""}
-              `}
-            >
-              {/* Left green border for active item */}
-              {isActive && (
-                <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-green-500 rounded-r-md"></div>
-              )}
-
-              <Image
-                src={isActive ? item.activeIcon : item.icon}
-                alt={item.name}
-                width={22}
-                height={22}
-              />
-              {isDesktop && <span>{item.name}</span>}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 px-3 py-4">
+        {/* {isDesktop && (
+          <div className="text-xs text-gray-400 px-2 pb-2">Main</div>
+        )} */}
+        <div className="bg-transparent p-2 space-y-3">
+          {menuItems.map(({ name, path, Icon }) => {
+            const isActive = pathname === path || (pathname === "" && path === "/");
+            return (
+              <Link
+                key={name}
+                href={path}
+                className={`group relative flex items-center gap-3 px-4 py-3 rounded-2xl text-sm transition border
+                  ${isActive
+                    ? "text-white border-emerald-600 ring-1 ring-emerald-500/30"
+                    : "text-gray-300 border-[#2A2A2A] hover:text-white hover:border-emerald-700/60"}
+                  ${!isDesktop ? "justify-center px-2 py-2 rounded-xl" : ""}
+                `}
+              >
+                <Icon
+                  className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-emerald-400" : "text-gray-400 group-hover:text-emerald-300"}`}
+                />
+                {isDesktop && <span className="truncate">{name}</span>}
+              </Link>
+            );
+          })}
+        </div>
       </nav>
     </aside>
   );
