@@ -28,7 +28,7 @@ export default function PaymentPage() {
 
       {/* Plans & Billing */}
       <section>
-        <h2 className="text-lg font-semibold mb-6">Plans & Billing</h2>
+        {/* <h2 className="text-lg font-semibold mb-6">Plans & Billing</h2> */}
         {/* Plan Cards (match screenshot) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Free */}

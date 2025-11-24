@@ -146,39 +146,39 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      {/* Section title + Quick Action */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Transactions</h1>
-          <p className="text-sm text-gray-400 mt-1">Interactive mockup</p>
-        </div>
+      {/* Search (Left) + Buttons (Right) */}
+<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
 
-        <button className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-4 py-2 rounded-full text-sm hover:bg-emerald-900/5 transition w-full sm:w-auto">
-          <Plus className="w-4 h-4 text-emerald-400" />
-          <span>Quick Action</span>
-        </button>
-      </div>
+  {/* Search Left */}
+  <div className="relative w-full sm:w-72">
+    <Search className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
+    <input
+      type="text"
+      placeholder="Search"
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+      className="w-full bg-[#0c0c0c] border border-gray-800 rounded-lg py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+    />
+  </div>
 
-      {/* Inbox + Sync */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="text-base font-semibold">Transactions Inbox</h2>
+  {/* Buttons Right */}
+  <div className="flex items-center gap-3">
 
-        <button className="bg-transparent text-emerald-400 text-sm border border-emerald-600 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition w-full sm:w-auto">
-          Sync Bank Feed
-        </button>
-      </div>
+    {/* Quick Action */}
+    <button className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-4 py-2 rounded-full text-sm hover:bg-emerald-900/5 transition">
+      <Plus className="w-4 h-4 text-emerald-400" />
+      <span>Quick Action</span>
+    </button>
 
-      {/* Search */}
-      <div className="mt-3 w-full sm:w-72 relative">
-        <Search className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
-        <input
-          type="text"
-          placeholder="Search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-[#0c0c0c] border border-gray-800 rounded-lg py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-        />
-      </div>
+    {/* Sync Bank Feed */}
+    <button className="bg-transparent text-emerald-400 text-sm border border-emerald-600 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition">
+      Sync Bank Feed
+    </button>
+
+  </div>
+
+</div>
+
 
       {/* Table */}
       <div className="w-full overflow-x-auto bg-black/20 rounded-xl border border-gray-800 p-2 md:p-4">

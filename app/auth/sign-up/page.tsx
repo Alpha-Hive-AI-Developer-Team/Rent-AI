@@ -36,7 +36,7 @@ export default function SignUp() {
             height={50}
             className="object-contain px-2 py-2 rounded-full border border-[#0B3D2C] hover:border-[#0CEB77]"
           />
-          <h2 className="text-lg font-semibold">RentAI</h2>
+          <h2 className="text-lg font-semibold">Rent Ai</h2>
         </div>
 
         {/* Right: Sign In */}

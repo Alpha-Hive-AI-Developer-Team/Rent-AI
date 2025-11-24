@@ -52,7 +52,7 @@ export default function Sidebar() {
     >
       {/* 🖥️ Header */}
       {isDesktop ? (
-        <div className="flex items-center justify-start gap-3 p-6">
+        <div className="flex items-center justify-start gap-1 p-6">
           <Image
             src="/images/logo-transparent.png"
             alt="logo"
@@ -60,7 +60,7 @@ export default function Sidebar() {
             height={50}
             className="object-contain"
           />
-          <span className="text-white font-semibold text-lg">RentAI</span>
+          <span className="text-white font-semibold text-2xl">Rent Ai</span>
         </div>
       ) : (
         <div className="flex justify-center items-center p-4 border-b border-gray-800">

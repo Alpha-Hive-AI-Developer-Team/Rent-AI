@@ -49,12 +49,12 @@ export default function NotificationPage() {
       {/* Notifications Card */}
       <div className="mt-4">
         <div className="bg-[#111] rounded-2xl border border-[#1a1a1a] p-4 md:p-6">
-          {/* Title inside card */}
+          {/* Title inside card
           <div className="mb-4">
             <p className="text-lg md:text-xl font-semibold text-white">
               Notifications
             </p>
-          </div>
+          </div> */}
 
           <div className="flex flex-col gap-3">
             {notifications.map((item, index) => {

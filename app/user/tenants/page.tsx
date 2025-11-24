@@ -82,15 +82,15 @@ export default function TenantsPage() {
       ),
     },
     { key: "lastPayment", label: "Last Payment" },
-    {
-      key: "actions",
-      label: "",
-      render: () => (
-        <button className="text-xs bg-transparent border border-emerald-700 px-3 py-1 rounded-full text-emerald-400 hover:bg-emerald-900/5 transition">
-          Open <span className="ml-2 text-emerald-400">›</span>
-        </button>
-      ),
-    },
+    // {
+    //   key: "actions",
+    //   label: "",
+    //   render: () => (
+    //     <button className="text-xs bg-transparent border border-emerald-700 px-3 py-1 rounded-full text-emerald-400 hover:bg-emerald-900/5 transition">
+    //       Open <span className="ml-2 text-emerald-400">›</span>
+    //     </button>
+    //   ),
+    // },
   ];
 
   return (
@@ -119,34 +119,31 @@ export default function TenantsPage() {
       </div>
 
       {/* Search + New Tenant */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 
-        <h2 className="text-base font-semibold">Tenants</h2>
+  {/* Search */}
+  <div className="relative w-full sm:w-72 md:w-96">
+    <Search className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
+    <input
+      type="text"
+      placeholder="Search tenants..."
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+      className="w-full bg-[#0c0c0c] border border-gray-800 rounded-lg py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+    />
+  </div>
 
-        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+  {/* New Tenant Button (Right Side) */}
+  <button
+    onClick={() => setDrawerOpen(true)}
+    className="flex items-center justify-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition w-full sm:w-auto md:ml-auto"
+  >
+    <Plus className="w-4 h-4 text-emerald-400" />
+    <span className="text-sm">New Tenant</span>
+  </button>
 
-          {/* Search */}
-          <div className="relative w-full sm:w-72 md:w-96">
-            <Search className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search tenants..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-[#0c0c0c] border border-gray-800 rounded-lg py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-            />
-          </div>
+</div>
 
-          {/* Add New Tenant */}
-          <button
-            onClick={() => setDrawerOpen(true)}
-            className="flex items-center justify-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition w-full sm:w-auto"
-          >
-            <Plus className="w-4 h-4 text-emerald-400" />
-            <span className="text-sm">New Tenant</span>
-          </button>
-        </div>
-      </div>
 
       {/* Table */}
       <div className="w-full overflow-x-auto bg-black/20 rounded-xl border border-gray-800 p-2 md:p-4">

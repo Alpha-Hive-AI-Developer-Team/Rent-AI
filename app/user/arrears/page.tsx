@@ -11,23 +11,65 @@ export default function ArrearsPage() {
 
   const arrearsData: Record<
     string,
-    { id: number; name: string; unit?: string; days: number; template: string }[]
+    {
+      id: number;
+      name: string;
+      unit?: string;
+      days: number;
+      template: string;
+    }[]
   > = {
     "Day 0": [
-      { id: 1, name: "Tom Walker", unit: "Unit 17 - Room A", days: 0, template: "Friendly / Firm" },
+      {
+        id: 1,
+        name: "Tom Walker",
+        unit: "Unit 17 - Room A",
+        days: 0,
+        template: "Friendly / Firm",
+      },
     ],
     "Day 1-6": [
-      { id: 2, name: "Amira K.", unit: "52 Oak St - 1F", days: 3, template: "Friendly / Firm" },
-      { id: 3, name: "Jack Leah", unit: "119 The Avenue - R3", days: 5, template: "Friendly / Firm" },
+      {
+        id: 2,
+        name: "Amira K.",
+        unit: "52 Oak St - 1F",
+        days: 3,
+        template: "Friendly / Firm",
+      },
+      {
+        id: 3,
+        name: "Jack Leah",
+        unit: "119 The Avenue - R3",
+        days: 5,
+        template: "Friendly / Firm",
+      },
     ],
     "Day 7-13": [
-      { id: 4, name: "Sara M.", unit: "5 Park View - 2B", days: 9, template: "Friendly / Firm" },
+      {
+        id: 4,
+        name: "Sara M.",
+        unit: "5 Park View - 2B",
+        days: 9,
+        template: "Friendly / Firm",
+      },
     ],
     "Day 14-27": [
-      { id: 5, name: "Tom Walker", unit: "22 North Rd - R2", days: 18, template: "Firm" },
+      {
+        id: 5,
+        name: "Tom Walker",
+        unit: "22 North Rd - R2",
+        days: 18,
+        template: "Firm",
+      },
     ],
     "Day 28+": [
-      { id: 6, name: "Amira K.", unit: "52 Oak St - 1F", days: 32, template: "Legal / Final" },
+      {
+        id: 6,
+        name: "Amira K.",
+        unit: "52 Oak St - 1F",
+        days: 32,
+        template: "Legal / Final",
+      },
     ],
   };
 
@@ -37,7 +79,6 @@ export default function ArrearsPage() {
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8">
-
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">Arrears</h1>
@@ -61,11 +102,7 @@ export default function ArrearsPage() {
       </div>
 
       {/* Sub Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h2 className="text-lg md:text-xl font-semibold text-center sm:text-left">
-          Arrears Manager
-        </h2>
-
+      <div className="flex justify-end w-full">
         <button className="bg-[#111] border border-gray-800 hover:bg-gray-700 text-sm px-4 py-2 rounded-full w-full sm:w-auto transition">
           Send Scheduled Reminders
         </button>
@@ -99,7 +136,8 @@ export default function ArrearsPage() {
               >
                 <div>
                   <p className="text-gray-200 font-medium mb-1 text-sm">
-                    {item.name} {item.unit ? `· ${item.unit}` : ""} ({item.days} days)
+                    {item.name} {item.unit ? `· ${item.unit}` : ""} ({item.days}{" "}
+                    days)
                   </p>
                   <p className="text-gray-400 text-xs mb-4">
                     Auto-reminder template: {item.template}
