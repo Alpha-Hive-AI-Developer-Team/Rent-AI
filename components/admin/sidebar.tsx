@@ -43,7 +43,7 @@ export default function Sidebar() {
             height={50}
             className="object-contain"
           />
-          <span className="text-white font-semibold text-lg">RentAI</span>
+          <span className="text-white font-semibold text-2xl">Rent Ai</span>
         </div>
       ) : (
         <div className="flex justify-center items-center p-4 border-b border-gray-800">

@@ -26,19 +26,19 @@ export default function CustomTable({
       {/* Responsive wrapper for table scroll */}
       <div className="overflow-x-auto rounded-xl border border-gray-800">
         <table className="min-w-full text-sm text-gray-300">
-          <thead className="bg-[#111] text-[#535862]">
+          <thead className="bg-[#111] text-[#535862] ">
             <tr>
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className="text-left p-3 sm:p-4 font-medium whitespace-nowrap"
+                  className="text-left p-3 sm:p-4 font-medium whitespace-nowrap X"
                 >
                   {col.label}
                 </th>
               ))}
-              <th className="text-left p-3 sm:p-4 font-medium whitespace-nowrap">
+              {/* <th className="text-left p-3 sm:p-4 font-medium whitespace-nowrap">
                 Action
-              </th>
+              </th> */}
             </tr>
           </thead>
           <tbody>
@@ -55,11 +55,11 @@ export default function CustomTable({
                     {col.render ? col.render(row) : row[col.key]}
                   </td>
                 ))}
-                <td className="p-3 sm:p-4">
+                {/* <td className="p-3 sm:p-4">
                   <button className="text-xs bg-transparent border border-emerald-700 px-3 py-1 rounded-full text-emerald-400 hover:bg-emerald-900/5 transition">
                     Open <span className="ml-2 text-emerald-400">›</span>
                   </button>
-                </td>
+                </td> */}
               </tr>
             ))}
           </tbody>

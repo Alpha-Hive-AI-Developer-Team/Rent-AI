@@ -42,7 +42,7 @@ export default function SignIn() {
             height={50}
             className="object-contain px-2 py-2 rounded-full border border-[#0B3D2C] hover:border-[#0CEB77]"
           />
-          <h2 className="text-lg font-semibold">RentAI</h2>
+          <h2 className="text-lg font-semibold">Rent Ai</h2>
         </div>
 
         {/* Right: Sign Up Button */}
@@ -58,7 +58,7 @@ export default function SignIn() {
       <div className="w-full max-w-6xl bg-[#0E0E0E] border border-[#1f1f1f] rounded-3xl py-20 px-10 text-center shadow-2xl">
         {/* Title */}
         <h1 className="text-2xl font-semibold mb-2">
-          Welcome to <span className="text-[#0CEB77]">RentAI</span>
+          Welcome to <span className="text-[#0CEB77]">Rent Ai</span>
         </h1>
         <p className="text-gray-400 text-sm mb-10">
           Automated rent reconciliation & arrears detection.
