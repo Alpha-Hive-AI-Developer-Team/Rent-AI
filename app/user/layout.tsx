@@ -13,8 +13,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="bg-[#0a0a0a] text-white min-h-screen">
+ 
+      <div className="bg-[#0a0a0a] text-white min-h-screen">
         <Sidebar />
 
         {/* Main content area — account for sidebar width */}
@@ -28,7 +28,7 @@ export default function RootLayout({
         >
           {children}
         </main>
-      </body>
-    </html>
+      </div>
+   
   );
 }

@@ -3,14 +3,13 @@
 import Image from "next/image";
 import { Plus, Search, Check, X, Bell } from "lucide-react";
 import { useState } from "react";
-import DataTable from "@/components/user/data-table";
+// Table is implemented inline to avoid dependency on shared DataTable component
 
 interface Transaction {
   id: number;
   amount: string;
-  status: "Matched" | "Unmatched" | "Needs Review";
+  status: "Matched" | "Needs Review";
   date: string;
-  confidence: string;
   description: string;
 }
 
@@ -24,15 +23,13 @@ export default function TransactionsPage() {
       description: "FPI JACK LEAH 119AV RENT",
       amount: "£1200",
       status: "Matched",
-      confidence: "96%",
     },
     {
       id: 2,
       date: "2025-09-02",
       description: "119 The Avenue – R3",
       amount: "£1200",
-      status: "Unmatched",
-      confidence: "71%",
+      status: "Needs Review",
     },
     {
       id: 3,
@@ -40,7 +37,6 @@ export default function TransactionsPage() {
       description: "119 The Avenue – R3",
       amount: "£1200",
       status: "Needs Review",
-      confidence: "26%",
     },
     {
       id: 4,
@@ -48,13 +44,11 @@ export default function TransactionsPage() {
       description: "119 The Avenue – R3",
       amount: "£1200",
       status: "Matched",
-      confidence: "96%",
     },
   ];
 
   const statusColors: Record<Transaction["status"], string> = {
     Matched: "bg-emerald-900/20 text-emerald-400 border-emerald-700",
-    Unmatched: "bg-rose-900/20 text-rose-400 border-rose-700",
     "Needs Review": "bg-amber-900/20 text-amber-400 border-amber-700",
   };
 
@@ -68,23 +62,6 @@ export default function TransactionsPage() {
     { key: "date", label: "Date" },
     { key: "description", label: "Description" },
     { key: "amount", label: "Amount" },
-    {
-      key: "confidence",
-      label: "Confidence",
-      render: (t: Transaction) => (
-        <span
-          className={`inline-flex items-center px-2 border py-1 rounded-full text-xs font-medium ${
-            t.confidence === "96%"
-              ? "bg-emerald-900/20 text-emerald-400 border-emerald-700"
-              : t.confidence === "71%"
-              ? "bg-sky-900/20 text-sky-300 border-sky-700"
-              : "bg-amber-900/20 text-amber-300 border-amber-700"
-          }`}
-        >
-          {t.confidence}
-        </span>
-      ),
-    },
     {
       key: "status",
       label: "Status",
@@ -180,9 +157,51 @@ export default function TransactionsPage() {
 </div>
 
 
-      {/* Table */}
-      <div className="w-full overflow-x-auto bg-black/20 rounded-xl border border-gray-800 p-2 md:p-4">
-        <DataTable columns={columns} data={filtered} />
+      {/* Table (inlined - same UI as DataTable) */}
+      <div className="w-full overflow-x-auto rounded-2xl bg-[#0B0B0B] border border-[#1a1a1a]">
+        <table className="min-w-full text-sm border-collapse">
+          <thead>
+            <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
+              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tl-2xl">Date</th>
+              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Description</th>
+              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Amount</th>
+              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Status</th>
+              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tr-2xl text-right">Action</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {filtered.map((t) => (
+              <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e] transition">
+                <td className="py-4 px-6 text-gray-300 text-sm">{t.date}</td>
+                <td className="py-4 px-6 text-gray-300 text-sm">{t.description}</td>
+                <td className="py-4 px-6 text-gray-300 text-sm">{t.amount}</td>
+                <td className="py-4 px-6 text-gray-300 text-sm">
+                  <span className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[t.status]}`}>
+                    {t.status}
+                  </span>
+                </td>
+                <td className="py-4 px-6 text-right text-gray-300">
+                  <div className="flex items-center justify-end gap-2 md:gap-3">
+                    <button className="flex items-center gap-1 bg-transparent border border-[#111] text-emerald-400 px-3 py-1 rounded-full text-xs md:text-sm hover:bg-emerald-900/5 transition">
+                      <span className="whitespace-nowrap">Approve</span>
+                      <span className="flex items-center justify-center rounded-full bg-emerald-900/25 border border-emerald-700 p-0.5">
+                        <Check className="w-3 h-3 text-emerald-400" />
+                      </span>
+                    </button>
+
+                    <button className="flex items-center gap-2 bg-[#0b0b0b] border border-[#111] text-gray-300 px-3 py-1 rounded-full text-xs md:text-sm hover:bg-white/5 transition">
+                      <span className="whitespace-nowrap">Reject</span>
+                      <span className="flex items-center justify-center rounded-full border border-gray-600 p-0.5">
+                        <X className="w-3 h-3 text-gray-300" />
+                      </span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

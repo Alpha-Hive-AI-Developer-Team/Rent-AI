@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Bell, Search, Plus } from "lucide-react";
 import { useState } from "react";
 import TenantDrawer from "@/components/user/tenant-drawer";
-import DataTable from "@/components/user/data-table";
+import NewTenantModal from "@/components/user/new-tenant-modal";
 
 interface Tenant {
   id: number;
@@ -18,6 +18,7 @@ interface Tenant {
 export default function TenantsPage() {
   const [search, setSearch] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [newTenantOpen, setNewTenantOpen] = useState(false);
 
   const tenants: Tenant[] = [
     {
@@ -135,7 +136,7 @@ export default function TenantsPage() {
 
   {/* New Tenant Button (Right Side) */}
   <button
-    onClick={() => setDrawerOpen(true)}
+    onClick={() => setNewTenantOpen(true)}
     className="flex items-center justify-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition w-full sm:w-auto md:ml-auto"
   >
     <Plus className="w-4 h-4 text-emerald-400" />
@@ -145,13 +146,42 @@ export default function TenantsPage() {
 </div>
 
 
-      {/* Table */}
-      <div className="w-full overflow-x-auto bg-black/20 rounded-xl border border-gray-800 p-2 md:p-4">
-        <DataTable columns={columns} data={filtered} />
+      {/* Table (inlined UI) */}
+      <div className="w-full overflow-x-auto rounded-2xl bg-[#0B0B0B] border border-[#1a1a1a]">
+        <table className="min-w-full text-sm border-collapse">
+          <thead>
+            <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
+              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tl-2xl">Tenant Name</th>
+              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Property</th>
+              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Rent</th>
+              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Status</th>
+              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tr-2xl">Last Payment</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {filtered.map((t) => (
+              <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e] transition">
+                <td className="py-4 px-6 text-gray-300 text-sm">{t.name}</td>
+                <td className="py-4 px-6 text-gray-300 text-sm">{t.property}</td>
+                <td className="py-4 px-6 text-gray-300 text-sm">{t.rent}</td>
+                <td className="py-4 px-6 text-gray-300 text-sm">
+                  <span className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[t.status]}`}>
+                    {t.status}
+                  </span>
+                </td>
+                <td className="py-4 px-6 text-gray-300 text-sm">{t.lastPayment}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* Drawer */}
+      {/* Drawer (existing tenant details) */}
       <TenantDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
+      {/* New tenant modal */}
+      <NewTenantModal open={newTenantOpen} onClose={() => setNewTenantOpen(false)} />
     </div>
   );
 }
