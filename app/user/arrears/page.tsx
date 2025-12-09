@@ -5,9 +5,9 @@ import Image from "next/image";
 import { Bell } from "lucide-react";
 
 export default function ArrearsPage() {
-  const [openSection, setOpenSection] = useState<string | null>("Day 0");
+  const [openSection, setOpenSection] = useState<string | null>("Day 1");
 
-  const sections = ["Day 0", "Day 1-6", "Day 7-13", "Day 14-27", "Day 28+"];
+  const sections = ["Day 1", "Day 2-6", "Day 7-13", "Day 14-27", "Day 28+"];
 
   const arrearsData: Record<
     string,
@@ -19,12 +19,12 @@ export default function ArrearsPage() {
       template: string;
     }[]
   > = {
-    "Day 0": [
+    "Day 1": [
       {
         id: 1,
         name: "Tom Walker",
         unit: "Unit 17 - Room A",
-        days: 0,
+        days: 1,
         template: "Friendly / Firm",
       },
     ],
