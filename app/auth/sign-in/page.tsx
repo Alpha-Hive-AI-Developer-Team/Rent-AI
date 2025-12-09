@@ -86,23 +86,34 @@ export default function SignIn() {
           </div>
 
           {/* Password */}
-          <div className="relative">
-            <input
-              type={showPassword ? "text" : "password"}
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-transparent border border-[#2a2a2a] rounded-lg px-4 py-2 text-sm
-              focus:border-[#0CEB77] outline-none pr-10"
-            />
-            <button
-              type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-              onClick={() => setShowPassword(!showPassword)}
-            >
-              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
+<div className="relative">
+  <input
+    type={showPassword ? "text" : "password"}
+    placeholder="Password"
+    value={password}
+    onChange={(e) => setPassword(e.target.value)}
+    className="w-full bg-transparent border border-[#2a2a2a] rounded-lg px-4 py-2 text-sm
+    focus:border-[#0CEB77] outline-none pr-10"
+  />
+  <button
+    type="button"
+    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+    onClick={() => setShowPassword(!showPassword)}
+  >
+    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+  </button>
+</div>
+
+{/* Forgot Password */}
+<div className="text-right -mt-2">
+  <Link
+    href="/auth/forgot-password"
+    className="text-xs text-gray-400 hover:text-[#0CEB77] transition"
+  >
+    Forgot password?
+  </Link>
+</div>
+
 
           {/* Login Button */}
           <button
