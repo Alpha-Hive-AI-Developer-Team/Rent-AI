@@ -4,7 +4,7 @@ import { useState } from "react";
 import StatCard from "@/components/admin/analytics-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, ChevronDown } from "lucide-react";
+import { Plus, Search, ChevronDown, X } from "lucide-react";
 import CustomTable from "@/components/admin/custom-table";
 import {
   DropdownMenu,
@@ -27,37 +27,54 @@ export default function TenantManagement() {
   const [status, setStatus] = useState("Payment Status");
   const [arrears, setArrears] = useState("Arrears Bucket");
 
-  // Dummy table data
+  // Dummy table data (property now stores address strings)
   const data = [
     {
       tenant: "Robert Johnson",
       landlord: "James Wilson",
-      propertyId: "P-2647",
+      property: "119 The Avenue – R3",
       status: "Arrears",
       lastPayment: "Mar 25, 2025",
     },
     {
       tenant: "Robert Johnson",
       landlord: "James Wilson",
-      propertyId: "P-2647",
+      property: "21 High Street – A1",
       status: "Paid",
       lastPayment: "Mar 25, 2025",
     },
     {
       tenant: "Robert Johnson",
       landlord: "Sarah Chen",
-      propertyId: "P-2647",
+      property: "Flat 3B – 45 Lane",
       status: "Partial",
       lastPayment: "Mar 25, 2025",
     },
     {
       tenant: "Robert Johnson",
       landlord: "Sarah Chen",
-      propertyId: "P-2647",
+      property: "7 Garden Road – B2",
       status: "Partial",
       lastPayment: "Mar 25, 2025",
     },
   ];
+
+  // Sample tenant transactions (UI-only)
+  const tenantTransactions: Record<string, Array<any>> = {
+    "Robert Johnson": [
+      { month: "2025-09", rent: "£1200", amountPaid: "£1200", paidDate: "2025-09-01", status: "Paid" },
+      { month: "2025-08", rent: "£1200", amountPaid: "£0", paidDate: null, status: "Unpaid" },
+    ],
+  };
+
+  const [tenantModalOpen, setTenantModalOpen] = useState(false);
+  const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
+
+  function openTenantModal(tenant: string) {
+    setSelectedTenant({ name: tenant, transactions: tenantTransactions[tenant] ?? [] });
+    setTenantModalOpen(true);
+  }
+
 
   const columns = [
     {
@@ -65,18 +82,18 @@ export default function TenantManagement() {
       label: "Tenant Name",
       render: (row: any) => (
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-full bg-[#1a1a1a] text-xs flex items-center justify-center text-white">
+          <button onClick={() => openTenantModal(row.tenant)} className="w-7 h-7 rounded-full bg-[#1a1a1a] text-xs flex items-center justify-center text-white hover:brightness-110">
             {row.tenant
               .split(" ")
               .map((n: string) => n[0])
               .join("")}
-          </div>
-          <span>{row.tenant}</span>
+          </button>
+          <button onClick={() => openTenantModal(row.tenant)} className="text-left hover:underline text-sm text-gray-200">{row.tenant}</button>
         </div>
       ),
     },
     { key: "landlord", label: "Landlord" },
-    { key: "propertyId", label: "Property ID" },
+    { key: "property", label: "Property" },
     {
       key: "status",
       label: "Status",
@@ -110,9 +127,9 @@ export default function TenantManagement() {
             Monitor all tenants across the platform
           </p>
         </div>
-        <Button className="bg-[#027A48] hover:bg-green-700">
+        {/* <Button className="bg-[#027A48] hover:bg-green-700">
           <Plus className="w-4 h-4 mr-1" /> Add Landlord
-        </Button>
+        </Button> */}
       </div>
 
       {/* Stats Grid */}
@@ -167,6 +184,55 @@ export default function TenantManagement() {
         columns={columns}
         total="Showing 1 to 5 of 2,846 results"
       />
+
+      {tenantModalOpen && selectedTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-4xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl max-h-[80vh] overflow-auto">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">{selectedTenant.name} — Transactions</h3>
+                <p className="text-sm text-gray-400">Recent transaction history for this tenant (UI-only)</p>
+              </div>
+              <div>
+                <button onClick={() => setTenantModalOpen(false)} className="text-gray-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515] p-3">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-gray-400 text-left">
+                    <th className="py-2 px-3 text-xs">Month</th>
+                    <th className="py-2 px-3 text-xs">Rent</th>
+                    <th className="py-2 px-3 text-xs">Amount Paid</th>
+                    <th className="py-2 px-3 text-xs">Paid Date</th>
+                    <th className="py-2 px-3 text-xs">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(selectedTenant.transactions ?? []).map((tr: any, i: number) => (
+                    <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
+                      <td className="py-2 px-3 text-gray-300">{tr.month}</td>
+                      <td className="py-2 px-3 text-gray-300">{tr.rent}</td>
+                      <td className={`py-2 px-3 ${tr.status === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid}</td>
+                      <td className="py-2 px-3 text-gray-300">{tr.paidDate ?? '—'}</td>
+                      <td className="py-2 px-3">
+                        <span className={`px-2 py-1 text-xs rounded-full border ${tr.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : tr.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{tr.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 flex items-center justify-end">
+              <button onClick={() => setTenantModalOpen(false)} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -22,21 +22,7 @@ export default function DashboardPage() {
       trend: -20,
       description: "Down 20% this period",
       subtext: "Acquisition needs attention",
-    },
-    {
-      title: "AI Match Accuracy",
-      value: "94.5%",
-      trend: 12.5,
-      description: "Strong user retention",
-      subtext: "Engagement exceed targets",
-    },
-    {
-      title: "System Uptime",
-      value: "99.9%",
-      trend: 4.5,
-      description: "Steady performance increase",
-      subtext: "Meets growth projections",
-    },
+    }
   ];
 
   const transactionData = [
@@ -79,7 +65,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg :grid-cols-2 gap-4 md:gap-6 mb-6">
         {stats.map((item, i) => (
           <StatCard key={i} {...item} />
         ))}

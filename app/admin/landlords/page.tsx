@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Search, Plus } from "lucide-react";
+import { ChevronDown, Search, Plus, X } from "lucide-react";
 import CustomTable from "@/components/admin/custom-table";
 
 export default function LandlordManagement() {
@@ -18,52 +18,49 @@ export default function LandlordManagement() {
 
   const landlords = [
     {
+      id: 1,
       name: "Robert Johnson",
       email: "info@gmail.com",
       plan: "Premium",
       tenants: 24,
       status: "Suspended",
       created: "Mar 25, 2025",
+      addresses: [
+        {
+          id: "a1",
+          address: "119 The Avenue - R3",
+          tenants: [
+            { id: 1, name: "Jack Leah", rent: "£1200", status: "Paid", lastPayment: "2025-09-01" },
+            { id: 2, name: "Sara Miles", rent: "£1000", status: "Unpaid", lastPayment: "2025-08-12" },
+          ],
+        },
+        {
+          id: "a2",
+          address: "42 Baker Street - Apt 2",
+          tenants: [
+            { id: 3, name: "Tom Hardy", rent: "£950", status: "Partial", lastPayment: "2025-09-12" },
+          ],
+        },
+      ],
     },
     {
-      name: "Robert Johnson",
-      email: "info@gmail.com",
+      id: 2,
+      name: "Emily Clark",
+      email: "emily@example.com",
       plan: "Enterprise",
       tenants: 34,
       status: "Active",
       created: "Mar 25, 2025",
-    },
-    {
-      name: "Robert Johnson",
-      email: "info@gmail.com",
-      plan: "Premium",
-      tenants: 56,
-      status: "Suspended",
-      created: "Mar 25, 2025",
-    },
-    {
-      name: "Robert Johnson",
-      email: "info@gmail.com",
-      plan: "Premium",
-      tenants: 65,
-      status: "Pending",
-      created: "Mar 25, 2025",
-    },
-    {
-      name: "Robert Johnson",
-      email: "info@gmail.com",
-      plan: "Enterprise",
-      tenants: 78,
-      status: "Pending",
-      created: "Mar 25, 2025",
-    },
-    {
-      name: "Robert Johnson",
-      email: "info@gmail.com",
-      plan: "Basic",
-      tenants: 21,
-      status: "Active",
-      created: "Mar 25, 2025",
+      addresses: [
+        {
+          id: "b1",
+          address: "7 Willow Lane - Flat B",
+          tenants: [
+            { id: 4, name: "Ava Green", rent: "£1100", status: "Paid", lastPayment: "2025-10-01" },
+            { id: 5, name: "Liam Stone", rent: "£1250", status: "Paid", lastPayment: "2025-09-20" },
+          ],
+        },
+      ],
     },
   ];
 
@@ -88,13 +85,16 @@ export default function LandlordManagement() {
       key: "name",
       label: "Name",
       render: (row: any) => (
-        <div className="flex items-center gap-3">
+        <button
+          onClick={() => handleOpenLandlord(row)}
+          className="flex items-center gap-3 text-left w-full"
+        >
           <div className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-700">
             {row.name.split(" ")[0][0]}
             {row.name.split(" ")[1][0]}
           </div>
-          <span>{row.name}</span>
-        </div>
+          <span className="underline text-emerald-300">{row.name}</span>
+        </button>
       ),
     },
     { key: "email", label: "Email" },
@@ -130,6 +130,15 @@ export default function LandlordManagement() {
     { key: "created", label: "Created" },
   ];
 
+  // Local UI state for landlord details modal
+  const [selectedLandlord, setSelectedLandlord] = useState<any | null>(null);
+  const [selectedAddressIndex, setSelectedAddressIndex] = useState<number>(0);
+
+  const handleOpenLandlord = (landlord: any) => {
+    setSelectedLandlord(landlord);
+    setSelectedAddressIndex(0);
+  };
+
   return (
     <div className="p-4 sm:p-6 md:p-8 bg-black min-h-screen text-white">
       {/* Header */}
@@ -140,9 +149,9 @@ export default function LandlordManagement() {
             Manage all landlord and agency accounts
           </p>
         </div>
-        <Button className="bg-[#027A48] hover:bg-green-700">
+        {/* <Button className="bg-[#027A48] hover:bg-green-700">
           <Plus className="w-4 h-4 mr-1" /> Add Landlord
-        </Button>
+        </Button> */}
       </div>
 
       {/* Filters */}
@@ -227,6 +236,93 @@ export default function LandlordManagement() {
         columns={columns}
         total="Showing 1 to 5 of 2,846 results"
       />
+
+      {/* Landlord details modal */}
+      {selectedLandlord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-4xl bg-[#0b0b0b] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">{selectedLandlord.name} — Addresses</h3>
+              <button onClick={() => setSelectedLandlord(null)} className="text-gray-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="md:col-span-1">
+                <h4 className="text-sm text-gray-400 mb-2">Addresses</h4>
+                <div className="space-y-2">
+                  {selectedLandlord.addresses.map((addr: any, i: number) => (
+                    <button
+                      key={addr.id}
+                      onClick={() => setSelectedAddressIndex(i)}
+                      className={`w-full text-left px-3 py-2 rounded-lg border ${
+                        selectedAddressIndex === i ? "border-emerald-600 bg-emerald-900/10" : "border-gray-800"
+                      }`}
+                    >
+                      <div className="text-sm text-gray-200">{addr.address}</div>
+                      <div className="text-xs text-gray-400">{addr.tenants.length} tenants</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <h4 className="text-sm text-gray-400 mb-3">Tenants</h4>
+                <div className="w-full overflow-x-auto rounded-lg bg-[#0B0B0B] border border-[#1a1a1a]">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
+                        <th className="py-3 px-4 text-xs">Tenant Name</th>
+                        <th className="py-3 px-4 text-xs">Rent</th>
+                        <th className="py-3 px-4 text-xs">Status</th>
+                        <th className="py-3 px-4 text-xs">Last Payment</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedLandlord.addresses[selectedAddressIndex || 0].tenants.map((t: any) => (
+                        <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
+                          <td className="py-3 px-4 text-gray-300">{t.name}</td>
+                          <td className="py-3 px-4 text-gray-300">{t.rent}</td>
+                          <td className="py-3 px-4 text-gray-300">{t.status}</td>
+                          <td className="py-3 px-4 text-gray-300">{t.lastPayment}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Totals */}
+                <div className="mt-4 p-4 rounded-lg border border-gray-800 bg-[#080808]">
+                  {(() => {
+                    const tenants = selectedLandlord.addresses[selectedAddressIndex || 0].tenants;
+                    const gross = tenants.reduce((s: number, t: any) => s + Number(String(t.rent).replace(/[^0-9.-]+/g, "")), 0);
+                    const expenses = +(gross * 0.12).toFixed(2);
+                    const net = +(gross - expenses).toFixed(2);
+                    const fmt = (n: number) => `£${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+                    return (
+                      <div className="grid grid-cols-3 gap-4 text-sm text-gray-200">
+                        <div>
+                          <div className="text-xs text-gray-400">Total Gross</div>
+                          <div className="font-medium mt-1">{fmt(gross)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-400">Total Expenses</div>
+                          <div className="font-medium mt-1 text-rose-400">{fmt(expenses)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-400">Net Income</div>
+                          <div className="font-medium mt-1 text-emerald-300">{fmt(net)}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

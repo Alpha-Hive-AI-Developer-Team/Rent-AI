@@ -2,13 +2,15 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Home, Building2, Users, Gift } from "lucide-react";
+import { Home, Building2, Users, Gift, LogOut, X } from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const [isDesktop, setIsDesktop] = useState(true);
+  const router = useRouter();
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   const menuItems: { name: string; path: string; Icon: React.ElementType }[] = [
     { name: "Dashboard", path: "/admin/dashboard", Icon: Home },
@@ -85,6 +87,36 @@ export default function Sidebar() {
           })}
         </div>
       </nav>
+
+      {/* Logout */}
+      <div className="p-4">
+        <button
+          onClick={() => setLogoutOpen(true)}
+          className={`group relative flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm transition border text-gray-300 border-[#2A2A2A] hover:text-white hover:border-emerald-700/60 ${!isDesktop ? "justify-center px-2 py-2 rounded-xl" : ""}`}
+        >
+          <LogOut className="w-4 h-4 text-gray-400 group-hover:text-rose-400" />
+          {isDesktop && <span>Logout</span>}
+        </button>
+      </div>
+
+      {/* Logout confirmation modal */}
+      {logoutOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-sm bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Confirm logout</h3>
+              <button onClick={() => setLogoutOpen(false)} className="text-gray-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-300 mb-4">Are you sure you want to logout? You will be redirected to the sign-in page.</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setLogoutOpen(false)} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Cancel</button>
+              <button onClick={() => { setLogoutOpen(false); router.push('/auth/sign-in'); }} className="px-4 py-2 rounded-full border border-rose-600 text-sm text-rose-300 bg-transparent hover:bg-rose-900/5">Logout</button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
