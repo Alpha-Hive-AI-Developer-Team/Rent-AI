@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Plus, Search, Check, X, Bell, Eye } from "lucide-react";
+import { Plus, Search, Check, X, Bell, Eye, ChevronDown, Info } from "lucide-react";
 import { useState, useEffect } from "react";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
@@ -20,6 +20,15 @@ interface Tenant {
   rent: string;
   status: "Paid" | "Unpaid" | "Partial" | "Unknown";
   lastPayment?: string;
+  transactions?: TenantTxn[];
+}
+
+interface TenantTxn {
+  month: string;
+  rent: string;
+  amountPaid: string;
+  paidDate?: string | null;
+  status: "Paid" | "Unpaid" | "Partial";
 }
 
 export default function TransactionsPage() {
@@ -95,12 +104,27 @@ export default function TransactionsPage() {
 
   // Sample tenants shown in the modal (UI-only)
   const [tenantCandidates, setTenantCandidates] = useState<Tenant[]>([
-    { id: 1, name: "Jack Leah", property: "119 The Avenue – R3", rent: "£1200", status: "Unpaid", lastPayment: "2025-08-01" },
-    { id: 2, name: "Maria Gomez", property: "21 High Street – A1", rent: "£950", status: "Unpaid", lastPayment: "2025-07-20" },
-    { id: 3, name: "Tom Rivers", property: "Flat 3B – 45 Lane", rent: "£700", status: "Partial", lastPayment: "2025-09-05" },
-    { id: 4, name: "Alicia Keys", property: "7 Garden Road – B2", rent: "£1200", status: "Unpaid", lastPayment: "2025-06-18" },
-    { id: 5, name: "Jackie Leah", property: "119 The Avenue – R3", rent: "£1200", status: "Unpaid", lastPayment: "2025-08-01" },
-    { id: 6, name: "Samuel Lee", property: "22 Market Lane – C4", rent: "£500", status: "Unpaid", lastPayment: "2025-05-11" },
+    { id: 1, name: "Jack Leah", property: "119 The Avenue – R3", rent: "£1200", status: "Unpaid", lastPayment: "2025-08-01", transactions: [
+      { month: "2025-09", rent: "£1200", amountPaid: "£1200", paidDate: "2025-09-01", status: "Paid" },
+      { month: "2025-08", rent: "£1200", amountPaid: "£0", paidDate: null, status: "Unpaid" },
+      { month: "2025-07", rent: "£1200", amountPaid: "£600", paidDate: "2025-07-20", status: "Partial" },
+    ] as TenantTxn[] },
+    { id: 2, name: "Maria Gomez", property: "21 High Street – A1", rent: "£950", status: "Unpaid", lastPayment: "2025-07-20", transactions: [
+      { month: "2025-07", rent: "£950", amountPaid: "£950", paidDate: "2025-07-20", status: "Paid" },
+      { month: "2025-06", rent: "£950", amountPaid: "£0", paidDate: null, status: "Unpaid" },
+    ] as TenantTxn[] },
+    { id: 3, name: "Tom Rivers", property: "Flat 3B – 45 Lane", rent: "£700", status: "Partial", lastPayment: "2025-09-05", transactions: [
+      { month: "2025-09", rent: "£700", amountPaid: "£350", paidDate: "2025-09-05", status: "Partial" },
+    ] as TenantTxn[] },
+    { id: 4, name: "Alicia Keys", property: "7 Garden Road – B2", rent: "£1200", status: "Unpaid", lastPayment: "2025-06-18", transactions: [
+      { month: "2025-06", rent: "£1200", amountPaid: "£0", paidDate: null, status: "Unpaid" },
+    ] as TenantTxn[] },
+    { id: 5, name: "Jackie Leah", property: "119 The Avenue – R3", rent: "£1200", status: "Unpaid", lastPayment: "2025-08-01", transactions: [
+      { month: "2025-08", rent: "£1200", amountPaid: "£1200", paidDate: "2025-08-01", status: "Paid" },
+    ] as TenantTxn[] },
+    { id: 6, name: "Samuel Lee", property: "22 Market Lane – C4", rent: "£500", status: "Unpaid", lastPayment: "2025-05-11", transactions: [
+      { month: "2025-05", rent: "£500", amountPaid: "£500", paidDate: "2025-05-11", status: "Paid" },
+    ] as TenantTxn[] },
   ]);
 
   // Track which transactions have been "reconciled" in the UI
@@ -116,6 +140,11 @@ export default function TransactionsPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [candidatePage, setCandidatePage] = useState(1);
   const candidatePageSize = 4;
+  const [expandedCandidates, setExpandedCandidates] = useState<number[]>([]);
+
+  function toggleCandidate(id: number) {
+    setExpandedCandidates((prev) => (prev.includes(id) ? [] : [id]));
+  }
 
   function openView(t: Transaction) {
     setSelectedTransaction(t);
@@ -130,6 +159,18 @@ export default function TransactionsPage() {
     const nameMatch = txDesc.includes(tenantName);
     const amountMatch = tx.amount === tenant.rent;
     return nameMatch && amountMatch ? "Matched" : "Needs Review";
+  }
+
+  function computeMatchReason(tx: Transaction | null, tenant: Tenant): string {
+    if (!tx) return "No transaction selected";
+    const txDesc = tx.description.toLowerCase();
+    const tenantName = tenant.name.toLowerCase();
+    const nameMatch = txDesc.includes(tenantName);
+    const amountMatch = tx.amount === tenant.rent;
+    if (nameMatch && amountMatch) return "Name and amount match.";
+    if (nameMatch && !amountMatch) return "Name matches but amount differs.";
+    if (!nameMatch && amountMatch) return "Amount matches but name not found in description.";
+    return "No match: name not found and amount differs.";
   }
 
   function computeTransactionOverallStatus(tx: Transaction | null): "Matched" | "Needs Review" {
@@ -240,7 +281,7 @@ export default function TransactionsPage() {
       {/* View Modal: show transaction details and candidate tenants (UI-only) */}
       {viewModalOpen && selectedTransaction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-6xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
+          <div className="w-full max-w-6xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl max-h-[80vh] overflow-auto">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold">Transaction — {selectedTransaction.description}</h3>
@@ -287,33 +328,87 @@ export default function TransactionsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedCandidates.map((c) => (
-                    <tr key={c.id} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
-                      <td className="py-3 px-4 text-gray-300">{c.name}</td>
-                      <td className="py-3 px-4 text-gray-300">{c.property}</td>
-                      <td className="py-3 px-4 text-gray-300">{c.rent}</td>
-                      <td className="py-3 px-4 text-gray-300">{c.lastPayment ?? '—'}</td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 text-xs rounded-full border ${c.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : c.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{c.status}</span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 text-xs rounded-full border ${matchColors[computeMatchStatus(selectedTransaction, c)]}`}>{computeMatchStatus(selectedTransaction, c)}</span>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button onClick={() => acceptCandidate(selectedTransaction.id, c.id)} className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-3 py-1 rounded-full text-xs hover:bg-emerald-900/5 transition">
-                            <Check className="w-3 h-3" />
-                            <span>Accept</span>
-                          </button>
+                  {paginatedCandidates.map((c) => {
+                    const isOpen = expandedCandidates.includes(c.id);
+                    return (
+                      <>
+                        <tr key={c.id} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
+                          <td className="py-3 px-4 text-gray-300">
+                            <div className="flex items-center gap-3">
+                              <button onClick={() => toggleCandidate(c.id)} className={`p-1 rounded-md text-gray-300 hover:bg-white/5 transition-transform duration-200 ease-out ${isOpen ? 'rotate-180' : 'rotate-0'}`}>
+                                <ChevronDown className="w-4 h-4" />
+                              </button>
+                              <span>{c.name}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-gray-300">{c.property}</td>
+                          <td className="py-3 px-4 text-gray-300">{c.rent}</td>
+                          <td className="py-3 px-4 text-gray-300">{c.lastPayment ?? '—'}</td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2 py-1 text-xs rounded-full border ${c.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : c.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{c.status}</span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-1 text-xs rounded-full border ${matchColors[computeMatchStatus(selectedTransaction, c)]}`}>{computeMatchStatus(selectedTransaction, c)}</span>
+                              <div className="relative group inline-block">
+                                <Info className="w-3 h-3 text-gray-400 group-hover:text-gray-200" />
+                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-max bg-gray-800 text-xs text-gray-200 px-2 py-1 rounded opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 whitespace-nowrap z-50">
+                                  {computeMatchReason(selectedTransaction, c)}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button onClick={() => acceptCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-3 py-1 rounded-full text-xs hover:bg-emerald-900/5 transition">
+                                <Check className="w-3 h-3" />
+                                <span>Accept</span>
+                              </button>
 
-                          <button onClick={() => rejectCandidate(selectedTransaction.id, c.id)} className="flex items-center gap-2 bg-[#0b0b0b] border border-[#111] text-gray-300 px-3 py-1 rounded-full text-xs hover:bg-white/5 transition">
-                            <X className="w-3 h-3" />
-                            <span>Reject</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                              <button onClick={() => rejectCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-[#0b0b0b] border border-[#111] text-gray-300 px-3 py-1 rounded-full text-xs hover:bg-white/5 transition">
+                                <X className="w-3 h-3" />
+                                <span>Reject</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+
+                        <tr key={`details-${c.id}`} className="bg-[#060606]">
+                          <td colSpan={7} className="p-0">
+                            <div className={`overflow-hidden transition-all duration-300 ease-out ${isOpen ? 'max-h-[520px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                              <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515] p-3">
+                                <div className="text-sm text-gray-400 mb-2">Previous transactions for {c.name}</div>
+                                <table className="min-w-full text-sm">
+                                  <thead>
+                                    <tr className="text-gray-400 text-left">
+                                      <th className="py-2 px-3 text-xs">Month</th>
+                                      <th className="py-2 px-3 text-xs">Rent</th>
+                                      <th className="py-2 px-3 text-xs">Amount Paid</th>
+                                      <th className="py-2 px-3 text-xs">Paid Date</th>
+                                      <th className="py-2 px-3 text-xs">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(c.transactions ?? []).map((tr: any, i: number) => (
+                                      <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
+                                        <td className="py-2 px-3 text-gray-300">{tr.month}</td>
+                                        <td className="py-2 px-3 text-gray-300">{tr.rent}</td>
+                                        <td className={`py-2 px-3 ${tr.status === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid}</td>
+                                        <td className="py-2 px-3 text-gray-300">{tr.paidDate ?? '—'}</td>
+                                        <td className="py-2 px-3">
+                                          <span className={`px-2 py-1 text-xs rounded-full border ${tr.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : tr.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{tr.status}</span>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      </>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
