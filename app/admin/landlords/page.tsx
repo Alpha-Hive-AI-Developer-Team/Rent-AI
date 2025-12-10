@@ -149,9 +149,9 @@ export default function LandlordManagement() {
             Manage all landlord and agency accounts
           </p>
         </div>
-        <Button className="bg-[#027A48] hover:bg-green-700">
+        {/* <Button className="bg-[#027A48] hover:bg-green-700">
           <Plus className="w-4 h-4 mr-1" /> Add Landlord
-        </Button>
+        </Button> */}
       </div>
 
       {/* Filters */}
