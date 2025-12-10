@@ -5,6 +5,15 @@ import StatCard from "@/components/admin/analytics-card";
 import TodaySection from "@/components/user/today-section";
 import Image from "next/image";
 import { Bell } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 import TransactionVolumeChart from "@/components/admin/volume-chart";
 
 export default function DashboardPage() {
@@ -54,6 +63,14 @@ export default function DashboardPage() {
     { name: "Apr", series1: 2780, series2: 3908 },
     { name: "May", series1: 1890, series2: 4800 },
     { name: "Jun", series1: 2390, series2: 3800 },
+  ];
+    const expectedData = [
+    { name: "Jan", expected: 3000 },
+    { name: "Feb", expected: 3200 },
+    { name: "Mar", expected: 3400 },
+    { name: "Apr", expected: 3600 },
+    { name: "May", expected: 3500 },
+    { name: "Jun", expected: 3700 },
   ];
 
   return (
@@ -116,7 +133,49 @@ export default function DashboardPage() {
 
     {/* Chart itself */}
     <div className="w-full overflow-x-auto">
-      <TransactionVolumeChart title="" subtitle="" />
+   <div className="bg-[#111] text-white rounded-xl  shadow-md w-full">
+             {/* <div className="mb-4">
+               <h3 className="text-sm font-medium text-gray-200">Expected Rent</h3>
+               <p className="text-xs text-gray-500 mt-1">Expected rent per month</p>
+             </div> */}
+   
+             <div className="h-56">
+               <ResponsiveContainer width="100%" height="100%">
+                 <LineChart data={expectedData} margin={{ left: 0, right: 10 }}>
+                   <CartesianGrid stroke="#2a2a2a" vertical={false} />
+                   <XAxis
+                     dataKey="name"
+                     axisLine={false}
+                     tickLine={false}
+                     tick={{ fill: "#9CA3AF", fontSize: 12 }}
+                     tickMargin={8}
+                   />
+                   <YAxis
+                     axisLine={false}
+                     tickLine={false}
+                     tick={{ fill: "#666", fontSize: 11 }}
+                   />
+                   <Tooltip
+                     contentStyle={{
+                       backgroundColor: "#1a1a1a",
+                       border: "1px solid #333",
+                       borderRadius: "8px",
+                     }}
+                     labelStyle={{ color: "#fff" }}
+                   />
+   
+                   <Line
+                     type="monotone"
+                     dataKey="expected"
+                     stroke="#ffffff"
+                     strokeWidth={2}
+                     dot={{ r: 3, stroke: '#ffffff', strokeWidth: 1, fill: '#111' }}
+                     activeDot={{ r: 5 }}
+                   />
+                 </LineChart>
+               </ResponsiveContainer>
+             </div>
+           </div>
     </div>
   </div>
 

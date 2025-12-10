@@ -25,13 +25,6 @@ export default function DashboardPage() {
     }
   ];
 
-  const transactionData = [
-    { name: "Mar 3", value: 2400 },
-    { name: "Mar 10", value: 1398 },
-    { name: "Mar 17", value: 9800 },
-    { name: "Mar 24", value: 3908 },
-    { name: "Mar 31", value: 4800 },
-  ];
 
   const arrearsData = [
     { name: "Jan", series1: 4000, series2: 2400 },

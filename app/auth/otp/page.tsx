@@ -1,14 +1,29 @@
 "use client";
 
-import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
-export default function VerifyOtp() {
+// Ensure this page is always client-rendered
+export const dynamic = "force-dynamic";
+
+export default function VerifyOtpWrapper() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null; // prevent SSR usage
+
+  return <VerifyOtp />;
+}
+
+function VerifyOtp() {
   const searchParams = useSearchParams();
-  const email = searchParams.get("email");
+  const email = searchParams.get("email") || "";
 
   const router = useRouter();
 
@@ -144,8 +159,6 @@ export default function VerifyOtp() {
           </button>
 
           {/* Resend Button */}
-           <Link
-            href="/auth/reset-password">
           <button
             type="button"
             disabled={!canResend}
@@ -154,7 +167,6 @@ export default function VerifyOtp() {
           >
             Resend OTP
           </button>
-          </Link>
 
           {/* Back */}
           <Link
