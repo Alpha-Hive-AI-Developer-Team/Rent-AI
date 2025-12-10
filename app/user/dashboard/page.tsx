@@ -64,13 +64,13 @@ export default function DashboardPage() {
     { name: "May", series1: 1890, series2: 4800 },
     { name: "Jun", series1: 2390, series2: 3800 },
   ];
-    const collectedData = [
-    { name: "Jan", collected: 2800 },
-    { name: "Feb", collected: 3000 },
-    { name: "Mar", collected: 3400 },
-    { name: "Apr", collected: 3600 },
-    { name: "May", collected: 3300 },
-    { name: "Jun", collected: 3100 },
+    const expectedData = [
+    { name: "Jan", expected: 3000 },
+    { name: "Feb", expected: 3200 },
+    { name: "Mar", expected: 3400 },
+    { name: "Apr", expected: 3600 },
+    { name: "May", expected: 3500 },
+    { name: "Jun", expected: 3700 },
   ];
 
   return (
@@ -133,15 +133,15 @@ export default function DashboardPage() {
 
     {/* Chart itself */}
     <div className="w-full overflow-x-auto">
-   <div className="bg-[#111] text-white rounded-xl p-4 md:p-6 border border-gray-800/50 shadow-md w-full">
-             <div className="mb-4">
-               <h3 className="text-sm font-medium text-gray-200">Collected Rent</h3>
-               <p className="text-xs text-gray-500 mt-1">Collected rent per month</p>
-             </div>
+   <div className="bg-[#111] text-white rounded-xl  shadow-md w-full">
+             {/* <div className="mb-4">
+               <h3 className="text-sm font-medium text-gray-200">Expected Rent</h3>
+               <p className="text-xs text-gray-500 mt-1">Expected rent per month</p>
+             </div> */}
    
              <div className="h-56">
                <ResponsiveContainer width="100%" height="100%">
-                 <LineChart data={collectedData} margin={{ left: 0, right: 10 }}>
+                 <LineChart data={expectedData} margin={{ left: 0, right: 10 }}>
                    <CartesianGrid stroke="#2a2a2a" vertical={false} />
                    <XAxis
                      dataKey="name"
@@ -166,7 +166,7 @@ export default function DashboardPage() {
    
                    <Line
                      type="monotone"
-                     dataKey="collected"
+                     dataKey="expected"
                      stroke="#ffffff"
                      strokeWidth={2}
                      dot={{ r: 3, stroke: '#ffffff', strokeWidth: 1, fill: '#111' }}

@@ -1,16 +1,30 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 
-export default function ResetPassword() {
+// Ensure this page is always client-rendered
+export const dynamic = "force-dynamic";
+
+export default function ResetPasswordWrapper() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null; // prevent SSR hook usage
+
+  return <ResetPassword />;
+}
+
+function ResetPassword() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const email = searchParams.get("email");
+  const email = searchParams.get("email") || "";
 
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
@@ -42,13 +56,14 @@ export default function ResetPassword() {
 
       {/* Card */}
       <div className="w-full max-w-6xl bg-[#0E0E0E] border border-[#1f1f1f] rounded-3xl py-20 px-10 text-center">
-        <h1 className="text-2xl font-semibold mb-2">Set <span className="text-[#0CEB77]">New Password</span></h1>
+        <h1 className="text-2xl font-semibold mb-2">
+          Set <span className="text-[#0CEB77]">New Password</span>
+        </h1>
         <p className="text-gray-400 text-sm mb-10">
           Reset password for <span className="text-[#0CEB77]">{email}</span>
         </p>
 
         <form onSubmit={handleReset} className="flex flex-col gap-4 max-w-md mx-auto">
-
           <div className="relative">
             <input
               type={show ? "text" : "password"}
