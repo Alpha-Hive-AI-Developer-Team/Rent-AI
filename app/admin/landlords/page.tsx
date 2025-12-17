@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Search, Plus, X } from "lucide-react";
+import { ChevronDown, Search, Plus, X, ChevronLeft } from "lucide-react";
 import CustomTable from "@/components/admin/custom-table";
 
 export default function LandlordManagement() {
@@ -134,9 +134,60 @@ export default function LandlordManagement() {
   const [selectedLandlord, setSelectedLandlord] = useState<any | null>(null);
   const [selectedAddressIndex, setSelectedAddressIndex] = useState<number>(0);
 
+  // Tenant modal state (rendered inside same modal)
+  const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
+  const [modalView, setModalView] = useState<"landlord" | "tenant">("landlord");
+
+  // Sample tenant transactions (UI-only)
+  const tenantTransactions: Record<string, Array<any>> = {
+    "Jack Leah": [
+      { month: "2025-09", rent: "£1200", amountPaid: "£1200", paidDate: "2025-09-01", status: "Paid" },
+      { month: "2025-08", rent: "£1200", amountPaid: "£0", paidDate: null, status: "Unpaid" },
+    ],
+    "Sara Miles": [
+      { month: "2025-09", rent: "£1000", amountPaid: "£500", paidDate: "2025-09-12", status: "Partial" },
+    ],
+    "Tom Hardy": [
+      { month: "2025-09", rent: "£950", amountPaid: "£950", paidDate: "2025-09-12", status: "Paid" },
+    ],
+    "Ava Green": [
+      { month: "2025-10", rent: "£1100", amountPaid: "£1100", paidDate: "2025-10-01", status: "Paid" },
+    ],
+    "Liam Stone": [
+      { month: "2025-09", rent: "£1250", amountPaid: "£1250", paidDate: "2025-09-20", status: "Paid" },
+    ],
+  };
+
+  const openTenant = (tenantName: string) => {
+    setSelectedTenant({ name: tenantName, transactions: tenantTransactions[tenantName] ?? [] });
+    setModalView("tenant");
+  };
+  // const handleOpenLandlord = (landlord: any) => {
+  //   setSelectedLandlord(landlord);
+  //   setSelectedAddressIndex(0);
+  // };
+
+  // Manual expenses state and inputs
+  const [manualExpenses, setManualExpenses] = useState<Array<{ desc: string; amount: number }>>([]);
+  const [newExpenseDesc, setNewExpenseDesc] = useState("");
+  const [newExpenseAmount, setNewExpenseAmount] = useState("");
+
+  const addExpense = () => {
+    const amt = Number(String(newExpenseAmount).replace(/[^0-9.-]+/g, "")) || 0;
+    if (!newExpenseDesc || amt === 0) return;
+    setManualExpenses((s) => [...s, { desc: newExpenseDesc, amount: amt }]);
+    setNewExpenseDesc("");
+    setNewExpenseAmount("");
+  };
+
   const handleOpenLandlord = (landlord: any) => {
     setSelectedLandlord(landlord);
     setSelectedAddressIndex(0);
+    setManualExpenses([]);
+    setNewExpenseDesc("");
+    setNewExpenseAmount("");
+    setModalView("landlord");
+    setSelectedTenant(null);
   };
 
   return (
@@ -243,7 +294,14 @@ export default function LandlordManagement() {
           <div className="w-full max-w-4xl bg-[#0b0b0b] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">{selectedLandlord.name} — Addresses</h3>
-              <button onClick={() => setSelectedLandlord(null)} className="text-gray-400 hover:text-white">
+              <button
+                onClick={() => {
+                  setSelectedLandlord(null);
+                  setModalView("landlord");
+                  setSelectedTenant(null);
+                }}
+                className="text-gray-400 hover:text-white"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -268,56 +326,144 @@ export default function LandlordManagement() {
               </div>
 
               <div className="md:col-span-2">
-                <h4 className="text-sm text-gray-400 mb-3">Tenants</h4>
-                <div className="w-full overflow-x-auto rounded-lg bg-[#0B0B0B] border border-[#1a1a1a]">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
-                        <th className="py-3 px-4 text-xs">Tenant Name</th>
-                        <th className="py-3 px-4 text-xs">Rent</th>
-                        <th className="py-3 px-4 text-xs">Status</th>
-                        <th className="py-3 px-4 text-xs">Last Payment</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedLandlord.addresses[selectedAddressIndex || 0].tenants.map((t: any) => (
-                        <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
-                          <td className="py-3 px-4 text-gray-300">{t.name}</td>
-                          <td className="py-3 px-4 text-gray-300">{t.rent}</td>
-                          <td className="py-3 px-4 text-gray-300">{t.status}</td>
-                          <td className="py-3 px-4 text-gray-300">{t.lastPayment}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                {/* Render either landlord's tenants list or tenant transactions inside same modal */}
+                {modalView === "landlord" ? (
+                  <>
+                    <h4 className="text-sm text-gray-400 mb-3">Tenants</h4>
+                    <div className="w-full overflow-x-auto rounded-lg bg-[#0B0B0B] border border-[#1a1a1a]">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
+                            <th className="py-3 px-4 text-xs">Tenant Name</th>
+                            <th className="py-3 px-4 text-xs">Rent</th>
+                            <th className="py-3 px-4 text-xs">Status</th>
+                            <th className="py-3 px-4 text-xs">Last Payment</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedLandlord.addresses[selectedAddressIndex || 0].tenants.map((t: any) => (
+                            <tr
+                              key={t.id}
+                              onClick={() => openTenant(t.name)}
+                              className="border-t border-[#151515] hover:bg-[#0e0e0e] cursor-pointer"
+                            >
+                              <td className="py-3 px-4 text-gray-300">{t.name}</td>
+                              <td className="py-3 px-4 text-gray-300">{t.rent}</td>
+                              <td className="py-3 px-4 text-gray-300">{t.status}</td>
+                              <td className="py-3 px-4 text-gray-300">{t.lastPayment}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
 
-                {/* Totals */}
-                <div className="mt-4 p-4 rounded-lg border border-gray-800 bg-[#080808]">
-                  {(() => {
-                    const tenants = selectedLandlord.addresses[selectedAddressIndex || 0].tenants;
-                    const gross = tenants.reduce((s: number, t: any) => s + Number(String(t.rent).replace(/[^0-9.-]+/g, "")), 0);
-                    const expenses = +(gross * 0.12).toFixed(2);
-                    const net = +(gross - expenses).toFixed(2);
-                    const fmt = (n: number) => `£${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-                    return (
-                      <div className="grid grid-cols-3 gap-4 text-sm text-gray-200">
-                        <div>
-                          <div className="text-xs text-gray-400">Total Gross</div>
-                          <div className="font-medium mt-1">{fmt(gross)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-400">Total Expenses</div>
-                          <div className="font-medium mt-1 text-rose-400">{fmt(expenses)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-400">Net Income</div>
-                          <div className="font-medium mt-1 text-emerald-300">{fmt(net)}</div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
+                    {/* Totals + Manual Expenses */}
+                    <div className="mt-4 p-4 rounded-lg border border-gray-800 bg-[#080808]">
+                      {(() => {
+                        const tenants = selectedLandlord.addresses[selectedAddressIndex || 0].tenants;
+                        const gross = tenants.reduce((s: number, t: any) => s + Number(String(t.rent).replace(/[^0-9.-]+/g, "")), 0);
+                        const platformFee = +(gross * 0.12).toFixed(2);
+                        const manualSum = manualExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+                        const totalExpenses = +(platformFee + manualSum).toFixed(2);
+                        const net = +(gross - totalExpenses).toFixed(2);
+                        const fmt = (n: number) => `£${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+                        return (
+                          <div>
+                            <div className="grid grid-cols-3 gap-4 text-sm text-gray-200">
+                              <div>
+                                <div className="text-xs text-gray-400">Total Gross</div>
+                                <div className="font-medium mt-1">{fmt(gross)}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-400">Total Expenses</div>
+                                <div className="font-medium mt-1 text-rose-400">{fmt(totalExpenses)}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-400">Net Income</div>
+                                <div className="font-medium mt-1 text-emerald-300">{fmt(net)}</div>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 border-t border-[#151515] pt-4">
+                              <div className="text-xs text-gray-400 mb-2">Add Expense</div>
+                              <div className="flex gap-2">
+                                <Input
+                                  placeholder="Description"
+                                  value={newExpenseDesc}
+                                  onChange={(e) => setNewExpenseDesc(e.target.value)}
+                                  className="bg-[#0b0b0b] border border-gray-800 text-white"
+                                />
+                                <Input
+                                  placeholder="Amount (e.g. 120.00)"
+                                  value={newExpenseAmount}
+                                  onChange={(e) => setNewExpenseAmount(e.target.value)}
+                                  className="w-40 bg-[#0b0b0b] border border-gray-800 text-white"
+                                />
+                                <Button onClick={addExpense} className="bg-[#111] border border-gray-800 text-gray-300">Add</Button>
+                              </div>
+
+                              {manualExpenses.length > 0 && (
+                                <div className="mt-3">
+                                  <div className="text-xs text-gray-400 mb-2">Manual Expenses</div>
+                                  <div className="space-y-2">
+                                    {manualExpenses.map((ex, i) => (
+                                      <div key={i} className="flex justify-between items-center bg-[#0b0b0b] p-2 rounded border border-[#151515] text-sm">
+                                        <div className="text-gray-200">{ex.desc}</div>
+                                        <div className="text-rose-400">{fmt(ex.amount)}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </>
+                ) : (
+                  // Tenant transactions view
+                  <>
+                    <div className="flex items-center justify-between mb-2">
+                      <button
+                        onClick={() => setModalView("landlord")}
+                        className="flex items-center gap-2 text-sm text-gray-300 hover:underline"
+                      >
+                        <ChevronLeft className="w-4 h-4" /> Back
+                      </button>
+                    </div>
+                    <h4 className="text-sm text-gray-400 mb-3">{selectedTenant?.name} — Transactions</h4>
+                    <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515] p-3">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="text-gray-400 text-left">
+                            <th className="py-2 px-3 text-xs">Month</th>
+                            <th className="py-2 px-3 text-xs">Rent</th>
+                            <th className="py-2 px-3 text-xs">Amount Paid</th>
+                            <th className="py-2 px-3 text-xs">Paid Date</th>
+                            <th className="py-2 px-3 text-xs">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(selectedTenant?.transactions ?? []).map((tr: any, i: number) => (
+                            <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
+                              <td className="py-2 px-3 text-gray-300">{tr.month}</td>
+                              <td className="py-2 px-3 text-gray-300">{tr.rent}</td>
+                              <td className={`py-2 px-3 ${tr.status === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid}</td>
+                              <td className="py-2 px-3 text-gray-300">{tr.paidDate ?? '—'}</td>
+                              <td className="py-2 px-3">
+                                <span className={`px-2 py-1 text-xs rounded-full border ${tr.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : tr.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{tr.status}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="mt-4 flex items-center justify-end">
+                      <button onClick={() => { setModalView("landlord"); }} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Back</button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
