@@ -1,12 +1,12 @@
 "use client";
-
 import Image from "next/image";
 import Link from "next/link";
 
 export default function SplashScreen() {
   return (
     <main className="min-h-screen bg-black text-white px-4 flex flex-col items-center justify-start pt-12">
-
+    
+ 
       {/* Top Bar (OUTSIDE the box) */}
       <div className="w-full max-w-7xl flex items-center justify-between px-6 mb-6">
         
