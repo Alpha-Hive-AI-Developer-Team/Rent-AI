@@ -16,13 +16,19 @@ import {
   Bell,
   LogOut,
   X,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+import { useCustomerLogout } from "@/hooks/useAuth";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const [isDesktop, setIsDesktop] = useState(true);
   const router = useRouter();
   const [logoutOpen, setLogoutOpen] = useState(false);
+    const logout = useCustomerLogout();
+  const [loading, setLoading] = useState(false);
+  const [showMore, setShowMore] = useState(false);
 
   // Using lucide-react icons for consistent styling; removed Payment Plans per new UI.
   // Assumption: "Tenant Detail" route is /user/tenant-detail (placeholder if not yet implemented).
@@ -31,12 +37,15 @@ export default function Sidebar() {
     { name: "Tenants", path: "/user/tenants", Icon: Users },
     { name: "Transactions", path: "/user/transactions", Icon: CreditCard },
     // { name: "Reconcile", path: "/user/reconcile", Icon: LineChart },
-    
     { name: "Arrears", path: "/user/arrears", Icon: AlertTriangle },
     { name: "Referrals", path: "/user/referrals", Icon: Gift },
     { name: "Payment Plans", path: "/user/payment", Icon: CreditCard },
     { name: "Notifications", path: "/user/notification", Icon: Bell },
   ];
+
+  // Main items shown by default for less distraction for older users
+  const mainItems = menuItems.slice(0, 3);
+  const extraItems = menuItems.slice(3);
 
   // Detect screen size (lg breakpoint)
   useEffect(() => {
@@ -79,12 +88,12 @@ export default function Sidebar() {
       )}
 
       {/* 📋 Navigation */}
-      <nav className="flex-1 px-3 py-4">
+      <nav className="flex-1 px-3 py-4 overflow-y-auto">
         {/* {isDesktop && (
           <div className="text-xs text-gray-400 px-2 pb-2">Main</div>
         )} */}
         <div className="bg-transparent p-2 space-y-3">
-          {menuItems.map(({ name, path, Icon }) => {
+          {mainItems.map(({ name, path, Icon }) => {
             const isActive = pathname === path || (pathname === "" && path === "/");
             return (
               <Link
@@ -104,6 +113,43 @@ export default function Sidebar() {
               </Link>
             );
           })}
+
+          {/* Extra items hidden by default to reduce distraction */}
+          {showMore &&
+            extraItems.map(({ name, path, Icon }) => {
+              const isActive = pathname === path || (pathname === "" && path === "/");
+              return (
+                <Link
+                  key={name}
+                  href={path}
+                  className={`group relative flex items-center gap-3 px-4 py-3 rounded-2xl text-sm transition border
+                    ${isActive
+                      ? "text-white border-emerald-600 ring-1 ring-emerald-500/30"
+                      : "text-gray-300 border-[#2A2A2A] hover:text-white hover:border-emerald-700/60"}
+                    ${!isDesktop ? "justify-center px-2 py-2 rounded-xl" : ""}
+                  `}
+                >
+                  <Icon
+                    className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-emerald-400" : "text-gray-400 group-hover:text-emerald-300"}`}
+                  />
+                  {isDesktop && <span className="truncate">{name}</span>}
+                </Link>
+              );
+            })}
+
+          {/* Show more / show less toggle */}
+          <button
+            onClick={() => setShowMore((s) => !s)}
+            aria-expanded={showMore}
+            className={`group relative flex items-center gap-3 px-4 py-3 rounded-2xl text-sm transition border text-gray-300 border-[#2A2A2A] hover:text-white hover:border-emerald-700/60 ${!isDesktop ? "justify-center px-2 py-2 rounded-xl" : ""}`}
+          >
+            {showMore ? (
+              <ChevronUp className="w-4 h-4 text-gray-400 group-hover:text-emerald-300" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-gray-400 group-hover:text-emerald-300" />
+            )}
+            {isDesktop && <span>{showMore ? "Show less" : "Show more"}</span>}
+          </button>
         </div>
       </nav>
 
@@ -131,7 +177,26 @@ export default function Sidebar() {
             <p className="text-sm text-gray-300 mb-4">Are you sure you want to logout? You will be redirected to the sign-in page.</p>
             <div className="flex justify-end gap-3">
               <button onClick={() => setLogoutOpen(false)} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Cancel</button>
-              <button onClick={() => { setLogoutOpen(false); router.push('/auth/sign-in'); }} className="px-4 py-2 rounded-full border border-rose-600 text-sm text-rose-300 bg-transparent hover:bg-rose-900/5">Logout</button>
+              <button
+                onClick={() => {
+                  setLogoutOpen(false);
+                  setLoading(true);
+                  logout.mutate(undefined, {
+                    onSettled: () => setLoading(false),
+                  });
+                }}
+                disabled={loading}
+                className="px-4 py-2 rounded-full border border-rose-600 text-sm text-rose-300 bg-transparent hover:bg-rose-900/5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <span className="flex items-center">
+                    <span className="inline-block w-4 h-4 border-2 border-t-transparent border-rose-300 rounded-full animate-spin mr-2" />
+                    Logging out...
+                  </span>
+                ) : (
+                  "Logout"
+                )}
+              </button>
             </div>
           </div>
         </div>

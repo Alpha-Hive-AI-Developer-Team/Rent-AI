@@ -227,32 +227,7 @@ export default function TransactionsPage() {
     setTenantCandidates((prev) => prev.map((c) => (c.id === tenantId ? { ...c, status: "Unknown" } : c)));
   }
 
-  const columns = [
-    { key: "date", label: "Date" },
-    { key: "description", label: "Description" },
-    { key: "amount", label: "Amount" },
-    {
-      key: "status",
-      label: "Status",
-      render: (t: Transaction) => (
-        <span
-          className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[t.status]}`}
-        >
-          {t.status}
-        </span>
-      ),
-    },
-    {
-      key: "actions",
-      label: "Action",
-      render: (t: Transaction) => (
-        <button onClick={() => openView(t)} className="flex items-center gap-2 bg-transparent border border-[#111] text-gray-200 px-3 py-1 rounded-full text-xs md:text-sm hover:bg-white/5 transition">
-          <Eye className="w-3 h-3" />
-          <span className="whitespace-nowrap">View</span>
-        </button>
-      ),
-    },
-  ];
+ 
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8">
@@ -321,8 +296,8 @@ export default function TransactionsPage() {
                     <th className="py-3 px-4 text-xs">Tenant</th>
                     <th className="py-3 px-4 text-xs">Property</th>
                     <th className="py-3 px-4 text-xs">Rent</th>
-                    <th className="py-3 px-4 text-xs">Last Payment</th>
-                    <th className="py-3 px-4 text-xs">Status</th>
+                    {/* <th className="py-3 px-4 text-xs">Last Payment</th>
+                    <th className="py-3 px-4 text-xs">Status</th> */}
                     <th className="py-3 px-4 text-xs">Match</th>
                     <th className="py-3 px-4 text-xs text-right">Action</th>
                   </tr>
@@ -343,10 +318,10 @@ export default function TransactionsPage() {
                           </td>
                           <td className="py-3 px-4 text-gray-300">{c.property}</td>
                           <td className="py-3 px-4 text-gray-300">{c.rent}</td>
-                          <td className="py-3 px-4 text-gray-300">{c.lastPayment ?? '—'}</td>
+                          {/* <td className="py-3 px-4 text-gray-300">{c.lastPayment ?? '—'}</td>
                           <td className="py-3 px-4">
                             <span className={`px-2 py-1 text-xs rounded-full border ${c.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : c.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{c.status}</span>
-                          </td>
+                          </td> */}
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
                               <span className={`px-2 py-1 text-xs rounded-full border ${matchColors[computeMatchStatus(selectedTransaction, c)]}`}>{computeMatchStatus(selectedTransaction, c)}</span>
