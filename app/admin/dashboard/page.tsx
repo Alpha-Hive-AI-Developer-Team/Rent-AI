@@ -6,8 +6,9 @@ import AlertsCard from "@/components/admin/alert-card";
 import StatCard from "@/components/admin/analytics-card";
 import Image from "next/image";
 import { Bell } from "lucide-react";
+import { withAuth } from "@/hooks/withAuth";
 
-export default function DashboardPage() {
+ function DashboardPage() {
   const stats = [
     {
       title: "Total Landlords",
@@ -85,3 +86,6 @@ export default function DashboardPage() {
     </div>
   );
 }
+export default DashboardPage;
+
+// export default withAuth(DashboardPage,["admin"]);

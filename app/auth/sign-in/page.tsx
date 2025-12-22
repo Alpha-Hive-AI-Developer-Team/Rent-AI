@@ -61,7 +61,7 @@ export default function SignIn() {
           setLoading(false);
                // If server indicates unverified account requiring OTP verification
                   const status = err?.response?.status
-          if (status === 401) {
+          if (status === 403) {
             console.debug("Account unverified, showing OTP modal.");
             toast.error(err?.response?.data?.message || "Account unverified. Enter OTP sent to your email.");
             setShowOtp(true);

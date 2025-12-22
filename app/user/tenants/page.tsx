@@ -5,94 +5,30 @@ import { Bell, Search, Plus, X } from "lucide-react";
 import { useState } from "react";
 import TenantDrawer from "@/components/user/tenant-drawer";
 import NewTenantModal from "@/components/user/new-tenant-modal";
+import { useTenants } from "@/hooks/usetenants";
 
-interface Transaction {
-  month: string;
-  rent: string;
-  amountPaid: string;
-  paidDate?: string | null;
-  status: "Paid" | "Unpaid" | "Partial";
-}
-
-interface Tenant {
-  id: number;
-  name: string;
-  property: string;
-  rent: string;
-  status: "Paid" | "Unpaid" | "Partial";
-  lastPayment: string;
-  transactions?: Transaction[];
-}
+// Using `any` for tenant shapes returned by the API to keep types flexible
 
 export default function TenantsPage() {
   const [search, setSearch] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [newTenantOpen, setNewTenantOpen] = useState(false);
   const [transactionModalOpen, setTransactionModalOpen] = useState(false);
-  const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
+    const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
+  const { data, isLoading, isError } = useTenants();
 
-  const tenants: Tenant[] = [
-    {
-      id: 1,
-      name: "Jack Leah",
-      property: "119 The Avenue – R3",
-      rent: "£1200",
-      status: "Paid",
-      lastPayment: "2025-09-01",
-      transactions: [
-        { month: "2025-09", rent: "£1200", amountPaid: "£1200", paidDate: "2025-09-01", status: "Paid" },
-        { month: "2025-08", rent: "£1200", amountPaid: "£0", paidDate: null, status: "Unpaid" },
-        { month: "2025-07", rent: "£1200", amountPaid: "£600", paidDate: "2025-07-20", status: "Partial" },
-      ],
-    },
-    {
-      id: 2,
-      name: "Jack Leah",
-      property: "119 The Avenue – R3",
-      rent: "£1200",
-      status: "Unpaid",
-      lastPayment: "2025-09-01",
-      transactions: [
-        { month: "2025-09", rent: "£1200", amountPaid: "£0", paidDate: null, status: "Unpaid" },
-        { month: "2025-08", rent: "£1200", amountPaid: "£1200", paidDate: "2025-08-01", status: "Paid" },
-      ],
-    },
-    {
-      id: 3,
-      name: "Jack Leah",
-      property: "119 The Avenue – R3",
-      rent: "£1200",
-      status: "Partial",
-      lastPayment: "2025-09-01",
-      transactions: [
-        { month: "2025-09", rent: "£1200", amountPaid: "£600", paidDate: "2025-09-05", status: "Partial" },
-        { month: "2025-08", rent: "£1200", amountPaid: "£1200", paidDate: "2025-08-02", status: "Paid" },
-      ],
-    },
-    {
-      id: 4,
-      name: "Jack Leah",
-      property: "119 The Avenue – R3",
-      rent: "£1200",
-      status: "Paid",
-      lastPayment: "2025-09-01",
-      transactions: [
-        { month: "2025-09", rent: "£1200", amountPaid: "£1200", paidDate: "2025-09-01", status: "Paid" },
-        { month: "2025-08", rent: "£1200", amountPaid: "£1200", paidDate: "2025-08-01", status: "Paid" },
-      ],
-    },
-  ];
+  // backend returns { success, message, count, data: Tenant[] }
+  const tenantsFromApi = data?.data ?? [];
 
-  const statusColors: Record<Tenant["status"], string> = {
+  const statusColors: Record<string, string> = {
     Paid: "bg-green-900/40 text-green-400 border-green-700/60",
     Unpaid: "bg-red-900/40 text-red-400 border-red-700/60",
     Partial: "bg-yellow-900/40 text-yellow-400 border-yellow-700/60",
   };
 
-  const filtered = tenants.filter(
-    (t) =>
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.property.toLowerCase().includes(search.toLowerCase())
+  const filtered = tenantsFromApi.filter((t: any) =>
+    (Array.isArray(t.tenantName) ? t.tenantName.join(", ") : (t.tenantName || "")).toLowerCase().includes(search.toLowerCase()) ||
+    (t.property || "").toLowerCase().includes(search.toLowerCase())
   );
 
   const columns = [
@@ -102,7 +38,7 @@ export default function TenantsPage() {
     {
       key: "status",
       label: "Status",
-      render: (t: Tenant) => (
+      render: (t: any) => (
         <span
           className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[t.status]}`}
         >
@@ -188,21 +124,33 @@ export default function TenantsPage() {
           </thead>
 
           <tbody>
-            {filtered.map((t) => (
+            {isLoading && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-gray-400">Loading tenants...</td>
+              </tr>
+            )}
+
+            {isError && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-rose-400">Failed to load tenants.</td>
+              </tr>
+            )}
+
+            {!isLoading && !isError && filtered.map((t: any) => (
               <tr
-                key={t.id}
+                key={t._id}
                 onClick={() => { setSelectedTenant(t); setTransactionModalOpen(true); }}
                 className="border-t border-[#151515] hover:bg-[#0e0e0e] transition cursor-pointer"
               >
-                <td className="py-4 px-6 text-gray-300 text-sm">{t.name}</td>
+                <td className="py-4 px-6 text-gray-300 text-sm">{Array.isArray(t.tenantName) ? t.tenantName[0] : t.tenantName}</td>
                 <td className="py-4 px-6 text-gray-300 text-sm">{t.property}</td>
-                <td className="py-4 px-6 text-gray-300 text-sm">{t.rent}</td>
+                <td className="py-4 px-6 text-gray-300 text-sm">{typeof t.rent === 'number' ? `£${t.rent}` : t.rent}</td>
                 <td className="py-4 px-6 text-gray-300 text-sm">
-                  <span className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[t.status]}`}>
-                    {t.status}
+                  <span className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[(t.status || '').charAt(0).toUpperCase() + (t.status || '').slice(1) as any] || 'bg-gray-800 text-gray-400'}`}>
+                    {t.status?.charAt(0).toUpperCase() + t.status?.slice(1)}
                   </span>
                 </td>
-                <td className="py-4 px-6 text-gray-300 text-sm">{t.lastPayment}</td>
+                <td className="py-4 px-6 text-gray-300 text-sm">{t.lastPayment ? new Date(t.lastPayment).toISOString().split('T')[0] : '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -215,7 +163,7 @@ export default function TenantsPage() {
           <div className="w-full max-w-3xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
             <div className="flex items-start justify-between mb-4">
               <div>
-                <h3 className="text-lg font-semibold">{selectedTenant.name} — Transaction History</h3>
+                <h3 className="text-lg font-semibold">{Array.isArray(selectedTenant?.tenantName) ? selectedTenant.tenantName[0] : (selectedTenant?.tenantName || selectedTenant?.name || 'Tenant')} — Transaction History</h3>
                 <p className="text-sm text-gray-400">{selectedTenant.property}</p>
               </div>
               <button onClick={() => { setTransactionModalOpen(false); setSelectedTenant(null); }} className="text-gray-400 hover:text-white">
@@ -228,22 +176,24 @@ export default function TenantsPage() {
                 <thead>
                   <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
                     <th className="py-3 px-4 text-xs">Month</th>
-                    <th className="py-3 px-4 text-xs">Rent</th>
+                    <th className="py-3 px-4 text-xs">Amount Due</th>
                     <th className="py-3 px-4 text-xs">Amount Paid</th>
-                    <th className="py-3 px-4 text-xs">Transaction Date</th>
+                    <th className="py-3 px-4 text-xs">Paid On</th>
+                    <th className="py-3 px-4 text-xs">Due Date</th>
                     <th className="py-3 px-4 text-xs">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedTenant.transactions?.map((tr, i) => (
-                    <tr key={i} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
-                      <td className="py-3 px-4 text-gray-300">{tr.month}</td>
-                      <td className="py-3 px-4 text-gray-300">{tr.rent}</td>
-                      <td className={`py-3 px-4 ${tr.status === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid}</td>
-                      <td className="py-3 px-4 text-gray-300">{tr.paidDate ?? '—'}</td>
+                  {selectedTenant.rentHistory?.map((tr: any, i: number) => (
+                    <tr key={tr._id || i} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
+                      <td className="py-3 px-4 text-gray-300">{tr.month ? new Date(tr.month).toISOString().split('T')[0] : '—'}</td>
+                      <td className="py-3 px-4 text-gray-300">{typeof tr.amountDue === 'number' ? `£${tr.amountDue}` : tr.amountDue}</td>
+                      <td className={`py-3 px-4 ${tr.status === 'unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid ?? '—'}</td>
+                      <td className="py-3 px-4 text-gray-300">{tr.paidOn ? new Date(tr.paidOn).toISOString().split('T')[0] : '—'}</td>
+                      <td className="py-3 px-4 text-gray-300">{tr.dueDate ? new Date(tr.dueDate).toISOString().split('T')[0] : '—'}</td>
                       <td className="py-3 px-4">
-                        <span className={`px-2 py-1 text-xs rounded-full border ${statusColors[tr.status] || 'bg-gray-800 text-gray-400'}`}>
-                          {tr.status}
+                        <span className={`px-2 py-1 text-xs rounded-full border ${statusColors[(tr.status || '').charAt(0).toUpperCase() + (tr.status || '').slice(1) as any] || 'bg-gray-800 text-gray-400'}`}>
+                          {tr.status?.charAt(0).toUpperCase() + tr.status?.slice(1)}
                         </span>
                       </td>
                     </tr>
