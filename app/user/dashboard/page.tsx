@@ -5,6 +5,7 @@ import StatCard from "@/components/admin/analytics-card";
 import TodaySection from "@/components/user/today-section";
 import Image from "next/image";
 import { Bell } from "lucide-react";
+import { useRentDetails } from "@/hooks/useRentDetails";
 import {
   LineChart,
   Line,
@@ -17,34 +18,28 @@ import {
 import TransactionVolumeChart from "@/components/admin/volume-chart";
 
 export default function DashboardPage() {
+  const { data: rentDataRes, isLoading: rentLoading, isError: rentError } = useRentDetails();
+  const rentData = rentDataRes?.data;
   const stats = [
     {
-      title: "Expected (Oct)",
-      value: "£24,500",
-      trend: 12.5,
-      description: "Trending up this month",
-      subtext: "Visitors for the last 6 months",
+      title: `Expected (${rentData?.monthName ?? ''})`,
+      value: rentLoading ? "—" : `£${rentData?.current?.expected?.toLocaleString?.() ?? rentData?.current?.expected ?? 0}`,
+      trend: rentData?.percentageChange?.expected ?? 0,
     },
     {
       title: "Collected",
-      value: "£22,300",
-      trend: -20,
-      description: "Down 20% this period",
-      subtext: "Acquisition needs attention",
+      value: rentLoading ? "—" : `£${rentData?.current?.collected?.toLocaleString?.() ?? rentData?.current?.collected ?? 0}`,
+      trend: rentData?.percentageChange?.collected ?? 0,
     },
     {
       title: "Arrears",
-      value: "£2,200",
-      trend: 12.5,
-      description: "Strong user retention",
-      subtext: "Engagement exceed targets",
+      value: rentLoading ? "—" : `£${rentData?.current?.arrears?.toLocaleString?.() ?? rentData?.current?.arrears ?? 0}`,
+      trend: rentData?.percentageChange?.arrears ?? 0,
     },
     {
       title: "Late Tenants",
-      value: "17",
-      trend: 4.5,
-      description: "Steady performance increase",
-      subtext: "Meets growth projections",
+      value: rentLoading ? "—" : `${rentData?.current?.lateCount ?? 0}`,
+      trend: rentData?.percentageChange?.lateCount ?? 0,
     },
   ];
 

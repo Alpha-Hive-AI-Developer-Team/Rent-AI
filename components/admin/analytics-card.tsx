@@ -17,6 +17,9 @@ export default function StatCard({
 }: StatCardProps) {
   const isPositive = trend >= 0;
 
+  const safeTrend = typeof trend === 'number' && Number.isFinite(trend) ? trend : 0;
+  const trendFormatted = safeTrend.toFixed(2);
+
   return (
     <div className="bg-[#111] text-white p-4 md:p-6 rounded-xl shadow-md flex flex-col border border-gray-800/50 justify-between w-full">
       <div className="flex items-center justify-between mb-2">
@@ -29,7 +32,7 @@ export default function StatCard({
           )}
           <span className={isPositive ? "text-green-400" : "text-red-400"}>
             {isPositive ? "+" : ""}
-            {trend}%
+            {trendFormatted}%
           </span>
         </div>
       </div>
