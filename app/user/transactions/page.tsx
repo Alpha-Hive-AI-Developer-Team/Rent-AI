@@ -193,6 +193,12 @@ export default function TransactionsPage() {
 
   function computeMatchStatus(tx: Transaction | null, tenant: Tenant): "Matched" | "Needs Review" {
     if (!tx) return "Needs Review";
+    // If API provided a raw matchStatus, prefer that authoritative result
+    const raw = (tx as any).raw;
+    if (raw && raw.matchStatus) {
+      return raw.matchStatus === "matched" ? "Matched" : "Needs Review";
+    }
+
     const txDesc = tx.description.toLowerCase();
     const tenantName = tenant.name.toLowerCase();
     // require tenant name to be present in description and exact amount match
@@ -203,6 +209,11 @@ export default function TransactionsPage() {
 
   function computeMatchReason(tx: Transaction | null, tenant: Tenant): string {
     if (!tx) return "No transaction selected";
+    const raw = (tx as any).raw;
+    if (raw && raw.matchReason) {
+      return String(raw.matchReason);
+    }
+
     const txDesc = tx.description.toLowerCase();
     const tenantName = tenant.name.toLowerCase();
     const nameMatch = txDesc.includes(tenantName);
