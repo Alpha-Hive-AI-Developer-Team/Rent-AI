@@ -10,6 +10,6 @@ export function useRentDetails(month?: number, year?: number) {
     queryKey: ["rentDetails", userId, month, year],
     queryFn: () => getRentDetails(month, year),
     enabled: !!userId,
-    staleTime: 1000 * 60 * 2,
+    staleTime: 0,
   });
 }

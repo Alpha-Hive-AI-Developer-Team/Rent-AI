@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { Plus, Search, Check, X, Bell, Eye, ChevronDown, Info } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
+import { useUnreconciledTransactions } from "@/hooks/useTransactions";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
 interface Transaction {
@@ -86,20 +87,34 @@ export default function TransactionsPage() {
     },
   ];
 
-  const statusColors: Record<Transaction["status"], string> = {
+  const statusColors: Record<string, string> = {
     Matched: "bg-emerald-900/20 text-emerald-400 border-emerald-700",
     "Needs Review": "bg-amber-900/20 text-amber-400 border-amber-700",
   };
 
-  const matchColors: Record<"Matched" | "Needs Review", string> = {
+  const matchColors: Record<string, string> = {
     Matched: "bg-emerald-900/20 text-emerald-400 border-emerald-700",
     "Needs Review": "bg-amber-900/20 text-amber-400 border-amber-700",
   };
 
-  const filtered = transactions.filter(
-    (t) =>
-      t.description.toLowerCase().includes(search.toLowerCase()) ||
-      t.amount.toLowerCase().includes(search.toLowerCase())
+  
+
+  // Fetch unreconciled transactions from API
+  const { data: unreconciledRes, isLoading: txLoading } = useUnreconciledTransactions();
+  const apiDocs = unreconciledRes?.data?.docs ?? [];
+  const apiRows = apiDocs.map((d: any, i: number) => ({
+    id: i + 1,
+    date: d.transaction?.date ? new Date(d.transaction.date).toISOString().split("T")[0] : "-",
+    description: d.transaction?.description || d.transaction?.reference || "",
+    amount: typeof d.transaction?.amount === "number" ? `£${d.transaction.amount}` : String(d.transaction?.amount ?? ""),
+    status: d.matchStatus === "matched" ? "Matched" : "Needs Review",
+    raw: d,
+  }));
+
+  const displayTransactions: Transaction[] = apiRows.length > 0 ? apiRows : transactions;
+
+  const filteredDisplay = displayTransactions.filter(
+    (t) => t.description.toLowerCase().includes(search.toLowerCase()) || t.amount.toLowerCase().includes(search.toLowerCase())
   );
 
   // Sample tenants shown in the modal (UI-only)
@@ -127,11 +142,36 @@ export default function TransactionsPage() {
     ] as TenantTxn[] },
   ]);
 
+  
+
   // Track which transactions have been "reconciled" in the UI
   const [reconciled, setReconciled] = useState<number[]>([]);
 
   const [viewModalOpen, setViewModalOpen] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null);
+
+  // Determine candidate tenants for the modal.
+  // - If `selectedTransaction.raw` exists (API-backed), use its tenant info or an empty list when none found.
+  // - If there's no `raw` (local/sample transaction), fall back to `tenantCandidates` for demo purposes.
+  const effectiveCandidates: Tenant[] = (() => {
+    if (!selectedTransaction) return tenantCandidates;
+    const raw = (selectedTransaction as any).raw;
+    if (raw) {
+      const rawTenants = raw.tenant;
+      if (!rawTenants) return [];
+      const arr = Array.isArray(rawTenants) ? rawTenants : [rawTenants];
+      if (arr.length === 0) return [];
+      return arr.map((c: any, i: number) => ({
+        id: i + 1,
+        name: Array.isArray(c.tenantName) ? (c.tenantName[0] || c.tenantName.join(", ")) : (c.tenantName || c.tenantName?.name || ""),
+        property: c.property || c.propertyAddress || "",
+        rent: typeof c.rent === "number" ? `£${c.rent}` : String(c.rent || ""),
+        status: "Unpaid",
+        transactions: c.rentHistory ? (c.rentHistory.map((rh: any) => ({ month: rh.month, rent: rh.amountDue ?? rh.amount, amountPaid: rh.amountPaid ?? 0, paidDate: rh.paidOn ?? null, status: rh.status ?? 'Unpaid' }))) : [],
+      }));
+    }
+    return tenantCandidates;
+  })();
 
   // Candidate filters / sorting (modal)
   const [candidateNameFilter, setCandidateNameFilter] = useState("");
@@ -175,12 +215,12 @@ export default function TransactionsPage() {
 
   function computeTransactionOverallStatus(tx: Transaction | null): "Matched" | "Needs Review" {
     if (!tx) return "Needs Review";
-    const anyMatched = tenantCandidates.some((c) => computeMatchStatus(tx, c) === "Matched");
+    const anyMatched = effectiveCandidates.some((c) => computeMatchStatus(tx, c) === "Matched");
     return anyMatched ? "Matched" : "Needs Review";
   }
 
   // Derived list for display in the modal, with filters and sorting (UI-only)
-  const filteredCandidates = tenantCandidates.filter((c) => {
+  const filteredCandidates = effectiveCandidates.filter((c) => {
     const nameOk = c.name.toLowerCase().includes(candidateNameFilter.toLowerCase());
     const propOk = c.property.toLowerCase().includes(candidatePropertyFilter.toLowerCase());
     return nameOk && propOk;
@@ -303,87 +343,89 @@ export default function TransactionsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedCandidates.map((c) => {
-                    const isOpen = expandedCandidates.includes(c.id);
-                    return (
-                      <>
-                        <tr key={c.id} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
-                          <td className="py-3 px-4 text-gray-300">
-                            <div className="flex items-center gap-3">
-                              <button onClick={() => toggleCandidate(c.id)} className={`p-1 rounded-md text-gray-300 hover:bg-white/5 transition-transform duration-200 ease-out ${isOpen ? 'rotate-180' : 'rotate-0'}`}>
-                                <ChevronDown className="w-4 h-4" />
-                              </button>
-                              <span>{c.name}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-gray-300">{c.property}</td>
-                          <td className="py-3 px-4 text-gray-300">{c.rent}</td>
-                          {/* <td className="py-3 px-4 text-gray-300">{c.lastPayment ?? '—'}</td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-1 text-xs rounded-full border ${c.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : c.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{c.status}</span>
-                          </td> */}
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <span className={`px-2 py-1 text-xs rounded-full border ${matchColors[computeMatchStatus(selectedTransaction, c)]}`}>{computeMatchStatus(selectedTransaction, c)}</span>
-                              <div className="relative group inline-block">
-                                <Info className="w-3 h-3 text-gray-400 group-hover:text-gray-200" />
-                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-max bg-gray-800 text-xs text-gray-200 px-2 py-1 rounded opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 whitespace-nowrap z-50">
-                                  {computeMatchReason(selectedTransaction, c)}
+                  {sortedCandidates.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-6 text-center text-gray-400">No tenants found for this transaction.</td>
+                    </tr>
+                  ) : (
+                    paginatedCandidates.map((c) => {
+                      const isOpen = expandedCandidates.includes(c.id);
+                      return (
+                        <Fragment key={c.id}>
+                          <tr key={c.id} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
+                            <td className="py-3 px-4 text-gray-300">
+                              <div className="flex items-center gap-3">
+                                <button onClick={() => toggleCandidate(c.id)} className={`p-1 rounded-md text-gray-300 hover:bg-white/5 transition-transform duration-200 ease-out ${isOpen ? 'rotate-180' : 'rotate-0'}`}>
+                                  <ChevronDown className="w-4 h-4" />
+                                </button>
+                                <span>{c.name}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-gray-300">{c.property}</td>
+                            <td className="py-3 px-4 text-gray-300">{c.rent}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-1 text-xs rounded-full border ${matchColors[computeMatchStatus(selectedTransaction, c)]}`}>{computeMatchStatus(selectedTransaction, c)}</span>
+                                <div className="relative group inline-block">
+                                  <Info className="w-3 h-3 text-gray-400 group-hover:text-gray-200" />
+                                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-max bg-gray-800 text-xs text-gray-200 px-2 py-1 rounded opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 whitespace-nowrap z-50">
+                                    {computeMatchReason(selectedTransaction, c)}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button onClick={() => acceptCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-3 py-1 rounded-full text-xs hover:bg-emerald-900/5 transition">
-                                <Check className="w-3 h-3" />
-                                <span>Accept</span>
-                              </button>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button onClick={() => acceptCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-3 py-1 rounded-full text-xs hover:bg-emerald-900/5 transition">
+                                  <Check className="w-3 h-3" />
+                                  <span>Accept</span>
+                                </button>
 
-                              <button onClick={() => rejectCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-[#0b0b0b] border border-[#111] text-gray-300 px-3 py-1 rounded-full text-xs hover:bg-white/5 transition">
-                                <X className="w-3 h-3" />
-                                <span>Reject</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-
-                        <tr key={`details-${c.id}`} className="bg-[#060606]">
-                          <td colSpan={7} className="p-0">
-                            <div className={`overflow-hidden transition-all duration-300 ease-out ${isOpen ? 'max-h-[520px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                              <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515] p-3">
-                                <div className="text-sm text-gray-400 mb-2">Previous transactions for {c.name}</div>
-                                <table className="min-w-full text-sm">
-                                  <thead>
-                                    <tr className="text-gray-400 text-left">
-                                      <th className="py-2 px-3 text-xs">Month</th>
-                                      <th className="py-2 px-3 text-xs">Rent</th>
-                                      <th className="py-2 px-3 text-xs">Amount Paid</th>
-                                      <th className="py-2 px-3 text-xs">Paid Date</th>
-                                      <th className="py-2 px-3 text-xs">Status</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {(c.transactions ?? []).map((tr: any, i: number) => (
-                                      <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
-                                        <td className="py-2 px-3 text-gray-300">{tr.month}</td>
-                                        <td className="py-2 px-3 text-gray-300">{tr.rent}</td>
-                                        <td className={`py-2 px-3 ${tr.status === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid}</td>
-                                        <td className="py-2 px-3 text-gray-300">{tr.paidDate ?? '—'}</td>
-                                        <td className="py-2 px-3">
-                                          <span className={`px-2 py-1 text-xs rounded-full border ${tr.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : tr.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{tr.status}</span>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                                <button onClick={() => rejectCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-[#0b0b0b] border border-[#111] text-gray-300 px-3 py-1 rounded-full text-xs hover:bg-white/5 transition">
+                                  <X className="w-3 h-3" />
+                                  <span>Reject</span>
+                                </button>
                               </div>
-                            </div>
-                          </td>
-                        </tr>
-                      </>
-                    );
-                  })}
+                            </td>
+                          </tr>
+
+                          <tr key={`details-${c.id}`} className="bg-[#060606]">
+                            <td colSpan={7} className="p-0">
+                              <div className={`overflow-hidden transition-all duration-300 ease-out ${isOpen ? 'max-h-[520px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                                <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515] p-3">
+                                  <div className="text-sm text-gray-400 mb-2">Previous transactions for {c.name}</div>
+                                  <table className="min-w-full text-sm">
+                                    <thead>
+                                      <tr className="text-gray-400 text-left">
+                                        <th className="py-2 px-3 text-xs">Month</th>
+                                        <th className="py-2 px-3 text-xs">Rent</th>
+                                        <th className="py-2 px-3 text-xs">Amount Paid</th>
+                                        <th className="py-2 px-3 text-xs">Paid Date</th>
+                                        <th className="py-2 px-3 text-xs">Status</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {(c.transactions ?? []).map((tr: any, i: number) => (
+                                        <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
+                                          <td className="py-2 px-3 text-gray-300">{tr.month}</td>
+                                          <td className="py-2 px-3 text-gray-300">{tr.rent}</td>
+                                          <td className={`py-2 px-3 ${tr.status === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid}</td>
+                                          <td className="py-2 px-3 text-gray-300">{tr.paidDate ?? '—'}</td>
+                                          <td className="py-2 px-3">
+                                            <span className={`px-2 py-1 text-xs rounded-full border ${tr.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : tr.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{tr.status}</span>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        </Fragment>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -456,8 +498,8 @@ export default function TransactionsPage() {
           </thead>
 
           <tbody>
-            {filtered.map((t) => {
-              const overall = computeTransactionOverallStatus(t);
+            {filteredDisplay.map((t) => {
+              const overall = (t as any).status ? (t as any).status : computeTransactionOverallStatus(t as any);
               return (
                 <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e] transition">
                   <td className="py-4 px-6 text-gray-300 text-sm">{t.date}</td>

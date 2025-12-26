@@ -21,7 +21,7 @@ export default function DashboardPage() {
   const { data: rentDataRes, isLoading: rentLoading, isError: rentError } = useRentDetails();
   const rentData = rentDataRes?.data;
   const stats = [
-    {
+  {
       title: `Expected (${rentData?.monthName ?? ''})`,
       value: rentLoading ? "—" : `£${rentData?.current?.expected?.toLocaleString?.() ?? rentData?.current?.expected ?? 0}`,
       trend: rentData?.percentageChange?.expected ?? 0,

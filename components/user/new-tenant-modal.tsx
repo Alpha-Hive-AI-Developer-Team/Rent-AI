@@ -8,7 +8,7 @@ import { useTenantAddresses } from "@/hooks/useTenantAddresses";
 interface NewTenantModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit?: (data: { name: string; rent: string; property: string }) => void;
+  onSubmit?: (data: { name: string; rent: string; property: string; dueMode?: string }) => void;
 }
 
 export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantModalProps) {
@@ -16,6 +16,7 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
   const [currentName, setCurrentName] = useState("");
   const [rent, setRent] = useState("");
   const [property, setProperty] = useState("");
+  const [dueMode, setDueMode] = useState<"start_of_month" | "creation_day">("start_of_month");
 
   const [selectedAddress, setSelectedAddress] = useState<string>("existing-0");
   const [useNewAddress, setUseNewAddress] = useState(false);
@@ -69,12 +70,14 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
         tenantName: names,
         property: payload.property,
         rent: Number(payload.rent.replace(/[^0-9.-]+/g, "")) || payload.rent,
+        dueMode,
       };
       createMutate(tenantPayload);
     }
     setTenantNames([]);
     setRent("");
     setProperty("");
+    setDueMode("start_of_month");
     setUseNewAddress(false);
     setSelectedAddress("existing-0");
     onClose();
@@ -215,6 +218,41 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
                   placeholder="e.g. £1200"
                   required
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-200 mb-1">Payment due</label>
+                <div className="flex items-start gap-4">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="dueMode"
+                      value="start_of_month"
+                      checked={dueMode === "start_of_month"}
+                      onChange={() => setDueMode("start_of_month")}
+                      className="mt-1"
+                    />
+                    <div>
+                      <div className="text-sm">1st of month</div>
+                      <div className="text-xs text-gray-400">Charge on the 1st day of each month</div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="dueMode"
+                      value="creation_day"
+                      checked={dueMode === "creation_day"}
+                      onChange={() => setDueMode("creation_day")}
+                      className="mt-1"
+                    />
+                    <div>
+                      <div className="text-sm">Same day next month</div>
+                      <div className="text-xs text-gray-400">Due on the same day in the following month</div>
+                    </div>
+                  </label>
+                </div>
               </div>
 
               <div>
