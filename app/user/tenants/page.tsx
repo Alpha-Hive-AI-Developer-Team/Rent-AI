@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Bell, Search, Plus, X } from "lucide-react";
+import { Bell, Search, Plus, X, DollarSign } from "lucide-react";
 import { useState } from "react";
 import TenantDrawer from "@/components/user/tenant-drawer";
 import NewTenantModal from "@/components/user/new-tenant-modal";
@@ -15,6 +15,7 @@ export default function TenantsPage() {
   const [newTenantOpen, setNewTenantOpen] = useState(false);
   const [transactionModalOpen, setTransactionModalOpen] = useState(false);
     const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
+  const [pendingCash, setPendingCash] = useState<any | null>(null);
   const { data, isLoading, isError } = useTenants();
 
   // backend returns { success, message, count, data: Tenant[] }
@@ -160,7 +161,7 @@ export default function TenantsPage() {
       {/* Transaction history modal */}
       {transactionModalOpen && selectedTenant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-3xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
+          <div className="w-full max-w-4xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold">{Array.isArray(selectedTenant?.tenantName) ? selectedTenant.tenantName[0] : (selectedTenant?.tenantName || selectedTenant?.name || 'Tenant')} — Transaction History</h3>
@@ -181,6 +182,7 @@ export default function TenantsPage() {
                     <th className="py-3 px-4 text-xs">Paid On</th>
                     <th className="py-3 px-4 text-xs">Due Date</th>
                     <th className="py-3 px-4 text-xs">Status</th>
+                    <th className="py-3 px-4 text-xs">Payment Method</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -196,6 +198,23 @@ export default function TenantsPage() {
                           {tr.status?.charAt(0).toUpperCase() + tr.status?.slice(1)}
                         </span>
                       </td>
+                      <td className="py-3 px-4">
+                        {tr.status === 'unpaid' ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // open confirmation modal with index and entry
+                              setPendingCash({ index: i, entry: tr });
+                            }}
+                            className="flex items-center gap-2 px-3 py-1 rounded-full border border-amber-700 text-amber-400 text-xs hover:bg-amber-900/5"
+                          >
+                            <DollarSign className="w-4 h-4" />
+                            Pay by Cash
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">{tr.paymentMethod ? (tr.paymentMethod === 'none' ? '—' : tr.paymentMethod) : '—'}</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -204,6 +223,39 @@ export default function TenantsPage() {
 
             <div className="mt-4 flex justify-end">
               <button onClick={() => { setTransactionModalOpen(false); setSelectedTenant(null); }} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cash confirmation modal (UI-only) */}
+      {pendingCash && selectedTenant && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm bg-[#0b0b0b] rounded-lg p-4 text-white shadow-sm">
+            <div className="text-sm text-gray-200 mb-3">
+              Mark <strong>{typeof pendingCash.entry.amountDue === 'number' ? `£${pendingCash.entry.amountDue}` : pendingCash.entry.amountDue}</strong>
+              {pendingCash.entry.month ? ` — ${new Date(pendingCash.entry.month).toISOString().split('T')[0]}` : ''}
+            </div>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setPendingCash(null)} className="text-sm text-gray-300 px-2 py-1">Cancel</button>
+              <button
+                onClick={() => {
+                  const i = pendingCash.index;
+                  const tr = pendingCash.entry;
+                  const amountDue = typeof tr.amountDue === 'number' ? tr.amountDue : Number(tr.amountDue) || 0;
+                  const now = new Date().toISOString();
+                  const newHistory = selectedTenant.rentHistory.map((h: any, idx: number) => {
+                    if (idx !== i) return h;
+                    return { ...h, amountPaid: amountDue, status: 'paid', paymentMethod: 'cash', paidOn: now };
+                  });
+                  const hasUnpaid = newHistory.some((h: any) => ((Number(h.amountDue) || 0) - (Number(h.amountPaid) || 0)) > 0);
+                  setSelectedTenant({ ...selectedTenant, rentHistory: newHistory, status: hasUnpaid ? 'partial' : 'paid', lastPayment: now });
+                  setPendingCash(null);
+                }}
+                className="text-sm bg-amber-600 text-black px-3 py-1 rounded"
+              >
+                Confirm
+              </button>
             </div>
           </div>
         </div>
