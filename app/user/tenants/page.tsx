@@ -182,7 +182,7 @@ export default function TenantsPage() {
                     <th className="py-3 px-4 text-xs">Paid On</th>
                     <th className="py-3 px-4 text-xs">Due Date</th>
                     <th className="py-3 px-4 text-xs">Status</th>
-                    <th className="py-3 px-4 text-xs">Payment Method</th>
+                    <th className="py-3 px-4 text-xs">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -209,7 +209,7 @@ export default function TenantsPage() {
                             className="flex items-center gap-2 px-3 py-1 rounded-full border border-amber-700 text-amber-400 text-xs hover:bg-amber-900/5"
                           >
                             <DollarSign className="w-4 h-4" />
-                            Pay by Cash
+                           Pay By Cash
                           </button>
                         ) : (
                           <span className="text-xs text-gray-400">{tr.paymentMethod ? (tr.paymentMethod === 'none' ? '—' : tr.paymentMethod) : '—'}</span>
@@ -230,16 +230,25 @@ export default function TenantsPage() {
 
       {/* Cash confirmation modal (UI-only) */}
       {pendingCash && selectedTenant && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-sm bg-[#0b0b0b] rounded-lg p-4 text-white shadow-sm">
-            <div className="text-sm text-gray-200 mb-3">
-              Mark <strong>{typeof pendingCash.entry.amountDue === 'number' ? `£${pendingCash.entry.amountDue}` : pendingCash.entry.amountDue}</strong>
-              {pendingCash.entry.month ? ` — ${new Date(pendingCash.entry.month).toISOString().split('T')[0]}` : ''}
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
+          <div className="w-full max-w-md bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">Confirm Cash Payment</h3>
+            <p className="text-sm text-gray-400 mb-4">Mark this rent as paid in <strong>cash</strong>?</p>
+            <div className="bg-[#050505] border border-[#111] rounded-lg p-3 mb-4">
+              <div className="flex justify-between text-sm text-gray-300">
+                <div>Month</div>
+                <div>{pendingCash.entry.month ? new Date(pendingCash.entry.month).toISOString().split('T')[0] : '—'}</div>
+              </div>
+              <div className="flex justify-between text-sm text-gray-300">
+                <div>Amount Due</div>
+                <div>{typeof pendingCash.entry.amountDue === 'number' ? `£${pendingCash.entry.amountDue}` : pendingCash.entry.amountDue}</div>
+              </div>
             </div>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setPendingCash(null)} className="text-sm text-gray-300 px-2 py-1">Cancel</button>
+              <button onClick={() => setPendingCash(null)} className="px-4 py-2 rounded-full border text-sm text-gray-300 hover:bg-white/5">Cancel</button>
               <button
                 onClick={() => {
+                  // apply cash payment locally
                   const i = pendingCash.index;
                   const tr = pendingCash.entry;
                   const amountDue = typeof tr.amountDue === 'number' ? tr.amountDue : Number(tr.amountDue) || 0;
@@ -252,9 +261,9 @@ export default function TenantsPage() {
                   setSelectedTenant({ ...selectedTenant, rentHistory: newHistory, status: hasUnpaid ? 'partial' : 'paid', lastPayment: now });
                   setPendingCash(null);
                 }}
-                className="text-sm bg-amber-600 text-black px-3 py-1 rounded"
+                className="px-4 py-2 rounded-full bg-amber-600 text-black text-sm hover:brightness-105"
               >
-                Confirm
+                Confirm Cash
               </button>
             </div>
           </div>
