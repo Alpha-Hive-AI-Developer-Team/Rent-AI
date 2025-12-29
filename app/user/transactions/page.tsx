@@ -3,7 +3,8 @@
 import Image from "next/image";
 import { Plus, Search, Check, X, Bell, Eye, ChevronDown, Info } from "lucide-react";
 import { useState, useEffect, Fragment } from "react";
-import { useUnreconciledTransactions } from "@/hooks/useTransactions";
+import { useUnreconciledTransactions, useYapilyInstitutions } from "@/hooks/useTransactions";
+import { createYapilyAccountAuthRequest, connectYapilyAccounts } from "@/lib/api/transactionApi";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
 interface Transaction {
@@ -149,6 +150,81 @@ export default function TransactionsPage() {
 
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null);
+  const [showYapilyModal, setShowYapilyModal] = useState(false);
+
+  // react-query hook (disabled by default) — call refetch() to fetch
+  const yapilyQuery = useYapilyInstitutions(false);
+
+  function connectInstitution(inst: any) {
+    // Create account-auth-request for selected institution and open authorisationUrl
+    (async () => {
+      try {
+        setConnecting(true);
+        // applicationUserId - replace with real landlord id when available
+        const callback = 'http://localhost:3000/user/transactions';
+        const payload = {
+
+          institutionId: inst.id,
+          callback,
+        };
+
+        const res = await createYapilyAccountAuthRequest(payload);
+        // res is the Yapily response object { meta, data }
+        const authUrl = res?.data?.authorisationUrl || res?.data?.authorisationUrl;
+        const qrUrl = res?.data?.qrCodeUrl;
+
+        if (authUrl) {
+          window.open(authUrl, '_blank');
+        } else {
+          alert('No authorisationUrl returned');
+        }
+      } catch (err) {
+        console.error('account-auth-request failed', err);
+        alert('Failed to create account auth request');
+      } finally {
+        setConnecting(false);
+      }
+    })();
+  }
+
+  const [connecting, setConnecting] = useState(false);
+  const [connectedInstitution, setConnectedInstitution] = useState<string | null>(null);
+  const [connectedConsent, setConnectedConsent] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const params = new URLSearchParams(window.location.search);
+      const consent = params.get('consent');
+      const institution = params.get('institution') || params.get('institutionId') || params.get('application-user-id') || params.get('applicationUserId');
+      if (consent) {
+        setConnectedConsent(consent);
+        if (institution) setConnectedInstitution(institution as string);
+        // send consent to backend to fetch & save accounts (requires auth cookie/token)
+        (async () => {
+          try {
+            await connectYapilyAccounts(consent);
+            // optionally provide user feedback - keep minimal
+            console.log('Yapily accounts synced');
+          } catch (err) {
+            console.error('Failed to sync Yapily accounts', err);
+          }
+        })();
+        // remove sensitive params from URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('consent');
+        url.searchParams.delete('institution');
+        url.searchParams.delete('institutionId');
+        url.searchParams.delete('application-user-id');
+        url.searchParams.delete('applicationUserId');
+        url.searchParams.delete('user-uuid');
+        url.searchParams.delete('userUuid');
+        window.history.replaceState({}, document.title, url.toString());
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
 
   // Determine candidate tenants for the modal.
   // - If `selectedTransaction.raw` exists (API-backed), use its tenant info or an empty list when none found.
@@ -304,6 +380,12 @@ export default function TransactionsPage() {
           />
         </div>
       </div>
+      {connectedInstitution && (
+        <div className="mt-3 p-3 rounded-lg bg-emerald-900/10 border border-emerald-700 text-emerald-300 flex items-center justify-between">
+          <div>Bank connected: <span className="font-medium text-emerald-200">{connectedInstitution}</span></div>
+          <div className="text-xs text-gray-400">Connected now</div>
+        </div>
+      )}
       {/* View Modal: show transaction details and candidate tenants (UI-only) */}
       {viewModalOpen && selectedTransaction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -477,12 +559,23 @@ export default function TransactionsPage() {
   </div>
 
   {/* Buttons Right */}
-  <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3">
 
     {/* Quick Action */}
-    <button className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-4 py-2 rounded-full text-sm hover:bg-emerald-900/5 transition">
+    <button
+      onClick={async () => {
+        try {
+          await yapilyQuery.refetch();
+          setShowYapilyModal(true);
+        } catch (err) {
+          console.error(err);
+          alert("Failed to fetch institutions");
+        }
+      }}
+      className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-4 py-2 rounded-full text-sm hover:bg-emerald-900/5 transition"
+    >
       <Plus className="w-4 h-4 text-emerald-400" />
-      <span>Quick Action</span>
+      <span>Connect Open Banking</span>
     </button>
 
     {/* Sync Bank Feed */}
@@ -493,6 +586,63 @@ export default function TransactionsPage() {
   </div>
 
 </div>
+
+
+      {/* Yapily Institutions Modal */}
+      {showYapilyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-3xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl max-h-[80vh] overflow-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">Open Banking Institutions</h3>
+                <p className="text-sm text-gray-400">Results from Yapily</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-sm text-gray-400">{yapilyQuery.isFetching ? 'Loading…' : ''}</div>
+                <button onClick={() => setShowYapilyModal(false)} className="text-gray-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {yapilyQuery.isError && (
+                <div className="text-rose-400">Failed to load institutions.</div>
+              )}
+
+              {!yapilyQuery.data && !yapilyQuery.isFetching && (
+                <div className="text-sm text-gray-400">No results. Click Connect Open Banking to fetch.</div>
+              )}
+
+              {(yapilyQuery.data?.data ?? []).map((inst: any) => (
+                <div key={inst.id} className="flex items-center gap-4 p-3 bg-[#050505] border border-[#111] rounded-lg">
+                  <div className="w-12 h-12 flex-shrink-0">
+                    {inst.media?.[0]?.source ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={inst.media[0].source} alt={inst.name} className="w-12 h-12 object-contain" />
+                    ) : (
+                      <div className="w-12 h-12 bg-gray-800 rounded" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">{inst.name}</div>
+                    <div className="text-xs text-gray-400 truncate">{inst.fullName}</div>
+                    <div className="text-xs text-gray-500 mt-1">{inst.environmentType} • {inst.countries?.map((c: any) => c.displayName).join(', ')}</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="text-xs text-gray-400">Features: {inst.features?.length ?? 0}</div>
+                    <button onClick={() => connectInstitution(inst)} className="px-3 py-1 rounded-full bg-emerald-600 text-black text-xs hover:brightness-105">Connect</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button onClick={() => setShowYapilyModal(false)} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
 
       {/* Table (inlined - same UI as DataTable) */}

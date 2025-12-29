@@ -32,32 +32,7 @@ export default function TenantsPage() {
     (t.property || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const columns = [
-    { key: "name", label: "Tenant Name" },
-    { key: "property", label: "Property" },
-    { key: "rent", label: "Rent" },
-    {
-      key: "status",
-      label: "Status",
-      render: (t: any) => (
-        <span
-          className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[t.status]}`}
-        >
-          {t.status}
-        </span>
-      ),
-    },
-    { key: "lastPayment", label: "Last Payment" },
-    // {
-    //   key: "actions",
-    //   label: "",
-    //   render: () => (
-    //     <button className="text-xs bg-transparent border border-emerald-700 px-3 py-1 rounded-full text-emerald-400 hover:bg-emerald-900/5 transition">
-    //       Open <span className="ml-2 text-emerald-400">›</span>
-    //     </button>
-    //   ),
-    // },
-  ];
+
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-6">
