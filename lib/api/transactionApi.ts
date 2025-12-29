@@ -31,4 +31,14 @@ export async function connectYapilyAccounts(consent: string) {
   return res.data;
 }
 
-export default { getUnreconciledTransactions, createTransaction, getYapilyInstitutions, createYapilyAccountAuthRequest, connectYapilyAccounts };
+// Fetch transactions from Yapily via backend proxy: GET /api/transactions/yapily
+export async function getYapilyTransactions(params: { accountId?: string; consent?: string; from?: string } = {}) {
+  const res = await apiClient.get(`/transactions/yapily`, { params });
+  return res.data;
+}
+export async function getConnectedAccounts() {
+  const res = await apiClient.get(`/accounts`);
+  return res.data;
+}
+
+export default { getUnreconciledTransactions, createTransaction, getYapilyInstitutions, createYapilyAccountAuthRequest, connectYapilyAccounts, getYapilyTransactions, getConnectedAccounts };

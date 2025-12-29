@@ -3,8 +3,8 @@
 import Image from "next/image";
 import { Plus, Search, Check, X, Bell, Eye, ChevronDown, Info } from "lucide-react";
 import { useState, useEffect, Fragment } from "react";
-import { useUnreconciledTransactions, useYapilyInstitutions } from "@/hooks/useTransactions";
-import { createYapilyAccountAuthRequest, connectYapilyAccounts } from "@/lib/api/transactionApi";
+import { useConnectedAccounts, useUnreconciledTransactions, useYapilyInstitutions } from "@/hooks/useTransactions";
+import { createYapilyAccountAuthRequest, connectYapilyAccounts, getYapilyTransactions } from "@/lib/api/transactionApi";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
 interface Transaction {
@@ -43,49 +43,7 @@ export default function TransactionsPage() {
       description: "FPI JACK LEAH 119AV RENT",
       amount: "£1200",
       status: "Matched",
-    },
-    {
-      id: 2,
-      date: "2025-09-02",
-      description: "119 The Avenue – R3",
-      amount: "£1200",
-      status: "Needs Review",
-    },
-    {
-      id: 3,
-      date: "2025-09-05",
-      description: "119 The Avenue – R3",
-      amount: "£1200",
-      status: "Needs Review",
-    },
-    {
-      id: 4,
-      date: "2025-09-06",
-      description: "119 The Avenue – R3",
-      amount: "£1200",
-      status: "Matched",
-    },
-    {
-      id: 5,
-      date: "2025-09-07",
-      description: "PAYMENT JACKIE LEAH 119AV RENT",
-      amount: "£1200",
-      status: "Matched",
-    },
-    {
-      id: 6,
-      date: "2025-09-08",
-      description: "ACCT TRANS SAMUEL LEE MARKET LANE",
-      amount: "£500",
-      status: "Needs Review",
-    },
-    {
-      id: 7,
-      date: "2025-09-09",
-      description: "ALICIA KEYS RENT 7 GARDEN ROAD",
-      amount: "£1200",
-      status: "Needs Review",
-    },
+    }
   ];
 
   const statusColors: Record<string, string> = {
@@ -100,8 +58,10 @@ export default function TransactionsPage() {
 
   
 
-  // Fetch unreconciled transactions from API
-  const { data: unreconciledRes, isLoading: txLoading } = useUnreconciledTransactions();
+  // Fetch unreconciled transactions from API (keep the full query so we can refetch)
+  const unreconciledQuery = useUnreconciledTransactions();
+  const unreconciledRes = unreconciledQuery.data;
+  const txLoading = unreconciledQuery.isLoading;
   const apiDocs = unreconciledRes?.data?.docs ?? [];
   const apiRows = apiDocs.map((d: any, i: number) => ({
     id: i + 1,
@@ -112,7 +72,8 @@ export default function TransactionsPage() {
     raw: d,
   }));
 
-  const displayTransactions: Transaction[] = apiRows.length > 0 ? apiRows : transactions;
+  // Prefer API-backed rows. If none returned, show an empty list (no dummy/sample transactions).
+  const displayTransactions: Transaction[] = apiRows.length > 0 ? apiRows : [];
 
   const filteredDisplay = displayTransactions.filter(
     (t) => t.description.toLowerCase().includes(search.toLowerCase()) || t.amount.toLowerCase().includes(search.toLowerCase())
@@ -124,23 +85,7 @@ export default function TransactionsPage() {
       { month: "2025-09", rent: "£1200", amountPaid: "£1200", paidDate: "2025-09-01", status: "Paid" },
       { month: "2025-08", rent: "£1200", amountPaid: "£0", paidDate: null, status: "Unpaid" },
       { month: "2025-07", rent: "£1200", amountPaid: "£600", paidDate: "2025-07-20", status: "Partial" },
-    ] as TenantTxn[] },
-    { id: 2, name: "Maria Gomez", property: "21 High Street – A1", rent: "£950", status: "Unpaid", lastPayment: "2025-07-20", transactions: [
-      { month: "2025-07", rent: "£950", amountPaid: "£950", paidDate: "2025-07-20", status: "Paid" },
-      { month: "2025-06", rent: "£950", amountPaid: "£0", paidDate: null, status: "Unpaid" },
-    ] as TenantTxn[] },
-    { id: 3, name: "Tom Rivers", property: "Flat 3B – 45 Lane", rent: "£700", status: "Partial", lastPayment: "2025-09-05", transactions: [
-      { month: "2025-09", rent: "£700", amountPaid: "£350", paidDate: "2025-09-05", status: "Partial" },
-    ] as TenantTxn[] },
-    { id: 4, name: "Alicia Keys", property: "7 Garden Road – B2", rent: "£1200", status: "Unpaid", lastPayment: "2025-06-18", transactions: [
-      { month: "2025-06", rent: "£1200", amountPaid: "£0", paidDate: null, status: "Unpaid" },
-    ] as TenantTxn[] },
-    { id: 5, name: "Jackie Leah", property: "119 The Avenue – R3", rent: "£1200", status: "Unpaid", lastPayment: "2025-08-01", transactions: [
-      { month: "2025-08", rent: "£1200", amountPaid: "£1200", paidDate: "2025-08-01", status: "Paid" },
-    ] as TenantTxn[] },
-    { id: 6, name: "Samuel Lee", property: "22 Market Lane – C4", rent: "£500", status: "Unpaid", lastPayment: "2025-05-11", transactions: [
-      { month: "2025-05", rent: "£500", amountPaid: "£500", paidDate: "2025-05-11", status: "Paid" },
-    ] as TenantTxn[] },
+    ] as TenantTxn[] }
   ]);
 
   
@@ -154,6 +99,29 @@ export default function TransactionsPage() {
 
   // react-query hook (disabled by default) — call refetch() to fetch
   const yapilyQuery = useYapilyInstitutions(false);
+  const connectedAccountsQuery = useConnectedAccounts(false);
+  const [showAccountsModal, setShowAccountsModal] = useState(false);
+  async function handleAccountSync(acc: any) {
+    const accountId = acc?.accountId || acc?.id || String(acc?.name || Date.now());
+    try {
+      // mark this account as syncing (allow multiple concurrent syncs)
+      setSyncingAccounts((prev) => (prev.includes(accountId) ? prev : [...prev, accountId]));
+      const res = await getYapilyTransactions({ accountId });
+      console.log('Yapily transactions response', res);
+      // After successful sync, refresh unreconciled transactions
+      try {
+        await unreconciledQuery.refetch();
+      } catch (e) {
+        console.warn('Failed to refetch unreconciled transactions', e);
+      }
+      alert(`Yapily sync completed. Received ${res?.data?.length ?? (res?.data?.docs?.length ?? 'unknown')} items.`);
+    } catch (err) {
+      console.error('Failed to fetch Yapily transactions', err);
+      alert('Failed to sync bank transactions');
+    } finally {
+      setSyncingAccounts((prev) => prev.filter((id) => id !== accountId));
+    }
+  }
 
   function connectInstitution(inst: any) {
     // Create account-auth-request for selected institution and open authorisationUrl
@@ -190,6 +158,7 @@ export default function TransactionsPage() {
   const [connecting, setConnecting] = useState(false);
   const [connectedInstitution, setConnectedInstitution] = useState<string | null>(null);
   const [connectedConsent, setConnectedConsent] = useState<string | null>(null);
+  const [syncingAccounts, setSyncingAccounts] = useState<string[]>([]);
 
   useEffect(() => {
     try {
@@ -579,7 +548,17 @@ export default function TransactionsPage() {
     </button>
 
     {/* Sync Bank Feed */}
-    <button className="bg-transparent text-emerald-400 text-sm border border-emerald-600 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition">
+    <button
+      onClick={async () => {
+        try {
+          setShowAccountsModal(true);
+          await connectedAccountsQuery.refetch();
+        } catch (err) {
+          console.error('Failed to fetch connected accounts', err);
+        }
+      }}
+      className="bg-transparent text-emerald-400 text-sm border border-emerald-600 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition"
+    >
       Sync Bank Feed
     </button>
 
@@ -630,7 +609,7 @@ export default function TransactionsPage() {
                     <div className="text-xs text-gray-500 mt-1">{inst.environmentType} • {inst.countries?.map((c: any) => c.displayName).join(', ')}</div>
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <div className="text-xs text-gray-400">Features: {inst.features?.length ?? 0}</div>
+                
                     <button onClick={() => connectInstitution(inst)} className="px-3 py-1 rounded-full bg-emerald-600 text-black text-xs hover:brightness-105">Connect</button>
                   </div>
                 </div>
@@ -639,6 +618,58 @@ export default function TransactionsPage() {
 
             <div className="mt-4 flex justify-end">
               <button onClick={() => setShowYapilyModal(false)} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connected Accounts Modal */}
+      {showAccountsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-3xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl max-h-[80vh] overflow-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">Connected Accounts</h3>
+                <p className="text-sm text-gray-400">Accounts synced from your bank</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-sm text-gray-400">{connectedAccountsQuery.isFetching ? 'Loading…' : ''}</div>
+                <button onClick={() => setShowAccountsModal(false)} className="text-gray-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {connectedAccountsQuery.isError && (
+                <div className="text-rose-400">Failed to load connected accounts.</div>
+              )}
+
+              {!connectedAccountsQuery.data && !connectedAccountsQuery.isFetching && (
+                <div className="text-sm text-gray-400">No accounts found. Use Connect Open Banking first.</div>
+              )}
+
+              {(connectedAccountsQuery.data?.data ?? []).map((acc: any) => (
+                <div key={acc.accountId} className="flex items-center gap-4 p-3 bg-[#050505] border border-[#111] rounded-lg">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">{acc.name || acc.accountId}</div>
+                    <div className="text-xs text-gray-400 truncate">{acc.accountId}</div>
+                    <div className="text-xs text-gray-500 mt-1">{acc.currency || acc.type || acc.accountType}</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="text-xs text-gray-400">{acc.type}</div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => handleAccountSync(acc)} disabled={syncingAccounts.includes(acc.accountId)} className="px-3 py-1 rounded-full bg-amber-600 text-black text-xs hover:brightness-105 disabled:opacity-60">
+                        {syncingAccounts.includes(acc.accountId) ? 'Syncing…' : 'Sync Now'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button onClick={() => setShowAccountsModal(false)} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Close</button>
             </div>
           </div>
         </div>
@@ -659,33 +690,39 @@ export default function TransactionsPage() {
           </thead>
 
           <tbody>
-            {filteredDisplay.map((t) => {
-              const overall = (t as any).status ? (t as any).status : computeTransactionOverallStatus(t as any);
-              return (
-                <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e] transition">
-                  <td className="py-4 px-6 text-gray-300 text-sm">{t.date}</td>
-                  <td className="py-4 px-6 text-gray-300 text-sm">{t.description}</td>
-                  <td className="py-4 px-6 text-gray-300 text-sm">{t.amount}</td>
-                  <td className="py-4 px-6 text-gray-300 text-sm">
-                    <span className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[overall]}`}>
-                      {overall}
-                    </span>
-                  </td>
-                  <td className="py-4 px-6 text-right text-gray-300">
-                    <div className="flex items-center justify-end gap-3">
-                      <button onClick={() => openView(t)} className="flex items-center gap-2 bg-transparent border border-[#111] text-gray-200 px-3 py-1 rounded-full text-xs md:text-sm hover:bg-white/5 transition">
-                        <Eye className="w-3 h-3" />
-                        <span className="whitespace-nowrap">View</span>
-                      </button>
+            {filteredDisplay.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-6 text-center text-gray-400">No transactions found.</td>
+              </tr>
+            ) : (
+              filteredDisplay.map((t) => {
+                const overall = (t as any).status ? (t as any).status : computeTransactionOverallStatus(t as any);
+                return (
+                  <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e] transition">
+                    <td className="py-4 px-6 text-gray-300 text-sm">{t.date}</td>
+                    <td className="py-4 px-6 text-gray-300 text-sm">{t.description}</td>
+                    <td className="py-4 px-6 text-gray-300 text-sm">{t.amount}</td>
+                    <td className="py-4 px-6 text-gray-300 text-sm">
+                      <span className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[overall]}`}>
+                        {overall}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-right text-gray-300">
+                      <div className="flex items-center justify-end gap-3">
+                        <button onClick={() => openView(t)} className="flex items-center gap-2 bg-transparent border border-[#111] text-gray-200 px-3 py-1 rounded-full text-xs md:text-sm hover:bg-white/5 transition">
+                          <Eye className="w-3 h-3" />
+                          <span className="whitespace-nowrap">View</span>
+                        </button>
 
-                      {reconciled.includes(t.id) && (
-                        <span className="px-2 py-1 text-xs rounded-full bg-emerald-900/20 text-emerald-400 border border-emerald-700">Reconciled</span>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+                        {reconciled.includes(t.id) && (
+                          <span className="px-2 py-1 text-xs rounded-full bg-emerald-900/20 text-emerald-400 border border-emerald-700">Reconciled</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
