@@ -8,7 +8,7 @@ import { useTenantAddresses } from "@/hooks/useTenantAddresses";
 interface NewTenantModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit?: (data: { name: string; rent: string; property: string; dueMode?: string }) => void;
+  onSubmit?: (data: { name: string; rent: string; property: string; dueOn?: number; moveInDate?: string }) => void;
 }
 
 export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantModalProps) {
@@ -16,7 +16,8 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
   const [currentName, setCurrentName] = useState("");
   const [rent, setRent] = useState("");
   const [property, setProperty] = useState("");
-  const [dueMode, setDueMode] = useState<"start_of_month" | "creation_day">("start_of_month");
+  const [dueOn, setDueOn] = useState<number>(1);
+  const [moveInDate, setMoveInDate] = useState<string>("");
 
   const [selectedAddress, setSelectedAddress] = useState<string>("existing-0");
   const [useNewAddress, setUseNewAddress] = useState(false);
@@ -62,7 +63,7 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
       return;
     }
 
-    const payload = { name: names.join(", "), rent: rent.trim(), property: property.trim() };
+    const payload = { name: names.join(", "), rent: rent.trim(), property: property.trim(), dueOn, moveInDate };
     if (onSubmit) onSubmit(payload);
     // call API mutation if available
     if (createMutate) {
@@ -70,14 +71,16 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
         tenantName: names,
         property: payload.property,
         rent: Number(payload.rent.replace(/[^0-9.-]+/g, "")) || payload.rent,
-        dueMode,
+        dueOn,
+        moveInDate: moveInDate ? new Date(moveInDate).toISOString() : undefined,
       };
       createMutate(tenantPayload);
     }
     setTenantNames([]);
     setRent("");
     setProperty("");
-    setDueMode("start_of_month");
+    setDueOn(1);
+    setMoveInDate("");
     setUseNewAddress(false);
     setSelectedAddress("existing-0");
     onClose();
@@ -221,38 +224,30 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
               </div>
 
               <div>
-                <label className="block text-sm text-gray-200 mb-1">Payment due</label>
-                <div className="flex items-start gap-4">
-                  <label className="flex items-start gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="dueMode"
-                      value="start_of_month"
-                      checked={dueMode === "start_of_month"}
-                      onChange={() => setDueMode("start_of_month")}
-                      className="mt-1"
-                    />
-                    <div>
-                      <div className="text-sm">1st of month</div>
-                      <div className="text-xs text-gray-400">Charge on the 1st day of each month</div>
-                    </div>
-                  </label>
+                <label className="block text-sm text-gray-200 mb-1">Due day of month</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={dueOn}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!Number.isNaN(v)) setDueOn(Math.min(Math.max(v, 1), 31));
+                  }}
+                  className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                  placeholder="e.g. 1 for the 1st"
+                />
+              </div>
 
-                  <label className="flex items-start gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="dueMode"
-                      value="creation_day"
-                      checked={dueMode === "creation_day"}
-                      onChange={() => setDueMode("creation_day")}
-                      className="mt-1"
-                    />
-                    <div>
-                      <div className="text-sm">Same day next month</div>
-                      <div className="text-xs text-gray-400">Due on the same day in the following month</div>
-                    </div>
-                  </label>
-                </div>
+              <div>
+                <label className="block text-sm text-gray-200 mb-1">Move-in date</label>
+                <input
+                  type="date"
+                  value={moveInDate}
+                  onChange={(e) => setMoveInDate(e.target.value)}
+                  className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                />
+                <p className="text-xs text-gray-400 mt-1">Initial rent will be prorated from move-in to next month start; due on selected day next month.</p>
               </div>
 
               <div>

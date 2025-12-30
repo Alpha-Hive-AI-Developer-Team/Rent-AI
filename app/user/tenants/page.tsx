@@ -5,11 +5,20 @@ import { Bell, Search, Plus, X, DollarSign } from "lucide-react";
 import { useState } from "react";
 import TenantDrawer from "@/components/user/tenant-drawer";
 import NewTenantModal from "@/components/user/new-tenant-modal";
-import { useTenants } from "@/hooks/usetenants";
+import usePayByCash, { useTenants } from "@/hooks/usetenants";
 
 // Using `any` for tenant shapes returned by the API to keep types flexible
 
 export default function TenantsPage() {
+  const formatDate = (d: any) => {
+    if (!d) return "—";
+    const date = d instanceof Date ? d : new Date(d);
+    if (isNaN(date.getTime())) return "—";
+    const day = date.getUTCDate();
+    const month = date.getUTCMonth() + 1; // 1-12
+    const year = date.getUTCFullYear();
+    return `${day}/${month}/${year}`;
+  };
   const [search, setSearch] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [newTenantOpen, setNewTenantOpen] = useState(false);
@@ -17,6 +26,7 @@ export default function TenantsPage() {
     const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
   const [pendingCash, setPendingCash] = useState<any | null>(null);
   const { data, isLoading, isError } = useTenants();
+  const payByCashMutation = usePayByCash();
 
   // backend returns { success, message, count, data: Tenant[] }
   const tenantsFromApi = data?.data ?? [];
@@ -126,7 +136,7 @@ export default function TenantsPage() {
                     {t.status?.charAt(0).toUpperCase() + t.status?.slice(1)}
                   </span>
                 </td>
-                <td className="py-4 px-6 text-gray-300 text-sm">{t.lastPayment ? new Date(t.lastPayment).toISOString().split('T')[0] : '—'}</td>
+                <td className="py-4 px-6 text-gray-300 text-sm">{formatDate(t.lastPayment)}</td>
               </tr>
             ))}
           </tbody>
@@ -163,11 +173,11 @@ export default function TenantsPage() {
                 <tbody>
                   {selectedTenant.rentHistory?.map((tr: any, i: number) => (
                     <tr key={tr._id || i} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
-                      <td className="py-3 px-4 text-gray-300">{tr.month ? new Date(tr.month).toISOString().split('T')[0] : '—'}</td>
+                      <td className="py-3 px-4 text-gray-300">{formatDate(tr.month)}</td>
                       <td className="py-3 px-4 text-gray-300">{typeof tr.amountDue === 'number' ? `£${tr.amountDue}` : tr.amountDue}</td>
-                      <td className={`py-3 px-4 ${tr.status === 'unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid ?? '—'}</td>
-                      <td className="py-3 px-4 text-gray-300">{tr.paidOn ? new Date(tr.paidOn).toISOString().split('T')[0] : '—'}</td>
-                      <td className="py-3 px-4 text-gray-300">{tr.dueDate ? new Date(tr.dueDate).toISOString().split('T')[0] : '—'}</td>
+                      <td className={`py-3 px-4 ${tr.status === 'unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>£{tr.amountPaid ?? '—'}</td>
+                      <td className="py-3 px-4 text-gray-300">{formatDate(tr.paidOn)}</td>
+                      <td className="py-3 px-4 text-gray-300">{formatDate(tr.dueDate)}</td>
                       <td className="py-3 px-4">
                         <span className={`px-2 py-1 text-xs rounded-full border ${statusColors[(tr.status || '').charAt(0).toUpperCase() + (tr.status || '').slice(1) as any] || 'bg-gray-800 text-gray-400'}`}>
                           {tr.status?.charAt(0).toUpperCase() + tr.status?.slice(1)}
@@ -212,7 +222,7 @@ export default function TenantsPage() {
             <div className="bg-[#050505] border border-[#111] rounded-lg p-3 mb-4">
               <div className="flex justify-between text-sm text-gray-300">
                 <div>Month</div>
-                <div>{pendingCash.entry.month ? new Date(pendingCash.entry.month).toISOString().split('T')[0] : '—'}</div>
+                <div>{formatDate(pendingCash.entry.month)}</div>
               </div>
               <div className="flex justify-between text-sm text-gray-300">
                 <div>Amount Due</div>
@@ -223,18 +233,26 @@ export default function TenantsPage() {
               <button onClick={() => setPendingCash(null)} className="px-4 py-2 rounded-full border text-sm text-gray-300 hover:bg-white/5">Cancel</button>
               <button
                 onClick={() => {
-                  // apply cash payment locally
                   const i = pendingCash.index;
                   const tr = pendingCash.entry;
-                  const amountDue = typeof tr.amountDue === 'number' ? tr.amountDue : Number(tr.amountDue) || 0;
-                  const now = new Date().toISOString();
-                  const newHistory = selectedTenant.rentHistory.map((h: any, idx: number) => {
-                    if (idx !== i) return h;
-                    return { ...h, amountPaid: amountDue, status: 'paid', paymentMethod: 'cash', paidOn: now };
-                  });
-                  const hasUnpaid = newHistory.some((h: any) => ((Number(h.amountDue) || 0) - (Number(h.amountPaid) || 0)) > 0);
-                  setSelectedTenant({ ...selectedTenant, rentHistory: newHistory, status: hasUnpaid ? 'partial' : 'paid', lastPayment: now });
-                  setPendingCash(null);
+                  // call backend to mark as paid by cash
+                  const payload: any = { index: i };
+                  // if entry has a month, prefer sending month
+                  if (tr.month) payload.month = new Date(tr.month).toISOString();
+                  payByCashMutation.mutate(
+                    { tenantId: selectedTenant._id, payload },
+                    {
+                      onSuccess: (res) => {
+                        // close modal and refresh selection
+                        setPendingCash(null);
+                        const updated = res?.data?.tenant || res?.tenant || null;
+                        if (updated) setSelectedTenant(updated);
+                      },
+                      onError: () => {
+                        // keep modal open; you may add toast here
+                      },
+                    }
+                  );
                 }}
                 className="px-4 py-2 rounded-full bg-amber-600 text-black text-sm hover:brightness-105"
               >
