@@ -223,31 +223,34 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
                 />
               </div>
 
-              <div>
-                <label className="block text-sm text-gray-200 mb-1">Due day of month</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={31}
-                  value={dueOn}
-                  onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
-                    if (!Number.isNaN(v)) setDueOn(Math.min(Math.max(v, 1), 31));
-                  }}
-                  className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                  placeholder="e.g. 1 for the 1st"
-                />
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-200 mb-1">Due day of month</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={dueOn}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      if (!Number.isNaN(v)) setDueOn(Math.min(Math.max(v, 1), 31));
+                    }}
+                    className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                    placeholder="e.g. 1 for the 1st"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm text-gray-200 mb-1">Move-in date</label>
-                <input
-                  type="date"
-                  value={moveInDate}
-                  onChange={(e) => setMoveInDate(e.target.value)}
-                  className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                />
-                <p className="text-xs text-gray-400 mt-1">Initial rent will be prorated from move-in to next month start; due on selected day next month.</p>
+                <div>
+                  <label className="block text-sm text-gray-200 mb-1">Move-in date</label>
+                  <input
+                  min={new Date().toISOString().split("T")[0]}
+                    type="date"
+                    value={moveInDate}
+                    onChange={(e) => setMoveInDate(e.target.value)}
+                    className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                  />
+                  {/* <p className="text-xs text-gray-400 mt-1">Initial rent will be prorated from move-in to next month start; due on selected day next month.</p> */}
+                </div>
               </div>
 
               <div>
