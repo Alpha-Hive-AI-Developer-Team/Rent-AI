@@ -7,22 +7,25 @@ import StatCard from "@/components/admin/analytics-card";
 import Image from "next/image";
 import { Bell } from "lucide-react";
 import { withAuth } from "@/hooks/withAuth";
+import useAdminLandlords, { useAdminSummary } from "@/hooks/useAdmin";
 
  function DashboardPage() {
+  const { data: summaryResp, isLoading: summaryLoading } = useAdminSummary();
+  const summary = summaryResp?.data;
   const stats = [
     {
       title: "Total Landlords",
-      value: "2,847",
-      trend: 12.5,
-      description: "Trending up this month",
-      subtext: "Visitors for the last 6 months",
+      value: summary ? (summary.landlords?.total ?? 0).toLocaleString() : "—",
+      trend: summary ? (summary.landlords?.changePct ?? 0) : 0,
+      description: "Trending this month",
+      subtext: summary ? summary.monthName : "",
     },
     {
       title: "Rent Processed",
-      value: "$1.2M",
-      trend: -20,
-      description: "Down 20% this period",
-      subtext: "Acquisition needs attention",
+      value: summary ? `£${Number(summary.rentProcessed?.total || 0).toLocaleString()}` : "—",
+      trend: summary ? (summary.rentProcessed?.changePct ?? 0) : 0,
+      description: "Processed rent this month",
+      subtext: summary ? summary.monthName : "",
     }
   ];
 

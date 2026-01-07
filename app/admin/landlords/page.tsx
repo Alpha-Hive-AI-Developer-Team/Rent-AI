@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import useAdminLandlords, { useLandlordTenants } from "@/hooks/useAdmin";
+import useAdminLandlords, { useLandlordTenants, useTenantTransactions } from "@/hooks/useAdmin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -152,31 +152,16 @@ export default function LandlordManagement() {
   const currentTenants = modalAddresses[selectedAddressIndex || 0]?.tenants || [];
 
   // Tenant modal state (rendered inside same modal)
-  const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
   const [modalView, setModalView] = useState<"landlord" | "tenant">("landlord");
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const [selectedTenantName, setSelectedTenantName] = useState<string | null>(null);
 
-  // Sample tenant transactions (UI-only)
-  const tenantTransactions: Record<string, Array<any>> = {
-    "Jack Leah": [
-      { month: "2025-09", rent: "£1200", amountPaid: "£1200", paidDate: "2025-09-01", status: "Paid" },
-      { month: "2025-08", rent: "£1200", amountPaid: "£0", paidDate: null, status: "Unpaid" },
-    ],
-    "Sara Miles": [
-      { month: "2025-09", rent: "£1000", amountPaid: "£500", paidDate: "2025-09-12", status: "Partial" },
-    ],
-    "Tom Hardy": [
-      { month: "2025-09", rent: "£950", amountPaid: "£950", paidDate: "2025-09-12", status: "Paid" },
-    ],
-    "Ava Green": [
-      { month: "2025-10", rent: "£1100", amountPaid: "£1100", paidDate: "2025-10-01", status: "Paid" },
-    ],
-    "Liam Stone": [
-      { month: "2025-09", rent: "£1250", amountPaid: "£1250", paidDate: "2025-09-20", status: "Paid" },
-    ],
-  };
+  const { data: tenantDetails, isLoading: tenantLoading, error: tenantError } = useTenantTransactions(selectedTenantId || undefined);
 
-  const openTenant = (tenantName: string) => {
-    setSelectedTenant({ name: tenantName, transactions: tenantTransactions[tenantName] ?? [] });
+  const openTenant = (tenant: any) => {
+    const name = Array.isArray(tenant.tenantName) ? tenant.tenantName.join(" ") : tenant.name || tenant.tenantName;
+    setSelectedTenantName(name || "Tenant");
+    setSelectedTenantId(tenant._id || tenant.id || null);
     setModalView("tenant");
   };
   // const handleOpenLandlord = (landlord: any) => {
@@ -204,7 +189,8 @@ export default function LandlordManagement() {
     setNewExpenseDesc("");
     setNewExpenseAmount("");
     setModalView("landlord");
-    setSelectedTenant(null);
+    setSelectedTenantId(null);
+    setSelectedTenantName(null);
     setSelectedLandlordId(landlord.id || landlord._id || null);
   };
 
@@ -329,7 +315,8 @@ export default function LandlordManagement() {
                   setSelectedLandlord(null);
                   setSelectedLandlordId(null);
                   setModalView("landlord");
-                  setSelectedTenant(null);
+                  setSelectedTenantId(null);
+                  setSelectedTenantName(null);
                 }}
                 className="text-gray-400 hover:text-white"
               >
@@ -380,7 +367,7 @@ export default function LandlordManagement() {
                             {currentTenants.map((t: any) => (
                               <tr
                                 key={t._id || t.id}
-                                onClick={() => openTenant(Array.isArray(t.tenantName) ? t.tenantName.join(" ") : t.name || t.tenantName)}
+                                onClick={() => openTenant(t)}
                                 className="border-t border-[#151515] hover:bg-[#0e0e0e] cursor-pointer"
                               >
                                 <td className="py-3 px-4 text-gray-300">{Array.isArray(t.tenantName) ? t.tenantName.join(" ") : t.name || t.tenantName}</td>
@@ -459,7 +446,7 @@ export default function LandlordManagement() {
                     </div>
                   </>
                 ) : (
-                  // Tenant transactions view
+                  // Tenant transactions view (API-driven)
                   <>
                     <div className="flex items-center justify-between mb-2">
                       <button
@@ -469,33 +456,50 @@ export default function LandlordManagement() {
                         <ChevronLeft className="w-4 h-4" /> Back
                       </button>
                     </div>
-                    <h4 className="text-sm text-gray-400 mb-3">{selectedTenant?.name} — Transactions</h4>
-                    <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515] p-3">
-                      <table className="min-w-full text-sm">
-                        <thead>
-                          <tr className="text-gray-400 text-left">
-                            <th className="py-2 px-3 text-xs">Month</th>
-                            <th className="py-2 px-3 text-xs">Rent</th>
-                            <th className="py-2 px-3 text-xs">Amount Paid</th>
-                            <th className="py-2 px-3 text-xs">Paid Date</th>
-                            <th className="py-2 px-3 text-xs">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(selectedTenant?.transactions ?? []).map((tr: any, i: number) => (
-                            <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
-                              <td className="py-2 px-3 text-gray-300">{tr.month}</td>
-                              <td className="py-2 px-3 text-gray-300">{tr.rent}</td>
-                              <td className={`py-2 px-3 ${tr.status === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid}</td>
-                              <td className="py-2 px-3 text-gray-300">{tr.paidDate ?? '—'}</td>
-                              <td className="py-2 px-3">
-                                <span className={`px-2 py-1 text-xs rounded-full border ${tr.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : tr.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{tr.status}</span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <h4 className="text-sm text-gray-400 mb-3">{selectedTenantName} — Transactions</h4>
+
+                    {tenantLoading ? (
+                      <div className="p-6 text-center text-gray-400">Loading transactions…</div>
+                    ) : tenantError ? (
+                      <div className="p-6 text-center text-rose-400">Failed to load transactions.</div>
+                    ) : (
+                      <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515] p-3">
+                        {Array.isArray(tenantDetails?.rentHistory) && tenantDetails!.rentHistory.length > 0 ? (
+                          <table className="min-w-full text-sm">
+                            <thead>
+                              <tr className="text-gray-400 text-left">
+                                <th className="py-2 px-3 text-xs">Month</th>
+                                <th className="py-2 px-3 text-xs">Rent</th>
+                                <th className="py-2 px-3 text-xs">Amount Paid</th>
+                                <th className="py-2 px-3 text-xs">Paid Date</th>
+                                <th className="py-2 px-3 text-xs">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tenantDetails!.rentHistory.map((tr: any, i: number) => {
+                                const statusLabel = tr.status ? String(tr.status).charAt(0).toUpperCase() + String(tr.status).slice(1) : "-";
+                                const statusClass = statusLabel === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : statusLabel === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700';
+                                const fmtCurrency = (n: number) => `£${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                                return (
+                                  <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
+                                    <td className="py-2 px-3 text-gray-300">{tr.month}</td>
+                                    <td className="py-2 px-3 text-gray-300">{fmtCurrency(tr.rent)}</td>
+                                    <td className={`py-2 px-3 ${statusLabel === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{fmtCurrency(tr.amountPaid || 0)}</td>
+                                    <td className="py-2 px-3 text-gray-300">{tr.paidOn ? new Date(tr.paidOn).toLocaleDateString() : '—'}</td>
+                                    <td className="py-2 px-3">
+                                      <span className={`px-2 py-1 text-xs rounded-full border ${statusClass}`}>{statusLabel}</span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <div className="p-6 text-center text-gray-400">No transactions for this tenant right now</div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="mt-4 flex items-center justify-end">
                       <button onClick={() => { setModalView("landlord"); }} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Back</button>
                     </div>
