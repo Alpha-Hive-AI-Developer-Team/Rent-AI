@@ -49,7 +49,8 @@ export default function SignIn() {
             toast.success(resp?.message || "Login successful");
 
             const role = user?.role || "user";
-            if (role === "admin") router.push("/admin/dashboard");
+            console.debug("User role:", role);
+            if (role === "admin" || role === "superAdmin") router.push("/admin/dashboard");
             else router.push("/user/dashboard");
           } catch (err) {
             console.error(err);

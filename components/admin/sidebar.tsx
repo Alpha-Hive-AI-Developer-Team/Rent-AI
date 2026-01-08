@@ -5,19 +5,29 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Home, Building2, Users, Gift, LogOut, X } from "lucide-react";
+import { useAuthUser } from "@/redux/useAuthUser";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const [isDesktop, setIsDesktop] = useState(true);
+  const user=useAuthUser();
+ console.log("Sidebar user role:", user?.role);
   const router = useRouter();
   const [logoutOpen, setLogoutOpen] = useState(false);
 
   const menuItems: { name: string; path: string; Icon: React.ElementType }[] = [
     { name: "Dashboard", path: "/admin/dashboard", Icon: Home },
+    { name: "Admin Management", path: "/admin/management", Icon: Users },
     { name: "Landlord Management", path: "/admin/landlords", Icon: Building2 },
     { name: "Tenant Management", path: "/admin/tenants", Icon: Users },
     { name: "Referrals", path: "/admin/referrals", Icon: Gift },
   ];
+
+  // determine role from auth user and decide which menu items to render
+  const userRole = String(user?.role || "").toLowerCase();
+  const isSuper = ["superAdmin"].includes(userRole);
+  // show Admin Management only to super-admin; all other users see the menu without that item
+  const renderMenuItems = isSuper ? menuItems : menuItems.filter((m) => m.name !== "Admin Management");
 
   // Detect screen size (lg breakpoint)
   useEffect(() => {
@@ -65,7 +75,7 @@ export default function Sidebar() {
           <div className="text-xs text-gray-400 px-2 pb-2">Main</div>
         )} */}
         <div className="bg-transparent p-2 space-y-3">
-          {menuItems.map(({ name, path, Icon }) => {
+          {renderMenuItems.map(({ name, path, Icon }) => {
             const isActive = pathname === path || (pathname === "" && path === "/");
             return (
               <Link
