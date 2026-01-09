@@ -11,6 +11,28 @@ export async function getAdminLandlords(filters: { search?: string; plan?: strin
 	return res.data;
 }
 
+// --- Admin management (super-admin) ---
+export async function getAdmins(filters: { search?: string; status?: string; page?: number; limit?: number } = {}) {
+	const params: Record<string, any> = {};
+	if (filters.search) params.search = filters.search;
+	if (filters.status) params.status = filters.status;
+	if (filters.page) params.page = filters.page;
+	if (filters.limit) params.limit = filters.limit;
+	const res = await apiClient.get(`/auth/admins`, { params });
+	return res.data;
+}
+
+export async function createAdmin(payload: { firstName: string; lastName: string; email: string; password: string }) {
+	const res = await apiClient.post(`/auth/admins`, payload);
+	return res.data;
+}
+
+export async function updateAdminStatus(adminId: string, status: 'active' | 'disable') {
+	console.log(`Updating admin ${adminId} status to ${status}`);
+	const res = await apiClient.put(`/auth/admins/${adminId}/status`, { status });
+	return res.data;
+}
+
 export async function getLandlordTenants(filters: { landlordId?: string } = {}) {
 	const params: Record<string, any> = {};
 	if (filters.landlordId) params.landlordId = filters.landlordId;
@@ -44,5 +66,5 @@ export async function getAdminSummary() {
 	return res.data;
 }
 
-export default { getAdminLandlords, getLandlordTenants, getTenantTransactions, getAllTenants };
+export default { getAdminLandlords, getLandlordTenants, getTenantTransactions, getAllTenants, getAdmins, createAdmin, updateAdminStatus };
 

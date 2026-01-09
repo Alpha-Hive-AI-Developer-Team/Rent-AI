@@ -24,7 +24,8 @@ export default function Sidebar() {
   ];
 
   // determine role from auth user and decide which menu items to render
-  const userRole = String(user?.role || "").toLowerCase();
+  const userRole = String(user?.role || "")
+  console.log("Determined user role:", userRole);
   const isSuper = ["superAdmin"].includes(userRole);
   // show Admin Management only to super-admin; all other users see the menu without that item
   const renderMenuItems = isSuper ? menuItems : menuItems.filter((m) => m.name !== "Admin Management");

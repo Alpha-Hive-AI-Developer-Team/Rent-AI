@@ -1,7 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAdminLandlords } from "@/lib/api/adminApi";
 
 import { getLandlordTenants, getTenantTransactions, getAllTenants, getTenantStats, getAdminSummary } from "@/lib/api/adminApi";
+import { getAdmins, createAdmin } from "@/lib/api/adminApi";
+import { updateAdminStatus } from "@/lib/api/adminApi";
 
 export function useAdminLandlords(filters: { search?: string; plan?: string; status?: string; page?: number; limit?: number } = {}) {
 	return useQuery<any, Error, any>({
@@ -53,5 +56,29 @@ export function useAllTenants(filters: { search?: string; status?: string } = {}
 		queryFn: () => getAllTenants(filters),
 		staleTime: 0,
 	});
+}
+
+export function useAdmins(filters: { search?: string; status?: string; page?: number; limit?: number } = {}) {
+	return useQuery<any, Error, any>({
+		queryKey: ["adminsList", filters],
+		queryFn: () => getAdmins(filters),
+		staleTime: 0,
+	});
+}
+
+export function useCreateAdmin() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (payload: any) => createAdmin(payload),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["adminsList"] }),
+	});
+}
+
+export function useUpdateAdminStatus() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: ({ id, status }: { id: string; status: 'active' | 'disable' }) => updateAdminStatus(id, status),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["adminsList"] }),
+    });
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,37 +12,42 @@ import {
 import { MoreVertical } from "lucide-react";
 import toast from "react-hot-toast";
 import { withAuth } from "@/hooks/withAuth";
+import { useAdmins, useCreateAdmin, useUpdateAdminStatus } from "@/hooks/useAdmin";
 
- function AdminManagementPage() {
+function AdminManagementPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
 
-  const [admins, setAdmins] = useState(() => [
-    { id: "1", name: "Alice Morgan", email: "alice@rentai.com", status: "active", createdAt: "2025-09-12" },
-    { id: "2", name: "Brian Cox", email: "brian@rentai.com", status: "disable", createdAt: "2025-07-03" },
-    { id: "3", name: "Cecilia Ray", email: "cecilia@rentai.com", status: "active", createdAt: "2025-05-20" },
-    { id: "4", name: "Darren Lee", email: "darren@rentai.com", status: "disable", createdAt: "2025-03-11" },
-    { id: "5", name: "Eva Stone", email: "eva@rentai.com", status: "active", createdAt: "2024-12-01" },
-    { id: "6", name: "Faris Khan", email: "faris@rentai.com", status: "active", createdAt: "2024-11-18" },
-    { id: "7", name: "Grace Hopper", email: "grace@rentai.com", status: "active", createdAt: "2024-10-02" },
-    { id: "8", name: "Hector Ruiz", email: "hector@rentai.com", status: "disable", createdAt: "2024-08-14" },
-    { id: "9", name: "Ivy Chen", email: "ivy@rentai.com", status: "active", createdAt: "2024-06-29" },
-    { id: "10", name: "John Doe", email: "john@rentai.com", status: "disable", createdAt: "2024-05-05" },
-    { id: "11", name: "Kara Smith", email: "kara@rentai.com", status: "active", createdAt: "2024-03-22" },
-    { id: "12", name: "Liam Patel", email: "liam@rentai.com", status: "active", createdAt: "2023-12-12" },
-  ]);
+  // debounced search
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 700);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const { data: adminsRes, isLoading: adminsLoading } = useAdmins({ search: debouncedSearch || undefined, status: statusFilter === 'All' ? undefined : statusFilter, page: 1, limit: 50 });
+  const adminsList = adminsRes?.data ?? adminsRes?.data?.data ?? adminsRes?.data ?? [];
+  const createAdminMutation = useCreateAdmin();
+  const updateStatusMutation = useUpdateAdminStatus();
 
   const filtered = useMemo(() => {
-    return admins.filter((a) => {
-      const matchesSearch =
-        !search || `${a.name} ${a.email}`.toLowerCase().includes(search.toLowerCase());
+    // prefer server-provided list; fallback empty
+    return (adminsList || []).filter((a: any) => {
+      const matchesSearch = !search || `${a.name} ${a.email}`.toLowerCase().includes(search.toLowerCase());
       const matchesStatus = statusFilter === "All" ? true : a.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [admins, search, statusFilter]);
+  }, [adminsList, search, statusFilter]);
 
   const changeStatus = (id: string, newStatus: string) => {
-    setAdmins((prev) => prev.map((p) => (p.id === id ? { ...p, status: newStatus } : p)));
+    updateStatusMutation.mutate({ id, status: newStatus as 'active' | 'disable' }, {
+      onSuccess: () => {
+        toast.success('Admin status updated');
+      },
+      onError: (err: any) => {
+        toast.error(err?.message || 'Failed to update status');
+      }
+    });
   };
 
   // Add Admin modal state
@@ -53,23 +58,18 @@ import { withAuth } from "@/hooks/withAuth";
   const onCreateAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdding(true);
-    const name = `${newAdminForm.firstName.trim()} ${newAdminForm.lastName.trim()}`.trim();
-    const newAdmin = {
-      id: Date.now().toString(),
-      name: name || newAdminForm.email.split("@")[0],
-      email: newAdminForm.email,
-      status: "active",
-      createdAt: new Date().toISOString(),
-    };
-
-    // simulate network delay
-    setTimeout(() => {
-      setAdmins((prev) => [newAdmin, ...prev]);
-      setAdding(false);
-      setShowAddModal(false);
-      setNewAdminForm({ firstName: "", lastName: "", email: "", password: "" });
-      try { toast.success("Admin created"); } catch (e) {}
-    }, 600);
+    createAdminMutation.mutate(newAdminForm, {
+      onSuccess: (res: any) => {
+        setAdding(false);
+        setShowAddModal(false);
+        setNewAdminForm({ firstName: "", lastName: "", email: "", password: "" });
+        toast.success("Admin created");
+      },
+      onError: (err: any) => {
+        setAdding(false);
+        toast.error(err?.message || 'Failed to create admin');
+      }
+    });
   };
 
   return (
@@ -118,7 +118,7 @@ import { withAuth } from "@/hooks/withAuth";
         </div>
       </div>
 
-      <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515]">
+          <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515]">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="text-gray-400 text-left">
@@ -126,19 +126,23 @@ import { withAuth } from "@/hooks/withAuth";
               <th className="py-3 px-4 text-xs">Email</th>
               <th className="py-3 px-4 text-xs">Status</th>
               <th className="py-3 px-4 text-xs">Created</th>
-              <th className="py-3 px-4 text-xs">Action</th>
+              <th className="py-3 px-6 text-xs text-right rounded-tr-lg">Action</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {adminsLoading ? (
               <tr>
-                <td colSpan={4} className="py-6 px-4 text-center text-gray-400">
+                <td colSpan={5} className="py-8 text-center text-gray-400">Loading admins...</td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-6 px-4 text-center text-gray-400">
                   No admins found
                 </td>
               </tr>
             ) : (
-              filtered.map((a) => (
-                <tr key={a.id} className="border-t border-[#111] hover:bg-[#0e0e0e]">
+              filtered.map((a:any) => (
+                <tr key={a._id || a.id} className="border-t border-[#111] hover:bg-[#0e0e0e]">
                   <td className="py-3 px-4 text-gray-200">{a.name}</td>
                   <td className="py-3 px-4 text-gray-300">{a.email}</td>
                   <td className="py-3 px-4">
@@ -146,8 +150,8 @@ import { withAuth } from "@/hooks/withAuth";
                       {a.status === 'active' ? 'Active' : 'Disabled'}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-gray-300">{new Date(a.createdAt).toLocaleDateString()}</td>
-                  <td className="py-3 px-4 text-right">
+                  <td className="py-3 px-4 text-gray-300">{a.createdAt ? new Date(a.createdAt).toLocaleDateString() : '—'}</td>
+                  <td className="py-3 px-6 text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button className="p-2 rounded-full hover:bg-[#0e0e0e]">
@@ -155,8 +159,8 @@ import { withAuth } from "@/hooks/withAuth";
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent className="bg-[#111] border border-gray-800 text-gray-300">
-                        <DropdownMenuItem onClick={() => changeStatus(a.id, 'active')} className="cursor-pointer">Set Active</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => changeStatus(a.id, 'disable')} className="cursor-pointer">Set Disabled</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => changeStatus(a._id || a.id, 'active')} className="cursor-pointer">Set Active</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => changeStatus(a._id || a.id, 'disable')} className="cursor-pointer">Set Disabled</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </td>
@@ -189,6 +193,7 @@ import { withAuth } from "@/hooks/withAuth";
 
                 <div>
                   <label className="block text-sm mb-1 text-gray-300">Last Name</label>
+      
                   <input
                     placeholder="Last Name"
                     value={newAdminForm.lastName}
