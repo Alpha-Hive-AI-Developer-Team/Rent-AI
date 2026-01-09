@@ -39,7 +39,7 @@ export default function TransactionsPage() {
   const transactions: Transaction[] = [
     {
       id: 1,
-      date: "2025-09-01",
+      date: "01/09/2025",
       description: "FPI JACK LEAH 119AV RENT",
       amount: "£1200",
       status: "Matched",
@@ -55,7 +55,17 @@ export default function TransactionsPage() {
     Matched: "bg-emerald-900/20 text-emerald-400 border-emerald-700",
     "Needs Review": "bg-amber-900/20 text-amber-400 border-amber-700",
   };
-
+ 
+  // Format dates for display as DD/MM/YYYY
+  function formatDate(input: any): string {
+    if (!input) return "-";
+    const d = new Date(input);
+    if (isNaN(d.getTime())) return "-";
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }
   
 
   // Fetch unreconciled transactions from API (keep the full query so we can refetch)
@@ -65,7 +75,7 @@ export default function TransactionsPage() {
   const apiDocs = unreconciledRes?.data?.docs ?? [];
   const apiRows = apiDocs.map((d: any, i: number) => ({
     id: i + 1,
-    date: d.transaction?.date ? new Date(d.transaction.date).toISOString().split("T")[0] : "-",
+    date: d.transaction?.date ? formatDate(d.transaction.date) : "-",
     description: d.transaction?.description || d.transaction?.reference || "",
     amount: typeof d.transaction?.amount === "number" ? `£${d.transaction.amount}` : String(d.transaction?.amount ?? ""),
     status: d.matchStatus === "matched" ? "Matched" : "Needs Review",
@@ -472,7 +482,7 @@ export default function TransactionsPage() {
                                           <td className="py-2 px-3 text-gray-300">{tr.month}</td>
                                           <td className="py-2 px-3 text-gray-300">{tr.rent}</td>
                                           <td className={`py-2 px-3 ${tr.status === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid}</td>
-                                          <td className="py-2 px-3 text-gray-300">{tr.paidDate ?? '—'}</td>
+                                          <td className="py-2 px-3 text-gray-300">{tr.paidDate ? formatDate(tr.paidDate) : '—'}</td>
                                           <td className="py-2 px-3">
                                             <span className={`px-2 py-1 text-xs rounded-full border ${tr.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : tr.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{tr.status}</span>
                                           </td>
