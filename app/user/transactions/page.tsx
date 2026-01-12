@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { Plus, Search, Check, X, Bell, Eye, ChevronDown, Info } from "lucide-react";
 import { useState, useEffect, Fragment } from "react";
-import { useConnectedAccounts, useUnreconciledTransactions, useYapilyInstitutions } from "@/hooks/useTransactions";
+import { useConnectedAccounts, useUnreconciledTransactions, useYapilyInstitutions, useConnectedInstitution } from "@/hooks/useTransactions";
 import { createYapilyAccountAuthRequest, connectYapilyAccounts, getYapilyTransactions } from "@/lib/api/transactionApi";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
@@ -167,8 +167,11 @@ export default function TransactionsPage() {
 
   const [connecting, setConnecting] = useState(false);
   const [connectedInstitution, setConnectedInstitution] = useState<string | null>(null);
+  const [connectedInstitutionId, setConnectedInstitutionId] = useState<string | null>(null);
   const [connectedConsent, setConnectedConsent] = useState<string | null>(null);
   const [syncingAccounts, setSyncingAccounts] = useState<string[]>([]);
+
+  const connectedInstitutionQuery = useConnectedInstitution(true);
 
   useEffect(() => {
     try {
@@ -178,11 +181,16 @@ export default function TransactionsPage() {
       const institution = params.get('institution') || params.get('institutionId') || params.get('application-user-id') || params.get('applicationUserId');
       if (consent) {
         setConnectedConsent(consent);
-        if (institution) setConnectedInstitution(institution as string);
+        if (institution) {
+          setConnectedInstitutionId(institution as string);
+          setConnectedInstitution(institution as string);
+        }
         // send consent to backend to fetch & save accounts (requires auth cookie/token)
         (async () => {
           try {
-            await connectYapilyAccounts(consent);
+            await connectYapilyAccounts(consent, institution || '');
+            // after saving consent & accounts on backend, refresh connected institution
+            try { await connectedInstitutionQuery.refetch(); } catch (e) { }
             // optionally provide user feedback - keep minimal
             console.log('Yapily accounts synced');
           } catch (err) {
@@ -190,20 +198,34 @@ export default function TransactionsPage() {
           }
         })();
         // remove sensitive params from URL
-        const url = new URL(window.location.href);
-        url.searchParams.delete('consent');
-        url.searchParams.delete('institution');
-        url.searchParams.delete('institutionId');
-        url.searchParams.delete('application-user-id');
-        url.searchParams.delete('applicationUserId');
-        url.searchParams.delete('user-uuid');
-        url.searchParams.delete('userUuid');
-        window.history.replaceState({}, document.title, url.toString());
+        // const url = new URL(window.location.href);
+        // url.searchParams.delete('consent');
+        // url.searchParams.delete('institution');
+        // url.searchParams.delete('institutionId');
+        // url.searchParams.delete('application-user-id');
+        // url.searchParams.delete('applicationUserId');
+        // url.searchParams.delete('user-uuid');
+        // url.searchParams.delete('userUuid');
+        // window.history.replaceState({}, document.title, url.toString());
       }
     } catch (e) {
       // ignore
     }
   }, []);
+
+  // when backend returns connected institution, update local state
+  useEffect(() => {
+    try {
+      const payload = connectedInstitutionQuery.data;
+      const inst = payload?.data || null;
+      if (inst) {
+        setConnectedInstitutionId(inst.id || inst._id || null);
+        setConnectedInstitution(inst.name || inst.id || null);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [connectedInstitutionQuery.data]);
 
   // Determine candidate tenants for the modal.
   // - If `selectedTransaction.raw` exists (API-backed), use its tenant info or an empty list when none found.
@@ -545,6 +567,7 @@ export default function TransactionsPage() {
       onClick={async () => {
         try {
           await yapilyQuery.refetch();
+         
           setShowYapilyModal(true);
         } catch (err) {
           console.error(err);
@@ -603,7 +626,7 @@ export default function TransactionsPage() {
                 <div className="text-sm text-gray-400">No results. Click Connect Open Banking to fetch.</div>
               )}
 
-              {(yapilyQuery.data?.data ?? []).map((inst: any) => (
+                  {(yapilyQuery.data?.data ?? []).map((inst: any) => (
                 <div key={inst.id} className="flex items-center gap-4 p-3 bg-[#050505] border border-[#111] rounded-lg">
                   <div className="w-12 h-12 flex-shrink-0">
                     {inst.media?.[0]?.source ? (
@@ -619,8 +642,23 @@ export default function TransactionsPage() {
                     <div className="text-xs text-gray-500 mt-1">{inst.environmentType} • {inst.countries?.map((c: any) => c.displayName).join(', ')}</div>
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                
-                    <button onClick={() => connectInstitution(inst)} className="px-3 py-1 rounded-full bg-emerald-600 text-black text-xs hover:brightness-105">Connect</button>
+                    {(() => {
+                      const instId = inst.id || inst.institution?.id || inst.institutionId || null;
+                      const isConnected = connectedInstitutionId && String(connectedInstitutionId) === String(instId);
+                      if (isConnected) {
+                        return (
+                          <>
+                            <div className="text-xs text-emerald-300">Connected</div>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => connectInstitution(inst)} className="px-3 py-1 rounded-full bg-amber-600 text-black text-xs hover:brightness-105">Reconnect</button>
+                            </div>
+                          </>
+                        );
+                      }
+                      return (
+                        <button onClick={() => connectInstitution(inst)} className="px-3 py-1 rounded-full bg-emerald-600 text-black text-xs hover:brightness-105">Connect</button>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}
