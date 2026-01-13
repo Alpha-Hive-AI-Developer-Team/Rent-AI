@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import useAdminLandlords, { useLandlordTenants, useTenantTransactions } from "@/hooks/useAdmin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -9,75 +10,90 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Search, Plus, X } from "lucide-react";
+import { ChevronDown, Search, Plus, X, ChevronLeft } from "lucide-react";
 import CustomTable from "@/components/admin/custom-table";
 
 export default function LandlordManagement() {
   const [planFilter, setPlanFilter] = useState("All Plan");
   const [statusFilter, setStatusFilter] = useState("All Status");
+  const [search, setSearch] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState<{ search?: string; plan?: string; status?: string }>({});
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(10);
 
-  const landlords = [
-    {
-      id: 1,
-      name: "Robert Johnson",
-      email: "info@gmail.com",
-      plan: "Premium",
-      tenants: 24,
-      status: "Suspended",
-      created: "Mar 25, 2025",
-      addresses: [
-        {
-          id: "a1",
-          address: "119 The Avenue - R3",
-          tenants: [
-            { id: 1, name: "Jack Leah", rent: "£1200", status: "Paid", lastPayment: "2025-09-01" },
-            { id: 2, name: "Sara Miles", rent: "£1000", status: "Unpaid", lastPayment: "2025-08-12" },
-          ],
-        },
-        {
-          id: "a2",
-          address: "42 Baker Street - Apt 2",
-          tenants: [
-            { id: 3, name: "Tom Hardy", rent: "£950", status: "Partial", lastPayment: "2025-09-12" },
-          ],
-        },
-      ],
-    },
-    {
-      id: 2,
-      name: "Emily Clark",
-      email: "emily@example.com",
-      plan: "Enterprise",
-      tenants: 34,
-      status: "Active",
-      created: "Mar 25, 2025",
-      addresses: [
-        {
-          id: "b1",
-          address: "7 Willow Lane - Flat B",
-          tenants: [
-            { id: 4, name: "Ava Green", rent: "£1100", status: "Paid", lastPayment: "2025-10-01" },
-            { id: 5, name: "Liam Stone", rent: "£1250", status: "Paid", lastPayment: "2025-09-20" },
-          ],
-        },
-      ],
-    },
-  ];
+  const [selectedLandlord, setSelectedLandlord] = useState<any | null>(null);
+  const [selectedLandlordId, setSelectedLandlordId] = useState<string | null>(null);
+
+  const { data: adminResp, isLoading: adminLoading, error: adminError } = useAdminLandlords({ ...appliedFilters, page, limit });
+  const { data: tenantsResp, isLoading: tenantsLoading, error: tenantsError } = useLandlordTenants(selectedLandlordId || undefined);
+
+  // keep UI controls (search, dropdown labels) in sync with appliedFilters
+  useEffect(() => {
+    if (!appliedFilters) return;
+    setSearch(appliedFilters.search || "");
+    setPlanFilter(appliedFilters.plan ? String(appliedFilters.plan) : "All Plan");
+    setStatusFilter(appliedFilters.status ? String(appliedFilters.status) : "All Status");
+  }, [appliedFilters]);
+
+  // Debounce search input — update appliedFilters after user stops typing
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      const p = planFilter === "All Plan" ? undefined : String(planFilter).toLowerCase();
+      const s = statusFilter === "All Status" ? undefined : String(statusFilter).toLowerCase();
+      // reset to first page when filters/search change
+      setPage(1);
+      setAppliedFilters({ search: search || undefined, plan: p, status: s });
+    }, 500);
+
+    return () => clearTimeout(handle);
+  }, [search, planFilter, statusFilter]);
+
+  // when page or limit changes, update appliedFilters to trigger refetch
+  useEffect(() => {
+    const p = planFilter === "All Plan" ? undefined : String(planFilter).toLowerCase();
+    const s = statusFilter === "All Status" ? undefined : String(statusFilter).toLowerCase();
+    setAppliedFilters({ search: search || undefined, plan: p, status: s });
+  }, [page, limit]);
+
+  // derive landlords directly from hook response (no local state)
+  const landlords = (adminResp?.data || []).map((l: any) => ({
+    id: l._id,
+    name: l.name,
+    email: l.email,
+    plan: (String(l.planType || "free")).toLowerCase(),
+    tenants: l.tenantsCount || 0,
+    status: (String(l.status || "active")).toLowerCase(),
+    created: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : "—",
+    addresses: l.addresses || [],
+  }));
+
+  const totalLandlords: number = Number(adminResp?.total || 0);
+  const totalPages = Math.max(1, Math.ceil(totalLandlords / limit));
+
+  const startIndex = totalLandlords === 0 ? 0 : (page - 1) * limit + 1;
+  const endIndex = Math.min(page * limit, totalLandlords);
+  const totalText = totalLandlords === 0
+    ? `Showing 0 results`
+    : page === 1 && totalLandlords <= limit
+    ? `Showing ${totalLandlords} results`
+    : `Showing ${startIndex} to ${endIndex} of ${totalLandlords} results`;
 
   const getBadgeColor = (type: string, value: string) => {
+    const val = String(value || "").toLowerCase();
     const map: Record<string, Record<string, string>> = {
       plan: {
-        Premium: "bg-purple-600/30 text-[#9A00B2]",
-        Enterprise: "bg-yellow-600/30 text-[#AFB200]",
-        Basic: "bg-green-600/30 text-[#009118]",
+        free: "bg-gray-800/30 text-gray-300",
+        starter: "bg-green-600/30 text-[#009118]",
+        pro: "bg-purple-600/30 text-[#9A00B2]",
+        interprise: "bg-yellow-600/30 text-[#AFB200]",
       },
       status: {
-        Active: "bg-green-600/30 text-[#00B22F]",
-        Pending: "bg-yellow-600/30 text-[#AFB200]",
-        Suspended: "bg-red-600/30 text-[#FF5E49]",
+        active: "bg-green-600/30 text-[#00B22F]",
+        disable: "bg-red-600/30 text-[#FF5E49]",
       },
     };
-    return map[type]?.[value] || "bg-gray-800 text-gray-400";
+
+    return map[type]?.[val] || "bg-gray-800 text-gray-400";
   };
 
   const columns = [
@@ -130,13 +146,52 @@ export default function LandlordManagement() {
     { key: "created", label: "Created" },
   ];
 
-  // Local UI state for landlord details modal
-  const [selectedLandlord, setSelectedLandlord] = useState<any | null>(null);
   const [selectedAddressIndex, setSelectedAddressIndex] = useState<number>(0);
+
+  const modalAddresses: any[] = (tenantsResp && Array.isArray(tenantsResp.data)) ? tenantsResp.data : (selectedLandlord?.addresses || []);
+  const currentTenants = modalAddresses[selectedAddressIndex || 0]?.tenants || [];
+
+  // Tenant modal state (rendered inside same modal)
+  const [modalView, setModalView] = useState<"landlord" | "tenant">("landlord");
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const [selectedTenantName, setSelectedTenantName] = useState<string | null>(null);
+
+  const { data: tenantDetails, isLoading: tenantLoading, error: tenantError } = useTenantTransactions(selectedTenantId || undefined);
+
+  const openTenant = (tenant: any) => {
+    const name = Array.isArray(tenant.tenantName) ? tenant.tenantName.join(" ") : tenant.name || tenant.tenantName;
+    setSelectedTenantName(name || "Tenant");
+    setSelectedTenantId(tenant._id || tenant.id || null);
+    setModalView("tenant");
+  };
+  // const handleOpenLandlord = (landlord: any) => {
+  //   setSelectedLandlord(landlord);
+  //   setSelectedAddressIndex(0);
+  // };
+
+  // Manual expenses state and inputs
+  const [manualExpenses, setManualExpenses] = useState<Array<{ desc: string; amount: number }>>([]);
+  const [newExpenseDesc, setNewExpenseDesc] = useState("");
+  const [newExpenseAmount, setNewExpenseAmount] = useState("");
+
+  const addExpense = () => {
+    const amt = Number(String(newExpenseAmount).replace(/[^0-9.-]+/g, "")) || 0;
+    if (!newExpenseDesc || amt === 0) return;
+    setManualExpenses((s) => [...s, { desc: newExpenseDesc, amount: amt }]);
+    setNewExpenseDesc("");
+    setNewExpenseAmount("");
+  };
 
   const handleOpenLandlord = (landlord: any) => {
     setSelectedLandlord(landlord);
     setSelectedAddressIndex(0);
+    setManualExpenses([]);
+    setNewExpenseDesc("");
+    setNewExpenseAmount("");
+    setModalView("landlord");
+    setSelectedTenantId(null);
+    setSelectedTenantName(null);
+    setSelectedLandlordId(landlord.id || landlord._id || null);
   };
 
   return (
@@ -160,6 +215,8 @@ export default function LandlordManagement() {
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-[#535862]" />
           <Input
             placeholder="Search Landlords..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="pl-10 bg-[#111] border-gray-800 text-white placeholder-gray-500"
           />
         </div>
@@ -181,12 +238,12 @@ export default function LandlordManagement() {
               align="start"
               sideOffset={4}
             >
-              {["All Plan", "Basic", "Premium", "Enterprise"].map((plan) => (
+              {["All Plan", "free", "starter", "pro", "interprise"].map((plan) => (
                 <DropdownMenuItem
                   key={plan}
                   onClick={() => setPlanFilter(plan)}
                 >
-                  {plan}
+                  {plan === "All Plan" ? "All Plan" : String(plan).charAt(0).toUpperCase() + String(plan).slice(1)}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -208,22 +265,22 @@ export default function LandlordManagement() {
               align="start"
               sideOffset={4}
             >
-              {["All Status", "Active", "Pending", "Suspended"].map(
-                (status) => (
-                  <DropdownMenuItem
-                    key={status}
-                    onClick={() => setStatusFilter(status)}
-                  >
-                    {status}
-                  </DropdownMenuItem>
-                )
-              )}
+              {["All Status", "active", "disable"].map((status) => (
+                <DropdownMenuItem key={status} onClick={() => setStatusFilter(status)}>
+                  {status === "All Status" ? "All Status" : String(status).charAt(0).toUpperCase() + String(status).slice(1)}
+                </DropdownMenuItem>
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
 
           <Button
             variant="outline"
             className="bg-[#111] border-gray-800 text-white"
+            onClick={() => {
+              const p = planFilter === "All Plan" ? undefined : String(planFilter).toLowerCase();
+              const s = statusFilter === "All Status" ? undefined : String(statusFilter).toLowerCase();
+              setAppliedFilters({ search: search || undefined, plan: p, status: s });
+            }}
           >
             Apply Filter
           </Button>
@@ -234,7 +291,17 @@ export default function LandlordManagement() {
       <CustomTable
         data={landlords}
         columns={columns}
-        total="Showing 1 to 5 of 2,846 results"
+        total={totalText}
+        pagination={{
+          page,
+          pageSize: limit,
+          total: totalLandlords,
+          onPageChange: (p: number) => setPage(Math.max(1, Math.min(totalPages, Number(p)))),
+          onPageSizeChange: (n: number) => {
+            setLimit(n);
+            setPage(1);
+          },
+        }}
       />
 
       {/* Landlord details modal */}
@@ -243,7 +310,16 @@ export default function LandlordManagement() {
           <div className="w-full max-w-4xl bg-[#0b0b0b] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">{selectedLandlord.name} — Addresses</h3>
-              <button onClick={() => setSelectedLandlord(null)} className="text-gray-400 hover:text-white">
+              <button
+                onClick={() => {
+                  setSelectedLandlord(null);
+                  setSelectedLandlordId(null);
+                  setModalView("landlord");
+                  setSelectedTenantId(null);
+                  setSelectedTenantName(null);
+                }}
+                className="text-gray-400 hover:text-white"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -252,72 +328,183 @@ export default function LandlordManagement() {
               <div className="md:col-span-1">
                 <h4 className="text-sm text-gray-400 mb-2">Addresses</h4>
                 <div className="space-y-2">
-                  {selectedLandlord.addresses.map((addr: any, i: number) => (
+                  {modalAddresses.map((addr: any, i: number) => (
                     <button
-                      key={addr.id}
+                      key={addr.id || `${i}`}
                       onClick={() => setSelectedAddressIndex(i)}
                       className={`w-full text-left px-3 py-2 rounded-lg border ${
                         selectedAddressIndex === i ? "border-emerald-600 bg-emerald-900/10" : "border-gray-800"
                       }`}
                     >
-                      <div className="text-sm text-gray-200">{addr.address}</div>
-                      <div className="text-xs text-gray-400">{addr.tenants.length} tenants</div>
+                      <div className="text-sm text-gray-200">{addr.address || addr.property}</div>
+                      <div className="text-xs text-gray-400">{(addr.tenants || []).length} tenants</div>
                     </button>
                   ))}
                 </div>
               </div>
 
               <div className="md:col-span-2">
-                <h4 className="text-sm text-gray-400 mb-3">Tenants</h4>
-                <div className="w-full overflow-x-auto rounded-lg bg-[#0B0B0B] border border-[#1a1a1a]">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
-                        <th className="py-3 px-4 text-xs">Tenant Name</th>
-                        <th className="py-3 px-4 text-xs">Rent</th>
-                        <th className="py-3 px-4 text-xs">Status</th>
-                        <th className="py-3 px-4 text-xs">Last Payment</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedLandlord.addresses[selectedAddressIndex || 0].tenants.map((t: any) => (
-                        <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
-                          <td className="py-3 px-4 text-gray-300">{t.name}</td>
-                          <td className="py-3 px-4 text-gray-300">{t.rent}</td>
-                          <td className="py-3 px-4 text-gray-300">{t.status}</td>
-                          <td className="py-3 px-4 text-gray-300">{t.lastPayment}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Totals */}
-                <div className="mt-4 p-4 rounded-lg border border-gray-800 bg-[#080808]">
-                  {(() => {
-                    const tenants = selectedLandlord.addresses[selectedAddressIndex || 0].tenants;
-                    const gross = tenants.reduce((s: number, t: any) => s + Number(String(t.rent).replace(/[^0-9.-]+/g, "")), 0);
-                    const expenses = +(gross * 0.12).toFixed(2);
-                    const net = +(gross - expenses).toFixed(2);
-                    const fmt = (n: number) => `£${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-                    return (
-                      <div className="grid grid-cols-3 gap-4 text-sm text-gray-200">
-                        <div>
-                          <div className="text-xs text-gray-400">Total Gross</div>
-                          <div className="font-medium mt-1">{fmt(gross)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-400">Total Expenses</div>
-                          <div className="font-medium mt-1 text-rose-400">{fmt(expenses)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-400">Net Income</div>
-                          <div className="font-medium mt-1 text-emerald-300">{fmt(net)}</div>
-                        </div>
+                {/* Render either landlord's tenants list or tenant transactions inside same modal */}
+                {modalView === "landlord" ? (
+                  <>
+                    <h4 className="text-sm text-gray-400 mb-3">Tenants</h4>
+                    {modalAddresses.length === 0 ? (
+                      <div className="p-6 text-center text-gray-400">No tenants found</div>
+                    ) : currentTenants.length === 0 ? (
+                      <div className="p-6 text-center text-gray-400">No tenants found for this property</div>
+                    ) : (
+                      <div className="w-full overflow-x-auto rounded-lg bg-[#0B0B0B] border border-[#1a1a1a]">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
+                              <th className="py-3 px-4 text-xs">Tenant Name</th>
+                              <th className="py-3 px-4 text-xs">Rent</th>
+                              <th className="py-3 px-4 text-xs">Status</th>
+                              <th className="py-3 px-4 text-xs">Last Payment</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {currentTenants.map((t: any) => (
+                              <tr
+                                key={t._id || t.id}
+                                onClick={() => openTenant(t)}
+                                className="border-t border-[#151515] hover:bg-[#0e0e0e] cursor-pointer"
+                              >
+                                <td className="py-3 px-4 text-gray-300">{Array.isArray(t.tenantName) ? t.tenantName.join(" ") : t.name || t.tenantName}</td>
+                                <td className="py-3 px-4 text-gray-300">{typeof t.rent === 'number' ? `£${t.rent}` : t.rent}</td>
+                                <td className="py-3 px-4 text-gray-300">{t.status || (t.rentHistory && t.rentHistory[0] ? t.rentHistory[0].status : "-")}</td>
+                                <td className="py-3 px-4 text-gray-300">{t.lastPayment ? new Date(t.lastPayment).toLocaleDateString() : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                    );
-                  })()}
-                </div>
+                    )}
+
+                    {/* Totals + Manual Expenses */}
+                    <div className="mt-4 p-4 rounded-lg border border-gray-800 bg-[#080808]">
+                      {(() => {
+                        const tenants = modalAddresses[selectedAddressIndex || 0]?.tenants || [];
+                        const gross = tenants.reduce((s: number, t: any) => s + Number(String(t.rent).replace(/[^0-9.-]+/g, "")), 0);
+                        const platformFee = +(gross * 0.12).toFixed(2);
+                        const manualSum = manualExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+                        const totalExpenses = +(platformFee + manualSum).toFixed(2);
+                        const net = +(gross - totalExpenses).toFixed(2);
+                        const fmt = (n: number) => `£${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+                        return (
+                          <div>
+                            <div className="grid grid-cols-3 gap-4 text-sm text-gray-200">
+                              <div>
+                                <div className="text-xs text-gray-400">Total Gross</div>
+                                <div className="font-medium mt-1">{fmt(gross)}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-400">Total Expenses</div>
+                                <div className="font-medium mt-1 text-rose-400">{fmt(totalExpenses)}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-400">Net Income</div>
+                                <div className="font-medium mt-1 text-emerald-300">{fmt(net)}</div>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 border-t border-[#151515] pt-4">
+                              <div className="text-xs text-gray-400 mb-2">Add Expense</div>
+                              <div className="flex gap-2">
+                                <Input
+                                  placeholder="Description"
+                                  value={newExpenseDesc}
+                                  onChange={(e) => setNewExpenseDesc(e.target.value)}
+                                  className="bg-[#0b0b0b] border border-gray-800 text-white"
+                                />
+                                <Input
+                                  placeholder="Amount (e.g. 120.00)"
+                                  value={newExpenseAmount}
+                                  onChange={(e) => setNewExpenseAmount(e.target.value)}
+                                  className="w-40 bg-[#0b0b0b] border border-gray-800 text-white"
+                                />
+                                <Button onClick={addExpense} className="bg-[#111] border border-gray-800 text-gray-300">Add</Button>
+                              </div>
+
+                              {manualExpenses.length > 0 && (
+                                <div className="mt-3">
+                                  <div className="text-xs text-gray-400 mb-2">Manual Expenses</div>
+                                  <div className="space-y-2">
+                                    {manualExpenses.map((ex, i) => (
+                                      <div key={i} className="flex justify-between items-center bg-[#0b0b0b] p-2 rounded border border-[#151515] text-sm">
+                                        <div className="text-gray-200">{ex.desc}</div>
+                                        <div className="text-rose-400">{fmt(ex.amount)}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </>
+                ) : (
+                  // Tenant transactions view (API-driven)
+                  <>
+                    <div className="flex items-center justify-between mb-2">
+                      <button
+                        onClick={() => setModalView("landlord")}
+                        className="flex items-center gap-2 text-sm text-gray-300 hover:underline"
+                      >
+                        <ChevronLeft className="w-4 h-4" /> Back
+                      </button>
+                    </div>
+                    <h4 className="text-sm text-gray-400 mb-3">{selectedTenantName} — Transactions</h4>
+
+                    {tenantLoading ? (
+                      <div className="p-6 text-center text-gray-400">Loading transactions…</div>
+                    ) : tenantError ? (
+                      <div className="p-6 text-center text-rose-400">Failed to load transactions.</div>
+                    ) : (
+                      <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515] p-3">
+                        {Array.isArray(tenantDetails?.rentHistory) && tenantDetails!.rentHistory.length > 0 ? (
+                          <table className="min-w-full text-sm">
+                            <thead>
+                              <tr className="text-gray-400 text-left">
+                                <th className="py-2 px-3 text-xs">Month</th>
+                                <th className="py-2 px-3 text-xs">Rent</th>
+                                <th className="py-2 px-3 text-xs">Amount Paid</th>
+                                <th className="py-2 px-3 text-xs">Paid Date</th>
+                                <th className="py-2 px-3 text-xs">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tenantDetails!.rentHistory.map((tr: any, i: number) => {
+                                const statusLabel = tr.status ? String(tr.status).charAt(0).toUpperCase() + String(tr.status).slice(1) : "-";
+                                const statusClass = statusLabel === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : statusLabel === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700';
+                                const fmtCurrency = (n: number) => `£${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                                return (
+                                  <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
+                                    <td className="py-2 px-3 text-gray-300">{tr.month}</td>
+                                    <td className="py-2 px-3 text-gray-300">{fmtCurrency(tr.rent)}</td>
+                                    <td className={`py-2 px-3 ${statusLabel === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{fmtCurrency(tr.amountPaid || 0)}</td>
+                                    <td className="py-2 px-3 text-gray-300">{tr.paidOn ? new Date(tr.paidOn).toLocaleDateString() : '—'}</td>
+                                    <td className="py-2 px-3">
+                                      <span className={`px-2 py-1 text-xs rounded-full border ${statusClass}`}>{statusLabel}</span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <div className="p-6 text-center text-gray-400">No transactions for this tenant right now</div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="mt-4 flex items-center justify-end">
+                      <button onClick={() => { setModalView("landlord"); }} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Back</button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

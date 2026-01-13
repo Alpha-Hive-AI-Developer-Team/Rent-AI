@@ -2,7 +2,9 @@
 
 import Image from "next/image";
 import { Plus, Search, Check, X, Bell, Eye, ChevronDown, Info } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
+import { useConnectedAccounts, useUnreconciledTransactions, useYapilyInstitutions, useConnectedInstitution } from "@/hooks/useTransactions";
+import { createYapilyAccountAuthRequest, connectYapilyAccounts, getYapilyTransactions } from "@/lib/api/transactionApi";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
 interface Transaction {
@@ -37,69 +39,54 @@ export default function TransactionsPage() {
   const transactions: Transaction[] = [
     {
       id: 1,
-      date: "2025-09-01",
+      date: "01/09/2025",
       description: "FPI JACK LEAH 119AV RENT",
       amount: "£1200",
       status: "Matched",
-    },
-    {
-      id: 2,
-      date: "2025-09-02",
-      description: "119 The Avenue – R3",
-      amount: "£1200",
-      status: "Needs Review",
-    },
-    {
-      id: 3,
-      date: "2025-09-05",
-      description: "119 The Avenue – R3",
-      amount: "£1200",
-      status: "Needs Review",
-    },
-    {
-      id: 4,
-      date: "2025-09-06",
-      description: "119 The Avenue – R3",
-      amount: "£1200",
-      status: "Matched",
-    },
-    {
-      id: 5,
-      date: "2025-09-07",
-      description: "PAYMENT JACKIE LEAH 119AV RENT",
-      amount: "£1200",
-      status: "Matched",
-    },
-    {
-      id: 6,
-      date: "2025-09-08",
-      description: "ACCT TRANS SAMUEL LEE MARKET LANE",
-      amount: "£500",
-      status: "Needs Review",
-    },
-    {
-      id: 7,
-      date: "2025-09-09",
-      description: "ALICIA KEYS RENT 7 GARDEN ROAD",
-      amount: "£1200",
-      status: "Needs Review",
-    },
+    }
   ];
 
-  const statusColors: Record<Transaction["status"], string> = {
+  const statusColors: Record<string, string> = {
     Matched: "bg-emerald-900/20 text-emerald-400 border-emerald-700",
     "Needs Review": "bg-amber-900/20 text-amber-400 border-amber-700",
   };
 
-  const matchColors: Record<"Matched" | "Needs Review", string> = {
+  const matchColors: Record<string, string> = {
     Matched: "bg-emerald-900/20 text-emerald-400 border-emerald-700",
     "Needs Review": "bg-amber-900/20 text-amber-400 border-amber-700",
   };
+ 
+  // Format dates for display as DD/MM/YYYY
+  function formatDate(input: any): string {
+    if (!input) return "-";
+    const d = new Date(input);
+    if (isNaN(d.getTime())) return "-";
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }
+  
 
-  const filtered = transactions.filter(
-    (t) =>
-      t.description.toLowerCase().includes(search.toLowerCase()) ||
-      t.amount.toLowerCase().includes(search.toLowerCase())
+  // Fetch unreconciled transactions from API (keep the full query so we can refetch)
+  const unreconciledQuery = useUnreconciledTransactions();
+  const unreconciledRes = unreconciledQuery.data;
+  const txLoading = unreconciledQuery.isLoading;
+  const apiDocs = unreconciledRes?.data?.docs ?? [];
+  const apiRows = apiDocs.map((d: any, i: number) => ({
+    id: i + 1,
+    date: d.transaction?.date ? formatDate(d.transaction.date) : "-",
+    description: d.transaction?.description || d.transaction?.reference || "",
+    amount: typeof d.transaction?.amount === "number" ? `£${d.transaction.amount}` : String(d.transaction?.amount ?? ""),
+    status: d.matchStatus === "matched" ? "Matched" : "Needs Review",
+    raw: d,
+  }));
+
+  // Prefer API-backed rows. If none returned, show an empty list (no dummy/sample transactions).
+  const displayTransactions: Transaction[] = apiRows.length > 0 ? apiRows : [];
+
+  const filteredDisplay = displayTransactions.filter(
+    (t) => t.description.toLowerCase().includes(search.toLowerCase()) || t.amount.toLowerCase().includes(search.toLowerCase())
   );
 
   // Sample tenants shown in the modal (UI-only)
@@ -108,30 +95,160 @@ export default function TransactionsPage() {
       { month: "2025-09", rent: "£1200", amountPaid: "£1200", paidDate: "2025-09-01", status: "Paid" },
       { month: "2025-08", rent: "£1200", amountPaid: "£0", paidDate: null, status: "Unpaid" },
       { month: "2025-07", rent: "£1200", amountPaid: "£600", paidDate: "2025-07-20", status: "Partial" },
-    ] as TenantTxn[] },
-    { id: 2, name: "Maria Gomez", property: "21 High Street – A1", rent: "£950", status: "Unpaid", lastPayment: "2025-07-20", transactions: [
-      { month: "2025-07", rent: "£950", amountPaid: "£950", paidDate: "2025-07-20", status: "Paid" },
-      { month: "2025-06", rent: "£950", amountPaid: "£0", paidDate: null, status: "Unpaid" },
-    ] as TenantTxn[] },
-    { id: 3, name: "Tom Rivers", property: "Flat 3B – 45 Lane", rent: "£700", status: "Partial", lastPayment: "2025-09-05", transactions: [
-      { month: "2025-09", rent: "£700", amountPaid: "£350", paidDate: "2025-09-05", status: "Partial" },
-    ] as TenantTxn[] },
-    { id: 4, name: "Alicia Keys", property: "7 Garden Road – B2", rent: "£1200", status: "Unpaid", lastPayment: "2025-06-18", transactions: [
-      { month: "2025-06", rent: "£1200", amountPaid: "£0", paidDate: null, status: "Unpaid" },
-    ] as TenantTxn[] },
-    { id: 5, name: "Jackie Leah", property: "119 The Avenue – R3", rent: "£1200", status: "Unpaid", lastPayment: "2025-08-01", transactions: [
-      { month: "2025-08", rent: "£1200", amountPaid: "£1200", paidDate: "2025-08-01", status: "Paid" },
-    ] as TenantTxn[] },
-    { id: 6, name: "Samuel Lee", property: "22 Market Lane – C4", rent: "£500", status: "Unpaid", lastPayment: "2025-05-11", transactions: [
-      { month: "2025-05", rent: "£500", amountPaid: "£500", paidDate: "2025-05-11", status: "Paid" },
-    ] as TenantTxn[] },
+    ] as TenantTxn[] }
   ]);
+
+  
 
   // Track which transactions have been "reconciled" in the UI
   const [reconciled, setReconciled] = useState<number[]>([]);
 
   const [viewModalOpen, setViewModalOpen] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null);
+  const [showYapilyModal, setShowYapilyModal] = useState(false);
+
+  // react-query hook (disabled by default) — call refetch() to fetch
+  const yapilyQuery = useYapilyInstitutions(false);
+  const connectedAccountsQuery = useConnectedAccounts(false);
+  const [showAccountsModal, setShowAccountsModal] = useState(false);
+  async function handleAccountSync(acc: any) {
+    const accountId = acc?.accountId || acc?.id || String(acc?.name || Date.now());
+    try {
+      // mark this account as syncing (allow multiple concurrent syncs)
+      setSyncingAccounts((prev) => (prev.includes(accountId) ? prev : [...prev, accountId]));
+      const res = await getYapilyTransactions({ accountId });
+      console.log('Yapily transactions response', res);
+      // After successful sync, refresh unreconciled transactions
+      try {
+        await unreconciledQuery.refetch();
+      } catch (e) {
+        console.warn('Failed to refetch unreconciled transactions', e);
+      }
+      alert(`Yapily sync completed. Received ${res?.data?.length ?? (res?.data?.docs?.length ?? 'unknown')} items.`);
+    } catch (err) {
+      console.error('Failed to fetch Yapily transactions', err);
+      alert('Failed to sync bank transactions');
+    } finally {
+      setSyncingAccounts((prev) => prev.filter((id) => id !== accountId));
+    }
+  }
+
+  function connectInstitution(inst: any) {
+    // Create account-auth-request for selected institution and open authorisationUrl
+    (async () => {
+      try {
+        setConnecting(true);
+        // applicationUserId - replace with real landlord id when available
+        const callback = 'http://localhost:3000/user/transactions';
+        const payload = {
+
+          institutionId: inst.id,
+          callback,
+        };
+
+        const res = await createYapilyAccountAuthRequest(payload);
+        // res is the Yapily response object { meta, data }
+        const authUrl = res?.data?.authorisationUrl || res?.data?.authorisationUrl;
+        const qrUrl = res?.data?.qrCodeUrl;
+
+        if (authUrl) {
+          window.open(authUrl, '_blank');
+        } else {
+          alert('No authorisationUrl returned');
+        }
+      } catch (err) {
+        console.error('account-auth-request failed', err);
+        alert('Failed to create account auth request');
+      } finally {
+        setConnecting(false);
+      }
+    })();
+  }
+
+  const [connecting, setConnecting] = useState(false);
+  const [connectedInstitution, setConnectedInstitution] = useState<string | null>(null);
+  const [connectedInstitutionId, setConnectedInstitutionId] = useState<string | null>(null);
+  const [connectedConsent, setConnectedConsent] = useState<string | null>(null);
+  const [syncingAccounts, setSyncingAccounts] = useState<string[]>([]);
+
+  const connectedInstitutionQuery = useConnectedInstitution(true);
+
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const params = new URLSearchParams(window.location.search);
+      const consent = params.get('consent');
+      const institution = params.get('institution') || params.get('institutionId') || params.get('application-user-id') || params.get('applicationUserId');
+      if (consent) {
+        setConnectedConsent(consent);
+        if (institution) {
+          setConnectedInstitutionId(institution as string);
+          setConnectedInstitution(institution as string);
+        }
+        // send consent to backend to fetch & save accounts (requires auth cookie/token)
+        (async () => {
+          try {
+            await connectYapilyAccounts(consent, institution || '');
+            // after saving consent & accounts on backend, refresh connected institution
+            try { await connectedInstitutionQuery.refetch(); } catch (e) { }
+            // optionally provide user feedback - keep minimal
+            console.log('Yapily accounts synced');
+          } catch (err) {
+            console.error('Failed to sync Yapily accounts', err);
+          }
+        })();
+        // remove sensitive params from URL
+        // const url = new URL(window.location.href);
+        // url.searchParams.delete('consent');
+        // url.searchParams.delete('institution');
+        // url.searchParams.delete('institutionId');
+        // url.searchParams.delete('application-user-id');
+        // url.searchParams.delete('applicationUserId');
+        // url.searchParams.delete('user-uuid');
+        // url.searchParams.delete('userUuid');
+        // window.history.replaceState({}, document.title, url.toString());
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  // when backend returns connected institution, update local state
+  useEffect(() => {
+    try {
+      const payload = connectedInstitutionQuery.data;
+      const inst = payload?.data || null;
+      if (inst) {
+        setConnectedInstitutionId(inst.id || inst._id || null);
+        setConnectedInstitution(inst.name || inst.id || null);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [connectedInstitutionQuery.data]);
+
+  // Determine candidate tenants for the modal.
+  // - If `selectedTransaction.raw` exists (API-backed), use its tenant info or an empty list when none found.
+  // - If there's no `raw` (local/sample transaction), fall back to `tenantCandidates` for demo purposes.
+  const effectiveCandidates: Tenant[] = (() => {
+    if (!selectedTransaction) return tenantCandidates;
+    const raw = (selectedTransaction as any).raw;
+    if (raw) {
+      const rawTenants = raw.tenant;
+      if (!rawTenants) return [];
+      const arr = Array.isArray(rawTenants) ? rawTenants : [rawTenants];
+      if (arr.length === 0) return [];
+      return arr.map((c: any, i: number) => ({
+        id: i + 1,
+        name: Array.isArray(c.tenantName) ? (c.tenantName[0] || c.tenantName.join(", ")) : (c.tenantName || c.tenantName?.name || ""),
+        property: c.property || c.propertyAddress || "",
+        rent: typeof c.rent === "number" ? `£${c.rent}` : String(c.rent || ""),
+        status: "Unpaid",
+        transactions: c.rentHistory ? (c.rentHistory.map((rh: any) => ({ month: rh.month, rent: rh.amountDue ?? rh.amount, amountPaid: rh.amountPaid ?? 0, paidDate: rh.paidOn ?? null, status: rh.status ?? 'Unpaid' }))) : [],
+      }));
+    }
+    return tenantCandidates;
+  })();
 
   // Candidate filters / sorting (modal)
   const [candidateNameFilter, setCandidateNameFilter] = useState("");
@@ -153,6 +270,12 @@ export default function TransactionsPage() {
 
   function computeMatchStatus(tx: Transaction | null, tenant: Tenant): "Matched" | "Needs Review" {
     if (!tx) return "Needs Review";
+    // If API provided a raw matchStatus, prefer that authoritative result
+    const raw = (tx as any).raw;
+    if (raw && raw.matchStatus) {
+      return raw.matchStatus === "matched" ? "Matched" : "Needs Review";
+    }
+
     const txDesc = tx.description.toLowerCase();
     const tenantName = tenant.name.toLowerCase();
     // require tenant name to be present in description and exact amount match
@@ -163,6 +286,11 @@ export default function TransactionsPage() {
 
   function computeMatchReason(tx: Transaction | null, tenant: Tenant): string {
     if (!tx) return "No transaction selected";
+    const raw = (tx as any).raw;
+    if (raw && raw.matchReason) {
+      return String(raw.matchReason);
+    }
+
     const txDesc = tx.description.toLowerCase();
     const tenantName = tenant.name.toLowerCase();
     const nameMatch = txDesc.includes(tenantName);
@@ -175,12 +303,12 @@ export default function TransactionsPage() {
 
   function computeTransactionOverallStatus(tx: Transaction | null): "Matched" | "Needs Review" {
     if (!tx) return "Needs Review";
-    const anyMatched = tenantCandidates.some((c) => computeMatchStatus(tx, c) === "Matched");
+    const anyMatched = effectiveCandidates.some((c) => computeMatchStatus(tx, c) === "Matched");
     return anyMatched ? "Matched" : "Needs Review";
   }
 
   // Derived list for display in the modal, with filters and sorting (UI-only)
-  const filteredCandidates = tenantCandidates.filter((c) => {
+  const filteredCandidates = effectiveCandidates.filter((c) => {
     const nameOk = c.name.toLowerCase().includes(candidateNameFilter.toLowerCase());
     const propOk = c.property.toLowerCase().includes(candidatePropertyFilter.toLowerCase());
     return nameOk && propOk;
@@ -227,32 +355,7 @@ export default function TransactionsPage() {
     setTenantCandidates((prev) => prev.map((c) => (c.id === tenantId ? { ...c, status: "Unknown" } : c)));
   }
 
-  const columns = [
-    { key: "date", label: "Date" },
-    { key: "description", label: "Description" },
-    { key: "amount", label: "Amount" },
-    {
-      key: "status",
-      label: "Status",
-      render: (t: Transaction) => (
-        <span
-          className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[t.status]}`}
-        >
-          {t.status}
-        </span>
-      ),
-    },
-    {
-      key: "actions",
-      label: "Action",
-      render: (t: Transaction) => (
-        <button onClick={() => openView(t)} className="flex items-center gap-2 bg-transparent border border-[#111] text-gray-200 px-3 py-1 rounded-full text-xs md:text-sm hover:bg-white/5 transition">
-          <Eye className="w-3 h-3" />
-          <span className="whitespace-nowrap">View</span>
-        </button>
-      ),
-    },
-  ];
+ 
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8">
@@ -278,6 +381,12 @@ export default function TransactionsPage() {
           />
         </div>
       </div>
+      {connectedInstitution && (
+        <div className="mt-3 p-3 rounded-lg bg-emerald-900/10 border border-emerald-700 text-emerald-300 flex items-center justify-between">
+          <div>Bank connected: <span className="font-medium text-emerald-200">{connectedInstitution}</span></div>
+          <div className="text-xs text-gray-400">Connected now</div>
+        </div>
+      )}
       {/* View Modal: show transaction details and candidate tenants (UI-only) */}
       {viewModalOpen && selectedTransaction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -321,94 +430,96 @@ export default function TransactionsPage() {
                     <th className="py-3 px-4 text-xs">Tenant</th>
                     <th className="py-3 px-4 text-xs">Property</th>
                     <th className="py-3 px-4 text-xs">Rent</th>
-                    <th className="py-3 px-4 text-xs">Last Payment</th>
-                    <th className="py-3 px-4 text-xs">Status</th>
+                    {/* <th className="py-3 px-4 text-xs">Last Payment</th>
+                    <th className="py-3 px-4 text-xs">Status</th> */}
                     <th className="py-3 px-4 text-xs">Match</th>
                     <th className="py-3 px-4 text-xs text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedCandidates.map((c) => {
-                    const isOpen = expandedCandidates.includes(c.id);
-                    return (
-                      <>
-                        <tr key={c.id} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
-                          <td className="py-3 px-4 text-gray-300">
-                            <div className="flex items-center gap-3">
-                              <button onClick={() => toggleCandidate(c.id)} className={`p-1 rounded-md text-gray-300 hover:bg-white/5 transition-transform duration-200 ease-out ${isOpen ? 'rotate-180' : 'rotate-0'}`}>
-                                <ChevronDown className="w-4 h-4" />
-                              </button>
-                              <span>{c.name}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-gray-300">{c.property}</td>
-                          <td className="py-3 px-4 text-gray-300">{c.rent}</td>
-                          <td className="py-3 px-4 text-gray-300">{c.lastPayment ?? '—'}</td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-1 text-xs rounded-full border ${c.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : c.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{c.status}</span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <span className={`px-2 py-1 text-xs rounded-full border ${matchColors[computeMatchStatus(selectedTransaction, c)]}`}>{computeMatchStatus(selectedTransaction, c)}</span>
-                              <div className="relative group inline-block">
-                                <Info className="w-3 h-3 text-gray-400 group-hover:text-gray-200" />
-                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-max bg-gray-800 text-xs text-gray-200 px-2 py-1 rounded opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 whitespace-nowrap z-50">
-                                  {computeMatchReason(selectedTransaction, c)}
+                  {sortedCandidates.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-6 text-center text-gray-400">No tenants found for this transaction.</td>
+                    </tr>
+                  ) : (
+                    paginatedCandidates.map((c) => {
+                      const isOpen = expandedCandidates.includes(c.id);
+                      return (
+                        <Fragment key={c.id}>
+                          <tr key={c.id} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
+                            <td className="py-3 px-4 text-gray-300">
+                              <div className="flex items-center gap-3">
+                                <button onClick={() => toggleCandidate(c.id)} className={`p-1 rounded-md text-gray-300 hover:bg-white/5 transition-transform duration-200 ease-out ${isOpen ? 'rotate-180' : 'rotate-0'}`}>
+                                  <ChevronDown className="w-4 h-4" />
+                                </button>
+                                <span>{c.name}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-gray-300">{c.property}</td>
+                            <td className="py-3 px-4 text-gray-300">{c.rent}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-1 text-xs rounded-full border ${matchColors[computeMatchStatus(selectedTransaction, c)]}`}>{computeMatchStatus(selectedTransaction, c)}</span>
+                                <div className="relative group inline-block">
+                                  <Info className="w-3 h-3 text-gray-400 group-hover:text-gray-200" />
+                                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-max bg-gray-800 text-xs text-gray-200 px-2 py-1 rounded opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 whitespace-nowrap z-50">
+                                    {computeMatchReason(selectedTransaction, c)}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button onClick={() => acceptCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-3 py-1 rounded-full text-xs hover:bg-emerald-900/5 transition">
-                                <Check className="w-3 h-3" />
-                                <span>Accept</span>
-                              </button>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button onClick={() => acceptCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-3 py-1 rounded-full text-xs hover:bg-emerald-900/5 transition">
+                                  <Check className="w-3 h-3" />
+                                  <span>Accept</span>
+                                </button>
 
-                              <button onClick={() => rejectCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-[#0b0b0b] border border-[#111] text-gray-300 px-3 py-1 rounded-full text-xs hover:bg-white/5 transition">
-                                <X className="w-3 h-3" />
-                                <span>Reject</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-
-                        <tr key={`details-${c.id}`} className="bg-[#060606]">
-                          <td colSpan={7} className="p-0">
-                            <div className={`overflow-hidden transition-all duration-300 ease-out ${isOpen ? 'max-h-[520px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                              <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515] p-3">
-                                <div className="text-sm text-gray-400 mb-2">Previous transactions for {c.name}</div>
-                                <table className="min-w-full text-sm">
-                                  <thead>
-                                    <tr className="text-gray-400 text-left">
-                                      <th className="py-2 px-3 text-xs">Month</th>
-                                      <th className="py-2 px-3 text-xs">Rent</th>
-                                      <th className="py-2 px-3 text-xs">Amount Paid</th>
-                                      <th className="py-2 px-3 text-xs">Paid Date</th>
-                                      <th className="py-2 px-3 text-xs">Status</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {(c.transactions ?? []).map((tr: any, i: number) => (
-                                      <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
-                                        <td className="py-2 px-3 text-gray-300">{tr.month}</td>
-                                        <td className="py-2 px-3 text-gray-300">{tr.rent}</td>
-                                        <td className={`py-2 px-3 ${tr.status === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid}</td>
-                                        <td className="py-2 px-3 text-gray-300">{tr.paidDate ?? '—'}</td>
-                                        <td className="py-2 px-3">
-                                          <span className={`px-2 py-1 text-xs rounded-full border ${tr.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : tr.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{tr.status}</span>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                                <button onClick={() => rejectCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-[#0b0b0b] border border-[#111] text-gray-300 px-3 py-1 rounded-full text-xs hover:bg-white/5 transition">
+                                  <X className="w-3 h-3" />
+                                  <span>Reject</span>
+                                </button>
                               </div>
-                            </div>
-                          </td>
-                        </tr>
-                      </>
-                    );
-                  })}
+                            </td>
+                          </tr>
+
+                          <tr key={`details-${c.id}`} className="bg-[#060606]">
+                            <td colSpan={7} className="p-0">
+                              <div className={`overflow-hidden transition-all duration-300 ease-out ${isOpen ? 'max-h-[520px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                                <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515] p-3">
+                                  <div className="text-sm text-gray-400 mb-2">Previous transactions for {c.name}</div>
+                                  <table className="min-w-full text-sm">
+                                    <thead>
+                                      <tr className="text-gray-400 text-left">
+                                        <th className="py-2 px-3 text-xs">Month</th>
+                                        <th className="py-2 px-3 text-xs">Rent</th>
+                                        <th className="py-2 px-3 text-xs">Amount Paid</th>
+                                        <th className="py-2 px-3 text-xs">Paid Date</th>
+                                        <th className="py-2 px-3 text-xs">Status</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {(c.transactions ?? []).map((tr: any, i: number) => (
+                                        <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
+                                          <td className="py-2 px-3 text-gray-300">{tr.month}</td>
+                                          <td className="py-2 px-3 text-gray-300">{tr.rent}</td>
+                                          <td className={`py-2 px-3 ${tr.status === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid}</td>
+                                          <td className="py-2 px-3 text-gray-300">{tr.paidDate ? formatDate(tr.paidDate) : '—'}</td>
+                                          <td className="py-2 px-3">
+                                            <span className={`px-2 py-1 text-xs rounded-full border ${tr.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : tr.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{tr.status}</span>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        </Fragment>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -449,22 +560,168 @@ export default function TransactionsPage() {
   </div>
 
   {/* Buttons Right */}
-  <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3">
 
     {/* Quick Action */}
-    <button className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-4 py-2 rounded-full text-sm hover:bg-emerald-900/5 transition">
+    <button
+      onClick={async () => {
+        try {
+          await yapilyQuery.refetch();
+         
+          setShowYapilyModal(true);
+        } catch (err) {
+          console.error(err);
+          alert("Failed to fetch institutions");
+        }
+      }}
+      className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-4 py-2 rounded-full text-sm hover:bg-emerald-900/5 transition"
+    >
       <Plus className="w-4 h-4 text-emerald-400" />
-      <span>Quick Action</span>
+      <span>Connect Open Banking</span>
     </button>
 
     {/* Sync Bank Feed */}
-    <button className="bg-transparent text-emerald-400 text-sm border border-emerald-600 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition">
+    <button
+      onClick={async () => {
+        try {
+          setShowAccountsModal(true);
+          await connectedAccountsQuery.refetch();
+        } catch (err) {
+          console.error('Failed to fetch connected accounts', err);
+        }
+      }}
+      className="bg-transparent text-emerald-400 text-sm border border-emerald-600 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition"
+    >
       Sync Bank Feed
     </button>
 
   </div>
 
 </div>
+
+
+      {/* Yapily Institutions Modal */}
+      {showYapilyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-3xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl max-h-[80vh] overflow-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">Open Banking Institutions</h3>
+                <p className="text-sm text-gray-400">Results from Yapily</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-sm text-gray-400">{yapilyQuery.isFetching ? 'Loading…' : ''}</div>
+                <button onClick={() => setShowYapilyModal(false)} className="text-gray-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {yapilyQuery.isError && (
+                <div className="text-rose-400">Failed to load institutions.</div>
+              )}
+
+              {!yapilyQuery.data && !yapilyQuery.isFetching && (
+                <div className="text-sm text-gray-400">No results. Click Connect Open Banking to fetch.</div>
+              )}
+
+                  {(yapilyQuery.data?.data ?? []).map((inst: any) => (
+                <div key={inst.id} className="flex items-center gap-4 p-3 bg-[#050505] border border-[#111] rounded-lg">
+                  <div className="w-12 h-12 flex-shrink-0">
+                    {inst.media?.[0]?.source ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={inst.media[0].source} alt={inst.name} className="w-12 h-12 object-contain" />
+                    ) : (
+                      <div className="w-12 h-12 bg-gray-800 rounded" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">{inst.name}</div>
+                    <div className="text-xs text-gray-400 truncate">{inst.fullName}</div>
+                    <div className="text-xs text-gray-500 mt-1">{inst.environmentType} • {inst.countries?.map((c: any) => c.displayName).join(', ')}</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    {(() => {
+                      const instId = inst.id || inst.institution?.id || inst.institutionId || null;
+                      const isConnected = connectedInstitutionId && String(connectedInstitutionId) === String(instId);
+                      if (isConnected) {
+                        return (
+                          <>
+                            <div className="text-xs text-emerald-300">Connected</div>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => connectInstitution(inst)} className="px-3 py-1 rounded-full bg-amber-600 text-black text-xs hover:brightness-105">Reconnect</button>
+                            </div>
+                          </>
+                        );
+                      }
+                      return (
+                        <button onClick={() => connectInstitution(inst)} className="px-3 py-1 rounded-full bg-emerald-600 text-black text-xs hover:brightness-105">Connect</button>
+                      );
+                    })()}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button onClick={() => setShowYapilyModal(false)} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connected Accounts Modal */}
+      {showAccountsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-3xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl max-h-[80vh] overflow-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">Connected Accounts</h3>
+                <p className="text-sm text-gray-400">Accounts synced from your bank</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-sm text-gray-400">{connectedAccountsQuery.isFetching ? 'Loading…' : ''}</div>
+                <button onClick={() => setShowAccountsModal(false)} className="text-gray-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {connectedAccountsQuery.isError && (
+                <div className="text-rose-400">Failed to load connected accounts.</div>
+              )}
+
+              {!connectedAccountsQuery.data && !connectedAccountsQuery.isFetching && (
+                <div className="text-sm text-gray-400">No accounts found. Use Connect Open Banking first.</div>
+              )}
+
+              {(connectedAccountsQuery.data?.data ?? []).map((acc: any) => (
+                <div key={acc.accountId} className="flex items-center gap-4 p-3 bg-[#050505] border border-[#111] rounded-lg">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">{acc.name || acc.accountId}</div>
+                    <div className="text-xs text-gray-400 truncate">{acc.accountId}</div>
+                    <div className="text-xs text-gray-500 mt-1">{acc.currency || acc.type || acc.accountType}</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="text-xs text-gray-400">{acc.type}</div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => handleAccountSync(acc)} disabled={syncingAccounts.includes(acc.accountId)} className="px-3 py-1 rounded-full bg-amber-600 text-black text-xs hover:brightness-105 disabled:opacity-60">
+                        {syncingAccounts.includes(acc.accountId) ? 'Syncing…' : 'Sync Now'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button onClick={() => setShowAccountsModal(false)} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
 
       {/* Table (inlined - same UI as DataTable) */}
@@ -481,33 +738,39 @@ export default function TransactionsPage() {
           </thead>
 
           <tbody>
-            {filtered.map((t) => {
-              const overall = computeTransactionOverallStatus(t);
-              return (
-                <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e] transition">
-                  <td className="py-4 px-6 text-gray-300 text-sm">{t.date}</td>
-                  <td className="py-4 px-6 text-gray-300 text-sm">{t.description}</td>
-                  <td className="py-4 px-6 text-gray-300 text-sm">{t.amount}</td>
-                  <td className="py-4 px-6 text-gray-300 text-sm">
-                    <span className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[overall]}`}>
-                      {overall}
-                    </span>
-                  </td>
-                  <td className="py-4 px-6 text-right text-gray-300">
-                    <div className="flex items-center justify-end gap-3">
-                      <button onClick={() => openView(t)} className="flex items-center gap-2 bg-transparent border border-[#111] text-gray-200 px-3 py-1 rounded-full text-xs md:text-sm hover:bg-white/5 transition">
-                        <Eye className="w-3 h-3" />
-                        <span className="whitespace-nowrap">View</span>
-                      </button>
+            {filteredDisplay.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-6 text-center text-gray-400">No transactions found.</td>
+              </tr>
+            ) : (
+              filteredDisplay.map((t) => {
+                const overall = (t as any).status ? (t as any).status : computeTransactionOverallStatus(t as any);
+                return (
+                  <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e] transition">
+                    <td className="py-4 px-6 text-gray-300 text-sm">{t.date}</td>
+                    <td className="py-4 px-6 text-gray-300 text-sm">{t.description}</td>
+                    <td className="py-4 px-6 text-gray-300 text-sm">{t.amount}</td>
+                    <td className="py-4 px-6 text-gray-300 text-sm">
+                      <span className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[overall]}`}>
+                        {overall}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-right text-gray-300">
+                      <div className="flex items-center justify-end gap-3">
+                        <button onClick={() => openView(t)} className="flex items-center gap-2 bg-transparent border border-[#111] text-gray-200 px-3 py-1 rounded-full text-xs md:text-sm hover:bg-white/5 transition">
+                          <Eye className="w-3 h-3" />
+                          <span className="whitespace-nowrap">View</span>
+                        </button>
 
-                      {reconciled.includes(t.id) && (
-                        <span className="px-2 py-1 text-xs rounded-full bg-emerald-900/20 text-emerald-400 border border-emerald-700">Reconciled</span>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+                        {reconciled.includes(t.id) && (
+                          <span className="px-2 py-1 text-xs rounded-full bg-emerald-900/20 text-emerald-400 border border-emerald-700">Reconciled</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>

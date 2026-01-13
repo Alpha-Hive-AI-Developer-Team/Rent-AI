@@ -4,21 +4,41 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { useSignUp } from "@/hooks/useAuth";
+import toast from "react-hot-toast";
+import VerifyOtpModal from "@/components/auth/verify-otp";
 
 export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // Simple local form state
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
     email: "",
     password: "",
+    role: "landlord", // default role
   });
+
+  const [showOtp, setShowOtp] = useState(false);
+
+  const signUp = useSignUp();
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Form submitted:", form);
+    setLoading(true);
+    signUp.mutate(form, {
+      onSuccess: (data: any) => {
+        setLoading(false);
+        toast.success(data?.message || "Signup successful. Enter OTP sent to your email.");
+        setShowOtp(true);
+      },
+      onError: (err: any) => {
+        setLoading(false);
+        const message = err?.response?.data?.message || "Signup failed. Please try again.";
+        toast.error(message);
+      },
+    });
   };
 
   return (
@@ -120,10 +140,17 @@ export default function SignUp() {
           {/* Submit */}
           <button
             type="submit"
-            className="mt-2 w-full py-2 rounded-md font-medium text-sm
-            bg-[#027A48] hover:bg-[#02653d] transition"
+            disabled={loading}
+            className="mt-2 w-full py-2 rounded-md font-medium text-sm bg-[#027A48] hover:bg-[#02653d] transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Sign up
+            {loading ? (
+              <span className="flex items-center justify-center">
+                <span className="inline-block w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin mr-2" />
+                Creating account...
+              </span>
+            ) : (
+              "Sign up"
+            )}
           </button>
         </form>
 
@@ -135,6 +162,10 @@ export default function SignUp() {
           </Link>
         </p>
       </div>
+
+      {showOtp && (
+        <VerifyOtpModal email={form.email} onClose={() => setShowOtp(false)} />
+      )}
     </main>
   );
 }

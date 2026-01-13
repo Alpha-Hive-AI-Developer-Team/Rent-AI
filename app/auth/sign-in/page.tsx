@@ -5,28 +5,76 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Eye, EyeOff, LogIn, CreditCard } from "lucide-react";
+import { useLogin } from "@/hooks/useAuth";
+import toast from "react-hot-toast";
+import VerifyOtpModal from "@/components/auth/verify-otp";
 
 export default function SignIn() {
   const router = useRouter();
 
   const [showPassword, setShowPassword] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false); // NEW TOGGLE STATE
+  const [loading, setLoading] = useState(false);
+  const [showOtp, setShowOtp] = useState(false);
 
   // Simple local state
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  const login = useLogin();
+
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
 
-    console.log("Sign in data:", { email, password, isAdmin });
+    login.mutate(
+      { email, password },
+      {
+        onSuccess: (resp: any) => {
+          setLoading(false);
+     
+          try {
+            const user = resp?.data?.user || resp?.user || null;
+            const accessToken = resp?.data?.accessToken || resp?.accessToken;
+     
+            console.debug("Login response:", resp.data || resp);
+            if (user) {
+              localStorage.setItem("authUser", JSON.stringify(user));
+            }
+            if (accessToken) {
+              localStorage.setItem("authToken", accessToken);
+            }
+         
 
-    // Redirect based on toggle
-    if (isAdmin) {
-      router.push("/admin/dashboard");
-    } else {
-      router.push("/user/dashboard");
-    }
+            toast.success(resp?.message || "Login successful");
+
+            const role = user?.role || "user";
+            console.debug("User role:", role);
+            if (role === "admin" || role === "superAdmin") router.push("/admin/dashboard");
+            else router.push("/user/dashboard");
+          } catch (err) {
+            console.error(err);
+            toast.success("Login successful");
+            router.push("/user/dashboard");
+          }
+        },
+        onError: (err: any) => {
+          setLoading(false);
+               // If server indicates unverified account requiring OTP verification
+                  const status = err?.response?.status
+          if (status === 403) {
+            console.debug("Account unverified, showing OTP modal.");
+            toast.error(err?.response?.data?.message || "Account unverified. Enter OTP sent to your email.");
+            setShowOtp(true);
+            return;
+          }
+          console.error("Login mutation error:", err);
+          const message = err?.response?.data?.message || "Login failed. Please try again.";
+          toast.error(message);
+          console.error("Login error:", err);
+        },
+      }
+    );
   };
 
   return (
@@ -149,6 +197,9 @@ export default function SignIn() {
           </button>
         </form>
       </div>
+      {showOtp && (
+        <VerifyOtpModal email={email} onClose={() => setShowOtp(false)} />
+      )}
     </main>
   );
 }
