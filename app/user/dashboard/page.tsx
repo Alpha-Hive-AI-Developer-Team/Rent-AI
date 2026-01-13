@@ -5,6 +5,9 @@ import StatCard from "@/components/admin/analytics-card";
 import TodaySection from "@/components/user/today-section";
 import Image from "next/image";
 import { Bell } from "lucide-react";
+import useExpectedSeries, { useRentDetails } from "@/hooks/useRentDetails";
+import { useEffect, useState } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   LineChart,
   Line,
@@ -17,34 +20,54 @@ import {
 import TransactionVolumeChart from "@/components/admin/volume-chart";
 
 export default function DashboardPage() {
+  const { data: rentDataRes, isLoading: rentLoading, isError: rentError } = useRentDetails();
+  const rentData = rentDataRes?.data;
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const initialRange = (searchParams?.get("range") || "3m") as "3m" | "6m" | "30d" | "7d";
+  const [range, setRange] = useState<"3m" | "6m" | "30d" | "7d">(initialRange);
+
+  useEffect(() => {
+    try {
+      const base = searchParams ? searchParams.toString() : "";
+      const params = new URLSearchParams(base);
+      params.set("range", range);
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname);
+    } catch {}
+  }, [range]);
+
+  const seriesOptions =
+    range === "3m"
+      ? { granularity: "month", months: 3 }
+      : range === "6m"
+        ? { granularity: "month", months: 6 }
+        : range === "30d"
+          ? { granularity: "day", days: 30 }
+          : { granularity: "day", days: 7 };
+  const { data: expectedRes, isLoading: expectedLoading } = useExpectedSeries(seriesOptions as any);
+  const expectedSeries = expectedRes?.data?.series ?? [];
   const stats = [
-    {
-      title: "Expected (Oct)",
-      value: "£24,500",
-      trend: 12.5,
-      description: "Trending up this month",
-      subtext: "Visitors for the last 6 months",
+  {
+      title: `Expected (${rentData?.monthName ?? ''})`,
+      value: rentLoading ? "—" : `£${rentData?.current?.expected?.toLocaleString?.() ?? rentData?.current?.expected ?? 0}`,
+      trend: rentData?.percentageChange?.expected ?? 0,
     },
     {
       title: "Collected",
-      value: "£22,300",
-      trend: -20,
-      description: "Down 20% this period",
-      subtext: "Acquisition needs attention",
+      value: rentLoading ? "—" : `£${rentData?.current?.collected?.toLocaleString?.() ?? rentData?.current?.collected ?? 0}`,
+      trend: rentData?.percentageChange?.collected ?? 0,
     },
     {
       title: "Arrears",
-      value: "£2,200",
-      trend: 12.5,
-      description: "Strong user retention",
-      subtext: "Engagement exceed targets",
+      value: rentLoading ? "—" : `£${rentData?.current?.arrears?.toLocaleString?.() ?? rentData?.current?.arrears ?? 0}`,
+      trend: rentData?.percentageChange?.arrears ?? 0,
     },
     {
       title: "Late Tenants",
-      value: "17",
-      trend: 4.5,
-      description: "Steady performance increase",
-      subtext: "Meets growth projections",
+      value: rentLoading ? "—" : `${rentData?.current?.lateCount ?? 0}`,
+      trend: rentData?.percentageChange?.lateCount ?? 0,
     },
   ];
 
@@ -64,14 +87,9 @@ export default function DashboardPage() {
     { name: "May", series1: 1890, series2: 4800 },
     { name: "Jun", series1: 2390, series2: 3800 },
   ];
-    const expectedData = [
-    { name: "Jan", expected: 3000 },
-    { name: "Feb", expected: 3200 },
-    { name: "Mar", expected: 3400 },
-    { name: "Apr", expected: 3600 },
-    { name: "May", expected: 3500 },
-    { name: "Jun", expected: 3700 },
-  ];
+  const expectedData = expectedLoading
+    ? []
+    : expectedSeries.map((p: any) => ({ name: p.name, expected: p.expected }));
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8">
@@ -109,25 +127,44 @@ export default function DashboardPage() {
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
       {/* Left side — text */}
       <div>
-        <h3 className="text-sm md:text-base font-medium text-gray-200">Expected (Oct)</h3>
-        <p className="text-xs md:text-sm text-gray-500 mt-1">Total for the last 3 months</p>
+        <h3 className="text-sm md:text-base font-medium text-gray-200">Expected {range}</h3>
+        <p className="text-xs md:text-sm text-gray-500 mt-1">Total for the last {range}</p>
       </div>
 
       {/* Right side — Filter Buttons */}
       <div className="flex flex-wrap justify-start sm:justify-end gap-2">
-        {["Last 3 months", "Last 30 days", "Last 7 days"].map((label, i) => (
-          <button
-            key={i}
-            className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200
-              ${
-                i === 0
-                  ? "bg-[#1e1e1e] text-white border border-gray-700"
-                  : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
-              }`}
-          >
-            {label}
-          </button>
-        ))}
+        <button
+          onClick={() => setRange("3m")}
+          className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
+            range === "3m" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
+          }`}
+        >
+          Last 3 months
+        </button>
+        <button
+          onClick={() => setRange("6m")}
+          className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
+            range === "6m" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
+          }`}
+        >
+          Last 6 months
+        </button>
+        <button
+          onClick={() => setRange("30d")}
+          className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
+            range === "30d" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
+          }`}
+        >
+          Last 30 days
+        </button>
+        <button
+          onClick={() => setRange("7d")}
+          className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
+            range === "7d" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
+          }`}
+        >
+          Last 7 days
+        </button>
       </div>
     </div>
 
