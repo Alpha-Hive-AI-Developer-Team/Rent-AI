@@ -41,7 +41,6 @@
     "@reduxjs/toolkit": "^2.11.2",
     "@tanstack/react-query": "^5.90.12",
     "@types/node": "20.6.2",
-    "@types/react": "18.2.22",
     "@types/react-dom": "18.2.7",
     "autoprefixer": "10.4.15",
     "axios": "^1.13.2",
@@ -73,5 +72,8 @@
     "typescript": "5.2.2",
     "vaul": "^0.9.9",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.25"
   }
 }
