@@ -1,33 +1,33 @@
+"use client";
 import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/admin/sidebar";
+import Topbar from "@/components/user/topbar";
+import { useState } from "react";
 
-export const metadata: Metadata = {
-  title: "RentAI Dashboard",
-  description: "Manage Rent, Automatically",
-};
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
   return (
-    
-      <div   className="flex bg-[#0a0a0a] text-white min-h-screen">
-        <Sidebar />
-        <main
-          className="
-            flex-1
-            lg:ml-72  /* match desktop sidebar width */
-            md:ml-20  /* match tablet/sidebar icon-only width */
-            ml-20     /* mobile same as compact sidebar */
-            transition-all
-          "
-        >
-          {children}
-        </main>
-      </div>
-    
+    <div className="bg-[#0a0a0a] text-white min-h-screen">
+      <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+
+      {/* Mobile topbar */}
+      <Topbar isOpen={mobileOpen} onToggle={() => setMobileOpen((s) => !s)} />
+
+      <main
+        className="
+          transition-all duration-300
+          pt-16 lg:pt-0   /* account for mobile topbar */
+          ml-0 md:ml-20 lg:ml-72
+        "
+      >
+        {children}
+      </main>
+    </div>
   );
 }

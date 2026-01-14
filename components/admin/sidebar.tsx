@@ -7,7 +7,12 @@ import { useState, useEffect } from "react";
 import { Home, Building2, Users, Gift, LogOut, X } from "lucide-react";
 import { useAuthUser } from "@/redux/useAuthUser";
 
-export default function Sidebar() {
+type AdminSidebarProps = {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+};
+
+export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
   const pathname = usePathname();
   const [isDesktop, setIsDesktop] = useState(true);
   const user=useAuthUser();
@@ -40,12 +45,14 @@ export default function Sidebar() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  return (
-    <aside
-      className={`fixed top-0 left-0 h-screen bg-[#0A0A0A] text-gray-400 flex flex-col border-r border-gray-900/60 transition-all duration-300 z-50
-        ${isDesktop ? "w-72" : "w-20"}
-      `}
-    >
+    return (
+      <>
+        <aside
+          className={`fixed top-0 left-0 h-screen bg-[#0A0A0A] text-gray-400 flex flex-col border-r border-gray-900/60 transition-all duration-300 z-50
+            ${isDesktop ? "w-72" : "w-20"}
+            ${!isDesktop ? "hidden" : ""}
+          `}
+        >
       {/* 🖥️ Header */}
       {isDesktop ? (
         <div className="flex items-center justify-start gap-3 p-6">
@@ -128,6 +135,59 @@ export default function Sidebar() {
           </div>
         </div>
       )}
-    </aside>
+        </aside>
+
+        {/* Mobile overlay for admin */}
+        {!isDesktop && mobileOpen && (
+          <div className="fixed inset-0 z-40 flex">
+            <div className="absolute inset-0 bg-black/60" onClick={() => onClose?.()} />
+            <aside className="relative w-72 h-full bg-[#0A0A0A] text-gray-400 flex flex-col border-r border-gray-900/60 transition-transform duration-200">
+              <div className="flex items-center justify-start gap-3 p-6">
+                <Image
+                  src="/images/logo-transparent.png"
+                  alt="logo"
+                  width={50}
+                  height={50}
+                  className="object-contain"
+                />
+                <span className="text-white font-semibold text-2xl">Rent Ai</span>
+                <button onClick={() => onClose?.()} className="ml-auto text-gray-400 hover:text-white p-2">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <nav className="flex-1 px-3 py-4 overflow-y-auto">
+                <div className="bg-transparent p-2 space-y-3">
+                  {renderMenuItems.map(({ name, path, Icon }) => {
+                    const isActive = pathname === path || (pathname === "" && path === "/");
+                    return (
+                      <Link
+                        key={name}
+                        href={path}
+                        onClick={() => onClose?.()}
+                        className={`group relative flex items-center gap-3 px-4 py-3 rounded-2xl text-sm transition border
+                          ${isActive
+                            ? "text-white border-emerald-600 ring-1 ring-emerald-500/30"
+                            : "text-gray-300 border-[#2A2A2A] hover:text-white hover:border-emerald-700/60"}
+                        `}
+                      >
+                        <Icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-emerald-400" : "text-gray-400 group-hover:text-emerald-300"}`} />
+                        <span className="truncate">{name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </nav>
+
+              <div className="p-4">
+                <button onClick={() => setLogoutOpen(true)} className="group relative flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm transition border text-gray-300 border-[#2A2A2A] hover:text-white hover:border-emerald-700/60">
+                  <LogOut className="w-4 h-4 text-gray-400 group-hover:text-rose-400" />
+                  <span>Logout</span>
+                </button>
+              </div>
+            </aside>
+          </div>
+        )}
+      </>
   );
 }
