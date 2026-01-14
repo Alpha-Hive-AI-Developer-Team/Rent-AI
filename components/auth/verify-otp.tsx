@@ -40,7 +40,10 @@ export default function VerifyOtpModal({ email, onClose }: Props) {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    index: number
+  ) => {
     if (e.key === "Backspace" && !otp[index] && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
@@ -64,7 +67,8 @@ export default function VerifyOtpModal({ email, onClose }: Props) {
         },
         onError: (err: any) => {
           setLoading(false);
-          const message = err?.response?.data?.message || "OTP verification failed";
+          const message =
+            err?.response?.data?.message || "OTP verification failed";
           toast.error(message);
         },
       }
@@ -84,16 +88,21 @@ export default function VerifyOtpModal({ email, onClose }: Props) {
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
 
       <div className="relative w-full max-w-md bg-[#0E0E0E] border border-[#1f1f1f] rounded-3xl py-8 px-8 text-center shadow-2xl z-10">
-        <h1 className="text-2xl font-semibold mb-2">Verify <span className="text-[#0CEB77]">OTP</span></h1>
+        <h1 className="text-2xl font-semibold mb-2">
+          Verify <span className="text-[#0CEB77]">OTP</span>
+        </h1>
         <p className="text-gray-400 text-sm mb-6">
-          Enter the 4-digit code sent to <span className="text-[#0CEB77]">{email}</span>
+          Enter the 4-digit code sent to{" "}
+          <span className="text-[#0CEB77]">{email}</span>
         </p>
 
         <p className="text-xs text-gray-500 mb-6">
           {canResend ? (
             <span className="text-[#0CEB77]">You can now resend OTP</span>
           ) : (
-            <>Resend OTP in <span className="text-[#0CEB77]">{timer}s</span></>
+            <>
+              Resend OTP in <span className="text-[#0CEB77]">{timer}s</span>
+            </>
           )}
         </p>
 
@@ -105,7 +114,9 @@ export default function VerifyOtpModal({ email, onClose }: Props) {
                 type="text"
                 maxLength={1}
                 value={digit}
-                ref={(el) => (inputRefs.current[index] = el)}
+                ref={(el) => {
+                  inputRefs.current[index] = el;
+                }}
                 onChange={(e) => handleChange(e.target.value, index)}
                 onKeyDown={(e) => handleKeyDown(e, index)}
                 className="w-12 h-12 text-center text-lg bg-transparent border border-[#2a2a2a] rounded-lg focus:border-[#0CEB77] outline-none"
