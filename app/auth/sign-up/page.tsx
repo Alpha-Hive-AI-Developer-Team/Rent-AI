@@ -2,13 +2,15 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { useSignUp } from "@/hooks/useAuth";
 import toast from "react-hot-toast";
 import VerifyOtpModal from "@/components/auth/verify-otp";
 
 export default function SignUp() {
+  const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -18,11 +20,19 @@ export default function SignUp() {
     email: "",
     password: "",
     role: "landlord", // default role
+    referralCode: "",
   });
 
   const [showOtp, setShowOtp] = useState(false);
 
   const signUp = useSignUp();
+
+  useEffect(() => {
+    const r = searchParams.get("r");
+    if (r) {
+      setForm((prev) => ({ ...prev, referralCode: r }));
+    }
+  }, [searchParams]);
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -17,6 +17,8 @@ export const signUpSchema = z.object({
     .regex(/[a-z]/, "Password must contain at least one lowercase letter")
     .regex(/[0-9]/, "Password must contain at least one number")
     .regex(/[@$!%*?&]/, "Password must contain at least one special character"),
+  role: z.string().default("landlord"),
+  referralCode: z.string().trim().min(1, "Invalid referral code").max(20).optional(),
 });
 
 export type SignUpInput = z.infer<typeof signUpSchema>;
