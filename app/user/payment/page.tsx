@@ -38,7 +38,6 @@ export default function PaymentPage() {
               <p className="text-3xl font-bold mb-1">£0<span className="text-sm font-normal text-gray-400">/mo</span></p>
               <ul className="mt-3 space-y-2 text-sm text-gray-300">
                 <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> 3 tenants</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> CSV import</li>
               </ul>
             </div>
             <button className="mt-5 w-full rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510]">Select</button>
@@ -51,8 +50,7 @@ export default function PaymentPage() {
               <p className="text-3xl font-bold mb-1">£29<span className="text-sm font-normal text-gray-400">/mo</span></p>
               <ul className="mt-3 space-y-2 text-sm text-gray-300">
                 <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> 20 tenants</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> Open Banking</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> AI assist</li>
+                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> CSV export</li>
               </ul>
             </div>
             <button className="mt-5 w-full rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510]">Select</button>
@@ -65,7 +63,7 @@ export default function PaymentPage() {
               <p className="text-3xl font-bold mb-1">£79<span className="text-sm font-normal text-gray-400">/mo</span></p>
               <ul className="mt-3 space-y-2 text-sm text-gray-300">
                 <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> 150 tenants</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> Anomalies</li>
+                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> CSV export</li>
                 <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> Xero/QuickBooks</li>
               </ul>
             </div>
@@ -78,9 +76,9 @@ export default function PaymentPage() {
               <h3 className="text-sm font-semibold text-gray-200 mb-3">Enterprise</h3>
               <p className="text-3xl font-bold mb-1">£199+<span className="text-sm font-normal text-gray-400">/mo</span></p>
               <ul className="mt-3 space-y-2 text-sm text-gray-300">
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> Unlimited</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> SLA</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> API + Webhooks</li>
+                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> Unlimited tenants</li>
+                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> CSV export</li>
+                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> Xero export</li>
               </ul>
             </div>
             <button className="mt-5 w-full rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510]">Select</button>

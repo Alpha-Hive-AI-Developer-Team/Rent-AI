@@ -16,7 +16,6 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
   const pathname = usePathname();
   const [isDesktop, setIsDesktop] = useState(true);
   const user=useAuthUser();
- console.log("Sidebar user role:", user?.role);
   const router = useRouter();
   const [logoutOpen, setLogoutOpen] = useState(false);
 
