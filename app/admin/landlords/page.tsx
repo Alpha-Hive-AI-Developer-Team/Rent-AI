@@ -85,7 +85,7 @@ export default function LandlordManagement() {
         free: "bg-gray-800/30 text-gray-300",
         starter: "bg-green-600/30 text-[#009118]",
         pro: "bg-purple-600/30 text-[#9A00B2]",
-        interprise: "bg-yellow-600/30 text-[#AFB200]",
+        enterprise: "bg-yellow-600/30 text-[#AFB200]",
       },
       status: {
         active: "bg-green-600/30 text-[#00B22F]",
@@ -238,7 +238,7 @@ export default function LandlordManagement() {
               align="start"
               sideOffset={4}
             >
-              {["All Plan", "free", "starter", "pro", "interprise"].map((plan) => (
+              {["All Plan", "free", "starter", "pro", "enterprise"].map((plan) => (
                 <DropdownMenuItem
                   key={plan}
                   onClick={() => setPlanFilter(plan)}

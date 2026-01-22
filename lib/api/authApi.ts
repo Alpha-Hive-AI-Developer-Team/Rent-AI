@@ -90,3 +90,13 @@ export async function facebookAuth(firebaseToken: string) {
   return res.data;
 }
 
+// Get authenticated user's details including active plan and current discount
+export async function getMyDetails() {
+  const res = await apiClient.get("/auth/me");
+  return res.data as { success: boolean; data: {
+    id: string; firstName: string; lastName: string; email: string; role: string;
+    planType: string; subscriptionStatus: string | null; currentDiscount: number; activePlan: string;
+    createdAt: string; updatedAt: string;
+  } };
+}
+

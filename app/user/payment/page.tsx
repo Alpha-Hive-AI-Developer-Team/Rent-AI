@@ -2,8 +2,66 @@
 
 import Image from "next/image";
 import { Bell, CheckCircle } from "lucide-react";
+import { usePayment } from "@/hooks/usepayment";
+import { useEffect, useState } from "react";
+import { useMyProfile } from "@/hooks/useAuth";
 
 export default function PaymentPage() {
+  const { startCheckout, loading, error } = usePayment();
+  const [activePlan, setActivePlan] = useState<string>("free");
+  const [currentDiscount, setCurrentDiscount] = useState<number>(0);
+
+  const planRank: Record<string, number> = {
+    free: 0,
+    starter: 1,
+    pro: 2,
+    enterprise: 3,
+  };
+
+  const getButtonState = (planKey: string) => {
+    const currentRank = planRank[activePlan] ?? 0;
+    const targetRank = planRank[planKey] ?? 0;
+    const isCurrent = activePlan === planKey;
+    const disabled = loading || isCurrent || currentRank > targetRank; // disable if loading, current plan, or target is lower than current
+    const label = isCurrent ? "Current plan" : (currentRank > targetRank ? "Select" : "Select");
+    const highlight = isCurrent;
+    return { disabled, label, highlight } as { disabled: boolean; label: string; highlight: boolean };
+  };
+
+  useEffect(() => {
+    // optionally react to status from success/cancel redirect
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    const status = params.get('status');
+    if (status) {
+      // You can show a toast or banner here
+      console.log('Checkout status:', status);
+    }
+  }, []);
+
+  const { data: profileResp } = useMyProfile();
+
+  useEffect(() => {
+    if (profileResp?.success && profileResp.data) {
+      setActivePlan(profileResp.data.activePlan || profileResp.data.planType || 'free');
+      setCurrentDiscount(profileResp.data.currentDiscount || 0);
+      console.log("User profile data:", profileResp.data);
+    }
+  }, [profileResp]);
+  type Plan = {
+    key: 'free' | 'starter' | 'pro' | 'enterprise';
+    title: string;
+    price: string;
+    per: string;
+    features: string[];
+  };
+
+  const plans: Plan[] = [
+    { key: 'free', title: 'Free', price: '£0', per: '/mo', features: ['3 tenants'] },
+    { key: 'starter', title: 'Starter', price: '£29', per: '/mo', features: ['20 tenants', 'CSV export'] },
+    { key: 'pro', title: 'Pro', price: '£79', per: '/mo', features: ['150 tenants', 'CSV export', 'Xero/QuickBooks'] },
+    { key: 'enterprise', title: 'Enterprise', price: '£199+', per: '/mo', features: ['Unlimited tenants', 'CSV export', 'Xero export'] },
+  ];
+
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8">
       {/* Header */}
@@ -16,14 +74,6 @@ export default function PaymentPage() {
             2
           </span>
         </div>
-
-        <Image
-          src="/images/pexels.png"
-          alt="User Avatar"
-          width={36}
-          height={36}
-          className="rounded-full border border-gray-700"
-        />
       </div>
 
       {/* Plans & Billing */}
@@ -31,65 +81,42 @@ export default function PaymentPage() {
         {/* <h2 className="text-lg font-semibold mb-6">Plans & Billing</h2> */}
         {/* Plan Cards (match screenshot) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Free */}
-          <div className="rounded-2xl border border-[#2A2A2A] bg-transparent p-5 flex flex-col justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-200 mb-3">Free</h3>
-              <p className="text-3xl font-bold mb-1">£0<span className="text-sm font-normal text-gray-400">/mo</span></p>
-              <ul className="mt-3 space-y-2 text-sm text-gray-300">
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> 3 tenants</li>
-              </ul>
+          {plans.map((plan) => (
+            <div key={plan.key} className={`rounded-2xl border p-5 flex flex-col justify-between ${activePlan === plan.key ? 'border-emerald-500 bg-[#072a17]' : 'border-[#2A2A2A] bg-transparent'}`}>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-200 mb-3">{plan.title}</h3>
+                <p className="text-3xl font-bold mb-1">{plan.price}<span className="text-sm font-normal text-gray-400">{plan.per}</span></p>
+                <ul className="mt-3 space-y-2 text-sm text-gray-300">
+                  {plan.features.map((f, i) => (
+                    <li key={i} className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> {f}</li>
+                  ))}
+                </ul>
+              </div>
+              {(() => {
+                const { disabled, label, highlight } = getButtonState(plan.key);
+                return (
+                  <button
+                    disabled={disabled}
+                    onClick={() => {
+                      if (disabled) return;
+                      if (plan.key === 'free') return;
+                      startCheckout(plan.key as 'starter' | 'pro' | 'enterprise');
+                    }}
+                    className={`mt-5 w-full rounded-full px-4 py-2 text-sm ${highlight ? 'bg-emerald-600 text-white border-emerald-600' : 'border border-emerald-700 text-emerald-300 hover:bg-[#0b1510]'} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    {label}
+                  </button>
+                );
+              })()}
             </div>
-            <button className="mt-5 w-full rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510]">Select</button>
-          </div>
-
-          {/* Starter */}
-          <div className="rounded-2xl border border-[#2A2A2A] bg-transparent p-5 flex flex-col justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-200 mb-3">Starter</h3>
-              <p className="text-3xl font-bold mb-1">£29<span className="text-sm font-normal text-gray-400">/mo</span></p>
-              <ul className="mt-3 space-y-2 text-sm text-gray-300">
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> 20 tenants</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> CSV export</li>
-              </ul>
-            </div>
-            <button className="mt-5 w-full rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510]">Select</button>
-          </div>
-
-          {/* Pro */}
-          <div className="rounded-2xl border border-[#2A2A2A] bg-transparent p-5 flex flex-col justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-200 mb-3">Pro</h3>
-              <p className="text-3xl font-bold mb-1">£79<span className="text-sm font-normal text-gray-400">/mo</span></p>
-              <ul className="mt-3 space-y-2 text-sm text-gray-300">
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> 150 tenants</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> CSV export</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> Xero/QuickBooks</li>
-              </ul>
-            </div>
-            <button className="mt-5 w-full rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510]">Select</button>
-          </div>
-
-          {/* Enterprise */}
-          <div className="rounded-2xl border border-[#2A2A2A] bg-transparent p-5 flex flex-col justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-200 mb-3">Enterprise</h3>
-              <p className="text-3xl font-bold mb-1">£199+<span className="text-sm font-normal text-gray-400">/mo</span></p>
-              <ul className="mt-3 space-y-2 text-sm text-gray-300">
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> Unlimited tenants</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> CSV export</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> Xero export</li>
-              </ul>
-            </div>
-            <button className="mt-5 w-full rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510]">Select</button>
-          </div>
+          ))}
         </div>
 
         {/* Referral discount bar (below plans) */}
         <div className="mt-6 rounded-2xl border border-[#2A2A2A] bg-transparent p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-sm font-medium text-gray-200">Referral Discount</h3>
-            <p className="text-[13px] text-gray-400 mt-1">Current discount: <span className="font-semibold text-white">60%</span></p>
+            <p className="text-[13px] text-gray-400 mt-1">Current discount: <span className="font-semibold text-white">{currentDiscount}%</span></p>
           </div>
           <button className="inline-flex items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-5 py-2 text-sm hover:bg-[#0b1510]">
             View Referral Dashboard
