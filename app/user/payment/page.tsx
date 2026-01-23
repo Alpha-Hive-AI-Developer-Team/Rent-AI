@@ -70,12 +70,7 @@ export default function PaymentPage() {
       <div className="flex items-center justify-end gap-4">
         <h1 className="text-xl font-semibold mr-auto">Payment Plan</h1>
 
-        <div className="relative">
-          <Bell className="w-6 h-6 text-gray-300" />
-          <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
-            2
-          </span>
-        </div>
+      
       </div>
 
       {/* Plans & Billing */}

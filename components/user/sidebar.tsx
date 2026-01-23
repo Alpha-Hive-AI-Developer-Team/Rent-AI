@@ -64,6 +64,15 @@ export default function Sidebar({ mobileOpen, onClose }: SidebarProps) {
 
     return (
       <>
+        <style jsx global>{`
+          .hide-scrollbar {
+            -ms-overflow-style: none; /* IE and Edge */
+            scrollbar-width: none; /* Firefox */
+          }
+          .hide-scrollbar::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Opera */
+          }
+        `}</style>
         <aside
           className={`fixed top-0 left-0 h-screen bg-[#0A0A0A] text-gray-400 flex flex-col border-r border-gray-900/60 transition-all duration-300 z-40
             ${isDesktop ? "w-72" : "w-20"}
@@ -95,7 +104,7 @@ export default function Sidebar({ mobileOpen, onClose }: SidebarProps) {
       )}
 
       {/* 📋 Navigation */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+      <nav className={`flex-1 px-3 py-4 overflow-y-auto ${showMore ? "hide-scrollbar" : ""}`}>
         {/* {isDesktop && (
           <div className="text-xs text-gray-400 px-2 pb-2">Main</div>
         )} */}
@@ -228,7 +237,7 @@ export default function Sidebar({ mobileOpen, onClose }: SidebarProps) {
                 />
                  <span className="text-white font-semibold text-2xl">Rent Ai</span>
                 <button
-                  onClick={() => onClose?.()}
+                  onClick={() => onClose?.()} 
                   className="text-gray-400 hover:text-white p-2 mr-2"
                   aria-label="Close sidebar"
                 >
@@ -236,7 +245,7 @@ export default function Sidebar({ mobileOpen, onClose }: SidebarProps) {
                 </button>
               </div>
 
-              <nav className="flex-1 px-3 py-4 overflow-y-auto">
+              <nav className={`flex-1 px-3 py-4 ${showMore ? "overflow-y-auto h-[90vh] hide-scrollbar" : "overflow-y-auto"}`}>
                 <div className="bg-transparent p-2 space-y-3">
                   {mainItems.map(({ name, path, Icon }) => {
                     const isActive = pathname === path || (pathname === "" && path === "/");

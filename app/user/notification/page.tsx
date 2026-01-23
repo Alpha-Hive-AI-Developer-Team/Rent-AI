@@ -30,20 +30,7 @@ export default function NotificationPage() {
           Notifications
         </h1>
 
-        <div className="relative">
-          <Bell className="w-6 h-6 text-gray-300" />
-          <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
-            3
-          </span>
-        </div>
-
-        <Image
-          src="/images/pexels.png"
-          alt="User Avatar"
-          width={36}
-          height={36}
-          className="rounded-full border border-gray-700"
-        />
+      
       </div>
 
       {/* Notifications Card */}

@@ -51,7 +51,7 @@ export default function TenantsPage() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <h1 className="text-xl font-semibold">Tenants</h1>
 
-        <div className="flex items-center gap-4">
+        {/* <div className="flex items-center gap-4">
           <div className="relative">
             <Bell className="w-6 h-6 text-gray-300" />
             <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
@@ -66,7 +66,7 @@ export default function TenantsPage() {
             height={36}
             className="rounded-full border border-gray-700"
           />
-        </div>
+        </div> */}
       </div>
 
       {/* Search + New Tenant */}

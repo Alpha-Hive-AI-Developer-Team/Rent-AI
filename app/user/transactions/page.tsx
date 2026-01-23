@@ -364,22 +364,6 @@ export default function TransactionsPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">Transactions</h1>
 
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Bell className="w-6 h-6 text-gray-300" />
-            <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
-              2
-            </span>
-          </div>
-
-          <Image
-            src="/images/pexels.png"
-            alt="User Avatar"
-            width={36}
-            height={36}
-            className="rounded-full border border-gray-700"
-          />
-        </div>
       </div>
       {connectedInstitution && (
         <div className="mt-3 p-3 rounded-lg bg-emerald-900/10 border border-emerald-700 text-emerald-300 flex items-center justify-between">
