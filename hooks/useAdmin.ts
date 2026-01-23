@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { getAdminLandlords } from "@/lib/api/adminApi";
+import { getAdminLandlords, getAdminReferralsTrend, getAdminTopReferrers } from "@/lib/api/adminApi";
 
-import { getLandlordTenants, getTenantTransactions, getAllTenants, getTenantStats, getAdminSummary } from "@/lib/api/adminApi";
+import { getLandlordTenants, getTenantTransactions, getAllTenants, getTenantStats, getAdminSummary, getAdminReferralsSummary } from "@/lib/api/adminApi";
 import { getAdmins, createAdmin } from "@/lib/api/adminApi";
 import { updateAdminStatus } from "@/lib/api/adminApi";
 
@@ -47,6 +47,31 @@ export function useAdminSummary() {
 		queryKey: ["adminSummary"],
 		queryFn: () => getAdminSummary(),
 		staleTime: 60_000, // refresh every minute
+	});
+}
+
+export function useAdminReferralsSummary(filters: { search?: string; status?: string; page?: number; limit?: number } = {}) {
+	return useQuery<any, Error, any>({
+		queryKey: ["adminReferralsSummary", filters],
+		queryFn: () => getAdminReferralsSummary(filters),
+		staleTime: 60_000,
+
+	});
+}
+
+export function useAdminReferralsTrend() {
+    return useQuery<any, Error, any>({
+        queryKey: ["adminReferralsTrend"],
+        queryFn: () => getAdminReferralsTrend(),
+        staleTime: 5 * 60_000, // refresh every 5 minutes
+    });
+}
+
+export function useAdminTopReferrers() {
+	return useQuery<any, Error, any>({
+		queryKey: ["adminTopReferrers"],
+		queryFn: () => getAdminTopReferrers(),
+		staleTime: 5 * 60_000,
 	});
 }
 

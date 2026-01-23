@@ -3,6 +3,7 @@ export interface CreateCheckoutPayload {
 	planType?: string;
 	successUrl?: string;
 	cancelUrl?: string;
+	applyCredit?: boolean;
 }
 
 export async function createCheckoutSession(payload: CreateCheckoutPayload, token?: string) {

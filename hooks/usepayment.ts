@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { createCheckoutSession } from '../lib/api/payment';
 import { loadStripe } from '@stripe/stripe-js';
+import plansConfig, { PRICE_ID_MAP } from '@/lib/plans';
 
 type PlanKey = 'starter' | 'pro' | 'enterprise';
 
@@ -16,18 +17,12 @@ console.log("Environment variables:", {
 			NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE: process.env.NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE,
         });
 	const priceMap = useMemo(() => ({
-
-
-
-
-
-   
-		starter: process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER || '',
-		pro: process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO || '',
-		enterprise: process.env.NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE || '',
+		starter: PRICE_ID_MAP.starter || process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER || '',
+		pro: PRICE_ID_MAP.pro || process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO || '',
+		enterprise: PRICE_ID_MAP.enterprise || process.env.NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE || '',
 	}), []);
 
-	const startCheckout = useCallback(async (plan: PlanKey) => {
+	const startCheckout = useCallback(async (plan: PlanKey, applyCredit?: boolean) => {
 		setLoading(true);
 		setError(null);
 		try {
@@ -40,6 +35,7 @@ console.log("Environment variables:", {
 				planType: plan,
 				successUrl: `${origin}/user/payment?status=success`,
 				cancelUrl: `${origin}/user/payment?status=cancel`,
+				applyCredit: !!applyCredit,
 			}, token);
 			const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 			if (pk) {

@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { signUpUser, signInUser, logoutUser, verifySignupOtp, getMyDetails } from "@/lib/api/authApi";
+import { getReferralsSummary } from "@/lib/api/referrals";
 import { SignUpInput } from "@/lib/validations/auth";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
@@ -133,6 +134,18 @@ export function useMyProfile() {
     },
     // only run on client where localStorage is available (api-client will attach token)
     enabled: typeof window !== "undefined",
-    staleTime: 1000 * 60, // 1 minute
+    staleTime: 0, // 1 minute
+  });
+}
+
+// Fetch referrals summary for authenticated user
+export function useReferralsSummary() {
+  return useQuery({
+    queryKey: ["referrals-summary"],
+    queryFn: async () => {
+      return await getReferralsSummary();
+    },
+    enabled: typeof window !== "undefined",
+    staleTime: 1000 * 60,
   });
 }

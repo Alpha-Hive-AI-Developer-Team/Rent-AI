@@ -2,11 +2,18 @@
 
 import Image from "next/image";
 import { Bell, Copy, Check, Send } from "lucide-react";
-import { useState } from "react";
+import { useMyProfile } from "@/hooks/useAuth";
+import { useMemo, useState } from "react";
+import { useReferralsSummary } from "@/hooks/useAuth";
+import plansConfig, { PLAN_PRICE_CENTS } from "@/lib/plans";
 
 export default function ReferralsPage() {
   const [copied, setCopied] = useState(false);
-  const referralLink = "https://rentai.app?r=OTMAN10";
+  const { data: summaryResp } = useReferralsSummary();
+  const { data: profileResp } = useMyProfile();
+
+  const referralCode = profileResp?.data?.myReferralCode || "OTMAN10";
+  const referralLink = (typeof window !== "undefined" ? window.location.origin : "https://rentai.app") + `/?r=${referralCode}`;
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(referralLink);
@@ -14,10 +21,13 @@ export default function ReferralsPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const activeReferrals = [
-    { name: "Jack Smith" },
-    { name: "Amira Khan" },
-  ];
+  const totalReferrals = summaryResp?.data?.totalReferrals ?? 0;
+  const payingReferrals = summaryResp?.data?.payingReferrals ?? 0;
+  const totalCommissionGBP = useMemo(() => {
+    const cents = summaryResp?.data?.totalCommissionCents ?? 0;
+    return (Math.max(0, Math.round(cents)) / 100).toFixed(2);
+  }, [summaryResp]);
+  const referrals = summaryResp?.data?.referrals || [];
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8">
@@ -26,7 +36,7 @@ export default function ReferralsPage() {
         <h1 className="text-xl font-semibold mr-auto">Referrals & Partner Program</h1>
         {/* Global commission badge aligned with header, outside member discount card */}
         <span className="inline-flex items-center gap-2 text-[12px] bg-[#072014] text-emerald-300 border border-emerald-700 px-3 py-1 rounded-full shrink-0">
-          5 paying • £19.50/mo commission
+          {payingReferrals} paying • £{totalCommissionGBP}/mo commission
         </span>
 
         <div className="relative">
@@ -58,15 +68,15 @@ export default function ReferralsPage() {
             </p>
           </div>
           <div className="text-right shrink-0">
-            <p className="text-[18px] font-semibold">£19.50 <span className="text-sm text-gray-400">/mo</span></p>
-            <p className="text-[12px] text-gray-400 mt-1">Your plan: £79 • You pay: <span className="text-white font-medium">£59.50</span></p>
+            <p className="text-[18px] font-semibold">£{totalCommissionGBP} <span className="text-sm text-gray-400">/mo</span></p>
+            <p className="text-[12px] text-gray-400 mt-1">Your plan: £79 • You pay: <span className="text-white font-medium">—</span></p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
           {/* Active referrals box */}
           <div className="rounded-xl p-4 border border-[#2A2A2A] bg-transparent">
-            <p className="text-[14px] font-medium text-white mb-1">Active referrals: <span className="text-white">5 / 10</span></p>
+            <p className="text-[14px] font-medium text-white mb-1">Active referrals: <span className="text-white">{totalReferrals} / {payingReferrals}</span></p>
             <p className="text-[13px] text-gray-400">Introduce 5 more paying customer(s) to reach the 10-for-free target on a Starter plan (or to reach a bigger discount on higher plans).</p>
           </div>
 
@@ -102,26 +112,28 @@ export default function ReferralsPage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[
-            { name: "Alex R.", status: "Paying" },
-            { name: "Priya S.", status: "Paying" },
-            { name: "Luis C.", status: "Paying" },
-            { name: "Kim T.", status: "Paying" },
-            { name: "Maya H.", status: "Paying" },
-            { name: "Omar N.", status: "Cancelled" },
-          ].map((ref, idx) => (
-            <div key={idx} className="bg-[#101010] rounded-xl border border-[#262626] p-4 flex flex-col">
-              <div className="flex items-start justify-between">
-                <p className="font-medium text-white text-[14px] leading-tight">{ref.name}</p>
-                <span className={`inline-flex items-center px-3 py-[2px] text-[12px] rounded-full font-medium ${ref.status === "Paying" ? "bg-[#0f1f15] text-emerald-300 border border-emerald-700" : "bg-[#1b0f0f] text-rose-300 border border-rose-700"}`}>
-                  {ref.status}
-                </span>
-              </div>
+          {referrals.map((r) => {
+            const name = [r.firstName || "", r.lastName || ""].filter(Boolean).join(" ") || r.email;
+            const plan = r.planType || "free";
+            const planPriceGBP = Math.round((PLAN_PRICE_CENTS[plan] || 0) / 100);
+            const status = plan !== "free" ? "Paying" : "Free";
+            const commissionGBP = (planPriceGBP * 0.10).toFixed(2);
+            return (
+              <div key={r._id} className="bg-[#101010] rounded-xl border border-[#262626] p-4 flex flex-col">
+                <div className="flex items-start justify-between">
+                  <p className="font-medium text-white text-[14px] leading-tight">{name}</p>
+                  <span className={`inline-flex items-center px-3 py-[2px] text-[12px] rounded-full font-medium ${status === "Paying" ? "bg-[#0f1f15] text-emerald-300 border border-emerald-700" : "bg-[#1b0f0f] text-rose-300 border border-rose-700"}`}>
+                    {status}
+                  </span>
+                </div>
 
-              <p className="text-[12px] text-gray-400 mt-1">Starter • £29 /mo</p>
-              <p className="text-[12px] text-gray-400 mt-3">Your commission: <span className="text-gray-200 font-semibold">£2.90</span> <span className="text-gray-500">/mo</span></p>
-            </div>
-          ))}
+                <p className="text-[12px] text-gray-400 mt-1">{plan.charAt(0).toUpperCase() + plan.slice(1)} • £{planPriceGBP} /mo</p>
+                {status === "Paying" && (
+                  <p className="text-[12px] text-gray-400 mt-3">Your commission: <span className="text-gray-200 font-semibold">£{commissionGBP}</span> <span className="text-gray-500">/mo</span></p>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

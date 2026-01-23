@@ -66,5 +66,26 @@ export async function getAdminSummary() {
 	return res.data;
 }
 
-export default { getAdminLandlords, getLandlordTenants, getTenantTransactions, getAllTenants, getAdmins, createAdmin, updateAdminStatus };
+// Admin referrals summary (top referrers + table)
+export async function getAdminReferralsSummary(filters: { search?: string; status?: string; page?: number; limit?: number } = {}) {
+	const params: Record<string, any> = {};
+	if (filters.search) params.search = filters.search;
+	if (filters.status) params.status = filters.status;
+	if (filters.page) params.page = filters.page;
+	if (filters.limit) params.limit = filters.limit;
+	const res = await apiClient.get(`/auth/admin/referrals/summary`, { params });
+	return res.data;
+}
+
+export async function getAdminReferralsTrend() {
+    const res = await apiClient.get(`/auth/admin/referrals/trend`);
+    return res.data;
+}
+
+export async function getAdminTopReferrers() {
+	const res = await apiClient.get(`/auth/admin/referrals/top`);
+	return res.data;
+}
+
+export default { getAdminLandlords, getLandlordTenants, getTenantTransactions, getAllTenants, getAdmins, createAdmin, updateAdminStatus, getAdminReferralsSummary, getAdminTopReferrers };
 
