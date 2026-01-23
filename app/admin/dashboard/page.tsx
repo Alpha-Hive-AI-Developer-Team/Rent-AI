@@ -85,7 +85,7 @@ import useAdminLandlords, { useAdminSummary } from "@/hooks/useAdmin";
       </div>
     
       {/* Recent Alerts Section */}
-      <AlertsCard />
+      {/* <AlertsCard /> */}
     </div>
   );
 }
