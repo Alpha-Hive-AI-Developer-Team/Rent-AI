@@ -89,3 +89,32 @@ export async function getAdminTopReferrers() {
 
 export default { getAdminLandlords, getLandlordTenants, getTenantTransactions, getAllTenants, getAdmins, createAdmin, updateAdminStatus, getAdminReferralsSummary, getAdminTopReferrers };
 
+// --- Expenses & Income Summary ---
+export async function createExpense(payload: { landlordId?: string; address: string; description: string; amount: number; date?: string }) {
+	console.log('Creating expense with payload:', payload);
+	const res = await apiClient.post(`/expenses`, payload);
+	return res.data;
+}
+
+export async function getExpenses(filters: { landlordId?: string; address?: string; from?: string; to?: string; page?: number; limit?: number } = {}) {
+	const params: Record<string, any> = {};
+	if (filters.landlordId) params.landlordId = filters.landlordId;
+	if (filters.address) params.address = filters.address;
+	if (filters.from) params.from = filters.from;
+	if (filters.to) params.to = filters.to;
+	if (filters.page) params.page = filters.page;
+	if (filters.limit) params.limit = filters.limit;
+	const res = await apiClient.get(`/expenses`, { params });
+	return res.data;
+}
+
+export async function getIncomeSummary(filters: { landlordId?: string; address: string; from?: string; to?: string }) {
+	const params: Record<string, any> = {};
+	if (filters.landlordId) params.landlordId = filters.landlordId;
+	if (filters.address) params.address = filters.address;
+	if (filters.from) params.from = filters.from;
+	if (filters.to) params.to = filters.to;
+	const res = await apiClient.get(`/expenses/summary`, { params });
+	return res.data;
+}
+

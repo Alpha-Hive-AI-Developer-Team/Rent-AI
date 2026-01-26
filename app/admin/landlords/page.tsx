@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import useAdminLandlords, { useLandlordTenants, useTenantTransactions } from "@/hooks/useAdmin";
+import useAdminLandlords, { useLandlordTenants, useTenantTransactions, useExpenses, useIncomeSummary, useCreateExpense } from "@/hooks/useAdmin";
 import { Button } from "@/components/ui/button";
+import toast from "react-hot-toast";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -150,6 +151,7 @@ export default function LandlordManagement() {
 
   const modalAddresses: any[] = (tenantsResp && Array.isArray(tenantsResp.data)) ? tenantsResp.data : (selectedLandlord?.addresses || []);
   const currentTenants = modalAddresses[selectedAddressIndex || 0]?.tenants || [];
+  const currentAddress: string = (modalAddresses[selectedAddressIndex || 0]?.address || modalAddresses[selectedAddressIndex || 0]?.property || "");
 
   // Tenant modal state (rendered inside same modal)
   const [modalView, setModalView] = useState<"landlord" | "tenant">("landlord");
@@ -173,13 +175,39 @@ export default function LandlordManagement() {
   const [manualExpenses, setManualExpenses] = useState<Array<{ desc: string; amount: number }>>([]);
   const [newExpenseDesc, setNewExpenseDesc] = useState("");
   const [newExpenseAmount, setNewExpenseAmount] = useState("");
+  const createExpenseMutation = useCreateExpense();
+
+  const { data: expensesResp } = useExpenses({ landlordId: selectedLandlordId || undefined, address: currentAddress || undefined, page: 1, limit: 100 });
+  const { data: incomeSummaryResp } = useIncomeSummary({ landlordId: selectedLandlordId || undefined, address: currentAddress || "" });
 
   const addExpense = () => {
+    console.log("Adding expense...");
     const amt = Number(String(newExpenseAmount).replace(/[^0-9.-]+/g, "")) || 0;
-    if (!newExpenseDesc || amt === 0) return;
-    setManualExpenses((s) => [...s, { desc: newExpenseDesc, amount: amt }]);
-    setNewExpenseDesc("");
-    setNewExpenseAmount("");
+    const desc = String(newExpenseDesc || "").trim();
+    if (!desc || amt <= 0) {
+      toast.error("Provide a description and positive amount.");
+      return;
+    }
+    
+    if (!selectedLandlordId || !currentAddress) {
+      toast.error("Select an address before adding an expense.");
+      return;
+    }
+  
+    createExpenseMutation.mutate(
+      { landlordId: selectedLandlordId, address: currentAddress, description: desc, amount: amt },
+      {
+        onSuccess: () => {
+          setNewExpenseDesc("");
+          setNewExpenseAmount("");
+          toast("Expense saved and totals updated.");
+        },
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message || "Failed to add expense";
+          toast.error(msg);
+        },
+      }
+    );
   };
 
   const handleOpenLandlord = (landlord: any) => {
@@ -381,15 +409,12 @@ export default function LandlordManagement() {
                       </div>
                     )}
 
-                    {/* Totals + Manual Expenses */}
+                    {/* Totals + Expenses */}
                     <div className="mt-4 p-4 rounded-lg border border-gray-800 bg-[#080808]">
                       {(() => {
-                        const tenants = modalAddresses[selectedAddressIndex || 0]?.tenants || [];
-                        const gross = tenants.reduce((s: number, t: any) => s + Number(String(t.rent).replace(/[^0-9.-]+/g, "")), 0);
-                        const platformFee = +(gross * 0.12).toFixed(2);
-                        const manualSum = manualExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-                        const totalExpenses = +(platformFee + manualSum).toFixed(2);
-                        const net = +(gross - totalExpenses).toFixed(2);
+                        const gross = Number(incomeSummaryResp?.data?.grossIncome || 0);
+                        const totalExpenses = Number(incomeSummaryResp?.data?.totalExpenses || 0);
+                        const net = Number(incomeSummaryResp?.data?.netIncome || (gross - totalExpenses));
                         const fmt = (n: number) => `£${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
                         return (
                           <div>
@@ -426,14 +451,14 @@ export default function LandlordManagement() {
                                 <Button onClick={addExpense} className="bg-[#111] border border-gray-800 text-gray-300">Add</Button>
                               </div>
 
-                              {manualExpenses.length > 0 && (
+                              {Array.isArray(expensesResp?.data) && expensesResp!.data.length > 0 && (
                                 <div className="mt-3">
                                   <div className="text-xs text-gray-400 mb-2">Manual Expenses</div>
                                   <div className="space-y-2">
-                                    {manualExpenses.map((ex, i) => (
-                                      <div key={i} className="flex justify-between items-center bg-[#0b0b0b] p-2 rounded border border-[#151515] text-sm">
-                                        <div className="text-gray-200">{ex.desc}</div>
-                                        <div className="text-rose-400">{fmt(ex.amount)}</div>
+                                    {expensesResp!.data.map((ex: any, i: number) => (
+                                      <div key={ex._id || i} className="flex justify-between items-center bg-[#0b0b0b] p-2 rounded border border-[#151515] text-sm">
+                                        <div className="text-gray-200">{ex.description}</div>
+                                        <div className="text-rose-400">{fmt(Number(ex.amount || 0))}</div>
                                       </div>
                                     ))}
                                   </div>

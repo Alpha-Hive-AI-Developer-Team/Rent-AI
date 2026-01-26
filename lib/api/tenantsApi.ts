@@ -43,3 +43,13 @@ export async function getExpectedSeries(options: { granularity?: 'month' | 'day'
   const res = await apiClient.get(`/tenants/rent-series`, { params });
   return res.data;
 }
+
+export async function getCollectedSeries(options: { granularity?: 'month' | 'day'; months?: number; days?: number } = {}) {
+  const { granularity = 'month', months = 3, days } = options;
+  const params: any = { granularity };
+  if (granularity === 'month') params.months = months;
+  if (granularity === 'day' && typeof days === 'number') params.days = days;
+  console.log("Fetching collected series with params:", params);
+  const res = await apiClient.get(`/tenants/rent-collected`, { params });
+  return res.data;
+}
