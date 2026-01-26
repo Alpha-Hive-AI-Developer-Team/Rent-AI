@@ -5,6 +5,7 @@ import { Bell, Copy, Check, Send } from "lucide-react";
 import { useMyProfile } from "@/hooks/useAuth";
 import { useMemo, useState } from "react";
 import { useReferralsSummary } from "@/hooks/useAuth";
+import { useNotifications } from "@/hooks/useNotifications";
 import plansConfig, { PLAN_PRICE_CENTS } from "@/lib/plans";
 
 export default function ReferralsPage() {
@@ -29,6 +30,11 @@ export default function ReferralsPage() {
   }, [summaryResp]);
   const referrals = summaryResp?.data?.referrals || [];
   const payingList = (referrals || []).filter((r: any) => (r.planType || 'free') !== 'free');
+
+  const [showAlerts, setShowAlerts] = useState(false);
+  const notificationsQuery = useNotifications();
+  const notifications = notificationsQuery?.data?.data || [];
+  const unreadCount = (notifications || []).filter((n) => !n.read).length;
 
   // Compute how many more paying referrals are needed to fully cover plan price
   const currentPlan: string = profileResp?.data?.planType || "free";
@@ -75,14 +81,47 @@ export default function ReferralsPage() {
       <div className="flex flex-wrap items-center justify-end gap-4">
         <h1 className="text-xl font-semibold mr-auto">Referrals & Partner Program</h1>
         {/* Global commission badge aligned with header, outside member discount card */}
-        <span className="inline-flex items-center gap-2 text-[12px] bg-[#072014] text-emerald-300 border border-emerald-700 px-3 py-1 rounded-full shrink-0">
-          {payingReferrals} paying • £{totalCommissionGBP}/mo commission
-        </span>
+        <div className="inline-flex items-center gap-3">
+          <span className="inline-flex items-center gap-2 text-[12px] bg-[#072014] text-emerald-300 border border-emerald-700 px-3 py-1 rounded-full shrink-0">
+            {payingReferrals} paying • £{totalCommissionGBP}/mo commission
+          </span>
+          <button
+            aria-label="Toggle alerts"
+            onClick={() => setShowAlerts((s) => !s)}
+            className="relative inline-flex items-center justify-center w-9 h-9 rounded-full bg-[#07120f] border border-[#1f2f27] text-gray-200"
+          >
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] px-1 rounded-full">{unreadCount}</span>
+            )}
+          </button>
+        </div>
 
     
       </div>
 
 
+
+      {/* Alerts panel (toggle) */}
+      {showAlerts && (
+        <div className="relative">
+          <div className="absolute right-0 z-20 w-full md:w-96 bg-[#07110f] border border-[#1a1a1a] rounded-xl p-3 shadow-xl">
+            <h4 className="text-sm font-semibold mb-2">Recent alerts</h4>
+            <div className="space-y-2">
+              {(notifications && notifications.length > 0) ? (
+                notifications.slice(0, 8).map((n) => (
+                  <div key={n._id} className="p-2 rounded-md hover:bg-[#0b0b0b]">
+                    <p className="text-[13px] text-gray-200">{n.description}</p>
+                    <p className="text-[11px] text-gray-500 mt-1">{n.createdAt ? new Date(n.createdAt).toLocaleString() : ''}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="p-2 text-gray-400">No alerts yet.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Card 1: Member discount */}
       <div className="relative rounded-2xl bg-[#0B0B0B] border border-[#1a1a1a] p-6">
@@ -196,19 +235,22 @@ export default function ReferralsPage() {
         )}
       </div>
 
-      {/* Recent referral events */}
+      {/* Recent referral events (from notifications) */}
       <div className="mt-6">
         <h3 className="text-[13px] text-gray-400 mb-3">Recent referral events</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="rounded-xl border border-[#2A2A2A] bg-transparent p-4">
-            <p className="text-[13px] text-gray-200">+10% — Jack subscribed (Starter)</p>
-            <p className="text-[12px] text-gray-500 mt-2">2025-10-10</p>
-          </div>
-
-          <div className="rounded-xl border border-[#2A2A2A] bg-transparent p-4">
-            <p className="text-[13px] text-gray-200">+10% — Sara upgraded (Pro)</p>
-            <p className="text-[12px] text-gray-500 mt-2">2025-10-12</p>
-          </div>
+          {notifications && notifications.length > 0 ? (
+            notifications.slice(0, 6).map((n) => (
+              <div key={n._id} className="rounded-xl border border-[#2A2A2A] bg-transparent p-4">
+                <p className="text-[13px] text-gray-200">{n.description}</p>
+                <p className="text-[12px] text-gray-500 mt-2">{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</p>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-xl border border-[#2A2A2A] bg-transparent p-4 text-gray-400">
+              No recent referral events yet.
+            </div>
+          )}
         </div>
       </div>
 
