@@ -28,6 +28,46 @@ export default function ReferralsPage() {
     return (Math.max(0, Math.round(cents)) / 100).toFixed(2);
   }, [summaryResp]);
   const referrals = summaryResp?.data?.referrals || [];
+  const payingList = (referrals || []).filter((r: any) => (r.planType || 'free') !== 'free');
+
+  // Compute how many more paying referrals are needed to fully cover plan price
+  const currentPlan: string = profileResp?.data?.planType || "free";
+  const currentDiscount = Number(totalCommissionGBP) || 0;
+
+  const planKeysOrder = ["free", "starter", "pro", "enterprise"];
+  const currentIndex = planKeysOrder.indexOf(currentPlan as any);
+  const targets = currentIndex >= 0 ? planKeysOrder.slice(currentIndex + 1) : ["starter"];
+
+  const neededByReferralType: Record<string, { target: string; neededStarter?: number; neededPro?: number; neededEnterprise?: number; remaining?: number }> = {};
+
+  targets.forEach((target) => {
+    const planPriceGBP = Math.round((PLAN_PRICE_CENTS[target] || 0) / 100);
+    const remaining = Math.max(0, planPriceGBP - currentDiscount);
+
+    // value given by one paying referral depends on referred user's plan — 10% of that plan price
+    const perStarter = 0.1 * (Math.round((PLAN_PRICE_CENTS['starter'] || 0) / 100));
+    const perPro = 0.1 * (Math.round((PLAN_PRICE_CENTS['pro'] || 0) / 100));
+    const perEnterprise = 0.1 * (Math.round((PLAN_PRICE_CENTS['enterprise'] || 0) / 100));
+
+    const neededStarter = perStarter > 0 ? Math.ceil(remaining / perStarter) : Infinity;
+    const neededPro = perPro > 0 ? Math.ceil(remaining / perPro) : Infinity;
+    const neededEnterprise = perEnterprise > 0 ? Math.ceil(remaining / perEnterprise) : Infinity;
+
+    neededByReferralType[target] = { target, neededStarter, neededPro, neededEnterprise, remaining };
+  });
+
+  // Find the next unmet target (first target where remaining > 0)
+  const nextTarget = targets.find((t) => {
+    const info = neededByReferralType[t];
+    return info && typeof info.remaining === 'number' && info.remaining > 0;
+  });
+
+  // Determine the next plan to show for pricing (if user is not on top plan)
+  const nextPlanKey = targets.length > 0 ? targets[0] : currentPlan;
+  const nextPlanLabel = nextPlanKey.charAt(0).toUpperCase() + nextPlanKey.slice(1);
+  const nextPlanPriceGBP = Math.round((PLAN_PRICE_CENTS[nextPlanKey] || PLAN_PRICE_CENTS[currentPlan] || 0) / 100);
+  const youPayNumber = Math.max(0, nextPlanPriceGBP - currentDiscount);
+  const youPayDisplay = youPayNumber.toFixed(2);
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8">
@@ -56,15 +96,41 @@ export default function ReferralsPage() {
           </div>
           <div className="text-right shrink-0">
             <p className="text-[18px] font-semibold">£{totalCommissionGBP} <span className="text-sm text-gray-400">/mo</span></p>
-            <p className="text-[12px] text-gray-400 mt-1">Your plan: £79 • You pay: <span className="text-white font-medium">—</span></p>
+            <p className="text-[12px] text-gray-400 mt-1">Your Upcoming plan: {nextPlanLabel} • You pay: <span className="text-white font-medium">£{youPayDisplay}</span></p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
           {/* Active referrals box */}
-          <div className="rounded-xl p-4 border border-[#2A2A2A] bg-transparent">
-            <p className="text-[14px] font-medium text-white mb-1">Active referrals: <span className="text-white">{totalReferrals} / {payingReferrals}</span></p>
-            <p className="text-[13px] text-gray-400">Introduce 5 more paying customer(s) to reach the 10-for-free target on a Starter plan (or to reach a bigger discount on higher plans).</p>
+          <div className={`rounded-xl p-4 border border-[#2A2A2A] bg-transparent flex flex-col ${payingReferrals === 0 ? 'items-center justify-center' : 'items-start justify-center'}`}>
+          
+            {payingReferrals === 0 ? (<>
+            
+  
+              
+              <p className="text-[13px] text-gray-400">No active paying referrals yet — refer customers to get discounts and earn <span className="font-semibold text-white">10%</span> commission. Share your link above to get started.</p>
+           </>   ) : (
+            <>
+              <p className="text-[14px] font-medium text-white mb-1">Active referrals: <span className="text-white">{totalReferrals} / {payingReferrals}</span></p>
+              <p className="text-[13px] text-gray-400">{(() => {
+                if (!profileResp?.data) return `Invite paying customers to increase your discount.`;
+                if (targets.length === 0) return `You are on the top plan — referral discounts still apply and are capped at your plan price.`;
+
+                if (!nextTarget) {
+                  return `You have already reached the next target plan based on your current discount.`;
+                }
+
+                const info = neededByReferralType[nextTarget];
+                if (!info) return `Invite paying customers to increase your discount.`;
+
+                const tLabel = nextTarget.charAt(0).toUpperCase() + nextTarget.slice(1);
+                const s = info.neededStarter === Infinity ? '—' : `${info.neededStarter}`;
+                const p = info.neededPro === Infinity ? '—' : `${info.neededPro}`;
+                const e = info.neededEnterprise === Infinity ? '—' : `${info.neededEnterprise}`;
+
+                return `To make ${tLabel} free: ${s} more paying Starter referrals (or ${p} paying Pro referrals, or ${e} Enterprise referrals).`;
+              })()}</p>
+           </> )}
           </div>
 
           {/* Referral link box */}
@@ -94,12 +160,17 @@ export default function ReferralsPage() {
             <p className="text-[12px] text-gray-400">Earn <span className="font-semibold text-white">10% commission</span> monthly for each paying customer you introduce — recurring while they remain active.</p>
           </div>
           <div className="text-right">
-            <p className="text-base font-semibold">£19.50 <span className="text-sm text-gray-400">/mo</span></p>
+            <p className="text-base font-semibold">£{totalCommissionGBP} <span className="text-sm text-gray-400">/mo</span></p>
           </div>
         </div>
 
+        {payingList.length === 0 ? (
+          <div className="rounded-xl border border-[#2A2A2A] bg-transparent p-6 text-center text-gray-400">
+            No active paying members yet — once referrals subscribe you'll see them here and earn commission.
+          </div>
+        ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {referrals.map((r) => {
+          {payingList.map((r) => {
             const name = [r.firstName || "", r.lastName || ""].filter(Boolean).join(" ") || r.email;
             const plan = r.planType || "free";
             const planPriceGBP = Math.round((PLAN_PRICE_CENTS[plan] || 0) / 100);
@@ -122,6 +193,7 @@ export default function ReferralsPage() {
             );
           })}
         </div>
+        )}
       </div>
 
       {/* Recent referral events */}
