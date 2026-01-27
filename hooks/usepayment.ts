@@ -21,7 +21,6 @@ export function usePayment() {
 		setLoading(true);
 		setError(null);
 		try {
-			const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') || undefined : undefined;
 			const priceId = priceMap[plan];
 			if (!priceId) throw new Error(`Missing Stripe price id for plan: ${plan}`);
 			const origin = typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_CLIENT_URL || 'http://localhost:3000';

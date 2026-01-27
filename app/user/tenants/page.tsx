@@ -122,6 +122,12 @@ export default function TenantsPage() {
               </tr>
             )}
 
+            {!isLoading && !isError && filtered.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-gray-400">No tenants found.</td>
+              </tr>
+            )}
+
             {!isLoading && !isError && filtered.map((t: any) => (
               <tr
                 key={t._id}
