@@ -98,9 +98,13 @@ export async function getMyDetails() {
     id: string; firstName: string; lastName: string; email: string; role: string;
     planType: string; subscriptionStatus: string | null; currentDiscount: number; activePlan: string;
     myReferralCode?: string;
-    
+
     // totalDiscountAmount returned in cents from backend
     totalDiscountAmount?: number;
+    // subscription period end (ISO string or Date) and cancel flag
+    currentPeriodEnd?: string | Date | null;
+    cancelAtPeriodEnd?: boolean;
+
     createdAt: string; updatedAt: string;
   } };
 }

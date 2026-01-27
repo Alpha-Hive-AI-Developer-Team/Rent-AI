@@ -1,21 +1,16 @@
 import { useCallback, useMemo, useState } from 'react';
-import { createCheckoutSession } from '../lib/api/payment';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { createCheckoutSession, cancelSubscription as apiCancelSubscription } from '../lib/api/payment';
 import { loadStripe } from '@stripe/stripe-js';
 import plansConfig, { PRICE_ID_MAP } from '@/lib/plans';
 
 type PlanKey = 'starter' | 'pro' | 'enterprise';
 
 export function usePayment() {
-    console.log("usePayment hook called");
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const qc = useQueryClient();
 
-
-console.log("Environment variables:", {
-         NEXT_PUBLIC_STRIPE_PRICE_STARTER: process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER,
-            NEXT_PUBLIC_STRIPE_PRICE_PRO: process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO,
-			NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE: process.env.NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE,
-        });
 	const priceMap = useMemo(() => ({
 		starter: PRICE_ID_MAP.starter || process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER || '',
 		pro: PRICE_ID_MAP.pro || process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO || '',
@@ -36,7 +31,7 @@ console.log("Environment variables:", {
 				successUrl: `${origin}/user/payment?status=success`,
 				cancelUrl: `${origin}/user/payment?status=cancel`,
 				applyCredit: !!applyCredit,
-			}, token);
+			});
 			const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 			if (pk) {
 				const stripe = await loadStripe(pk);
@@ -50,10 +45,36 @@ console.log("Environment variables:", {
 			}
 		} catch (e: any) {
 			setError(e?.message || 'Checkout failed');
+			throw e;
 		} finally {
 			setLoading(false);
 		}
 	}, [priceMap]);
-console.log("usePayment returning:", { startCheckout, loading, error });
-	return { startCheckout, loading, error };
+
+	const cancelMutation = useMutation({
+		mutationFn: async () => {
+			return await apiCancelSubscription();
+		},
+		onMutate: () => {
+			setLoading(true);
+			setError(null);
+		},
+		onSuccess: () => {
+			// Invalidate profile/notifications so UI updates (keys used elsewhere)
+			qc.invalidateQueries({ queryKey: ['me'] });
+			qc.invalidateQueries({ queryKey: ['notifications'] });
+		},
+		onError: (_err: any) => {
+			setError(_err?.message || String(_err));
+		},
+		onSettled: () => {
+			setLoading(false);
+		}
+	});
+
+	const cancelSubscription = useCallback(async () => {
+		return cancelMutation.mutateAsync();
+	}, [cancelMutation]);
+
+	return { startCheckout, cancelSubscription, loading, error, cancelMutation };
 }

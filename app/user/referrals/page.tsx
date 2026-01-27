@@ -51,7 +51,7 @@ export default function ReferralsPage() {
     const remaining = Math.max(0, planPriceGBP - currentDiscount);
 
     // value given by one paying referral depends on referred user's plan — 10% of that plan price
-    const perStarter = 0.1 * (Math.round((PLAN_PRICE_CENTS['starter'] || 0) / 100));
+  const perStarter = 0.1 * (Math.round((PLAN_PRICE_CENTS['starter'] || 0) / 100));
     const perPro = 0.1 * (Math.round((PLAN_PRICE_CENTS['pro'] || 0) / 100));
     const perEnterprise = 0.1 * (Math.round((PLAN_PRICE_CENTS['enterprise'] || 0) / 100));
 
@@ -91,9 +91,9 @@ export default function ReferralsPage() {
             className="relative inline-flex items-center justify-center w-9 h-9 rounded-full bg-[#07120f] border border-[#1f2f27] text-gray-200"
           >
             <Bell className="w-5 h-5" />
-            {unreadCount > 0 && (
+            {/* {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] px-1 rounded-full">{unreadCount}</span>
-            )}
+            )} */}
           </button>
         </div>
 

@@ -6,20 +6,16 @@ export interface CreateCheckoutPayload {
 	applyCredit?: boolean;
 }
 
-export async function createCheckoutSession(payload: CreateCheckoutPayload, token?: string) {
-	const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || ''}/api/payments/checkout`, {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			...(token ? { Authorization: `Bearer ${token}` } : {}),
-		},
-		body: JSON.stringify(payload),
-		credentials: 'include',
-	});
+import apiClient from './api-client';
 
-	if (!res.ok) {
-		const msg = await res.text();
-		throw new Error(msg || 'Failed to create checkout session');
-	}
-	return res.json() as Promise<{ success: boolean; url: string; id: string }>;
+export async function createCheckoutSession(payload: CreateCheckoutPayload) {
+  const res = await apiClient.post('/payments/checkout', payload);
+  return res.data as { success: boolean; url: string; id: string };
+}
+
+
+
+export async function cancelSubscription() {
+  const res = await apiClient.post('/payments/cancel');
+  return res.data as { success: boolean; message?: string; data?: any };
 }

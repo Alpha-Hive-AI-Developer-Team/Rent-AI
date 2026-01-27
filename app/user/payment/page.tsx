@@ -7,9 +7,10 @@ import { useEffect, useState } from "react";
 import { useMyProfile } from "@/hooks/useAuth";
 import plansConfig, { PLANS, PLAN_PRICE_CENTS, PlanKey } from "@/lib/plans";
 import Link from "next/link";
+import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog';
 
 export default function PaymentPage() {
-  const { startCheckout, loading, error } = usePayment();
+  const { startCheckout, cancelSubscription, cancelMutation, loading, error } = usePayment();
   const [activePlan, setActivePlan] = useState<string>("free");
   const [currentDiscount, setCurrentDiscount] = useState<number>(0);
   const [availableCredit, setAvailableCredit] = useState<number>(0);
@@ -51,6 +52,11 @@ export default function PaymentPage() {
       // Backend returns credits in cents; convert to GBP for display
       const cents = Number(profileResp.data.totalDiscountAmount || 0);
       setAvailableCredit(Math.max(0, Math.round(cents) / 100));
+      // reflect subscription state
+      // profileResp.data.currentPeriodEnd may be an ISO string or Date
+      if (profileResp.data.currentPeriodEnd) {
+        setTimeout(() => {}, 0); // noop to hint re-render if needed
+      }
       console.log("User profile data:", profileResp.data);
     }
   }, [profileResp]);
@@ -72,6 +78,21 @@ export default function PaymentPage() {
 
       
       </div>
+
+      {/* Subscription status */}
+      {profileResp?.data && (
+        <div className="mb-4">
+          {profileResp.data.subscriptionStatus === 'active' && !profileResp.data.cancelAtPeriodEnd && (
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#072a17] text-emerald-300 text-sm">Auto-renews • Active</div>
+          )}
+          {profileResp.data.subscriptionStatus === 'active' && profileResp.data.cancelAtPeriodEnd && (
+            <div className="inline-flex flex-col gap-1">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#2a0b0b] text-rose-300 text-sm">Subscription cancelled — ends {profileResp.data.currentPeriodEnd ? new Date(profileResp.data.currentPeriodEnd).toLocaleDateString() : ''}</div>
+              <div className="text-xs text-gray-400 mt-1">You will retain access to paid features until the end of the current period.</div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Plans & Billing */}
       <section>
@@ -129,15 +150,50 @@ export default function PaymentPage() {
               View Referral Dashboard
             </button>
           </Link>
+          {/* Cancel subscription at period end */}
+          {activePlan !== 'free' && profileResp?.data?.subscriptionStatus === 'active' && !profileResp?.data?.cancelAtPeriodEnd && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <button className="inline-flex items-center justify-center rounded-full border border-rose-700 text-rose-300 px-5 py-2 text-sm hover:bg-[#1a0b0b]">
+                  Cancel at period end
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Cancel subscription</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will cancel your subscription at the end of the current billing period. You will keep access to paid features until that date.
+                    {profileResp?.data?.currentPeriodEnd && (
+                      <div className="mt-2 text-sm text-gray-400">Active until: {new Date(profileResp.data.currentPeriodEnd).toLocaleString()}</div>
+                    )}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep subscription</AlertDialogCancel>
+                  <AlertDialogAction onClick={async () => {
+                    try {
+                      await cancelSubscription();
+                      // refresh to show pending cancellation state
+                      window.location.reload();
+                    } catch (e: any) {
+                      alert('Failed to cancel subscription: ' + (e?.message || e));
+                    }
+                  }}>
+                    Confirm cancel
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           </div>
         </div>
       </section>
       {/* Add Card Section */}
-      <section>
+      {/* <section>
         <h2 className="text-lg font-semibold mb-6">Add Card</h2>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Left: Form Fields */}
+          
           <form className="w-full space-y-5">
             <div>
               <label className="block text-sm text-gray-200 mb-2">Card number</label>
@@ -182,7 +238,7 @@ export default function PaymentPage() {
             </button>
           </form>
 
-          {/* Right: Card Image */}
+
           <div className="w-full flex justify-center lg:justify-end">
             <Image
               src="/images/card.png"
@@ -193,7 +249,7 @@ export default function PaymentPage() {
             />
           </div>
         </div>
-      </section>
+      </section> */}
     </div>
   );
 }
