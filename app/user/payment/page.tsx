@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useMyProfile } from "@/hooks/useAuth";
 import plansConfig, { PLANS, PLAN_PRICE_CENTS, PlanKey } from "@/lib/plans";
 import Link from "next/link";
+import usePayout from '@/hooks/usePayout';
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog';
 
 export default function PaymentPage() {
@@ -60,6 +61,12 @@ export default function PaymentPage() {
       console.log("User profile data:", profileResp.data);
     }
   }, [profileResp]);
+  const { walletQuery, connectBankAsync, withdraw } = usePayout();
+  const walletData = walletQuery.data ?? {};
+  const walletBalance = typeof walletData.balance === 'number' ? walletData.balance : availableCredit;
+  const isConnected = !!walletData.isConnected;
+  const [connectLoading, setConnectLoading] = useState(false);
+  const [withdrawLoading, setWithdrawLoading] = useState(false);
   const plans = PLANS;
   const planNumericPrice: Record<string, number> = Object.fromEntries(Object.entries(PLAN_PRICE_CENTS).map(([k, v]) => [k, Math.round((v || 0) / 100)]));
 
@@ -78,10 +85,12 @@ export default function PaymentPage() {
 
       
       </div>
+    <div className="flex justify-between items-center">
 
+   
       {/* Subscription status */}
       {profileResp?.data && (
-        <div className="mb-4">
+        <div className="">
           {profileResp.data.subscriptionStatus === 'active' && !profileResp.data.cancelAtPeriodEnd && (
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#072a17] text-emerald-300 text-sm">Auto-renews • Active</div>
           )}
@@ -93,7 +102,57 @@ export default function PaymentPage() {
           )}
         </div>
       )}
-
+       {/* View withdrawal history */}
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <button className="inline-flex items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510] w-full sm:w-auto">
+                View Withdrawal History
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="bg-[#07120b] text-white rounded-2xl p-6 w-full max-w-3xl">
+              <AlertDialogHeader>
+                <div className="flex items-start justify-between">
+                  <AlertDialogTitle className="text-lg text-white">Withdrawal History</AlertDialogTitle>
+                  <AlertDialogCancel className="text-sm text-gray-700">Close</AlertDialogCancel>
+                </div>
+              </AlertDialogHeader>
+              <AlertDialogDescription>
+                <div className="max-h-72 overflow-y-auto mt-4">
+                  {walletData?.transactions && walletData.transactions.length > 0 ? (
+                    <table className="w-full text-sm text-left">
+                      <thead>
+                        <tr className="text-gray-400 text-xs border-b border-[#24302a]">
+                          <th className="py-3">Request Date</th>
+                          <th className="py-3">Type</th>
+                          <th className="py-3">Amount</th>
+                          <th className="py-3">Status</th>
+                          {/* <th className="py-3">Description</th> */}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#12221a]">
+                        {walletData.transactions.map((t: any) => {
+                          const status = (t.status || '').toLowerCase();
+                          const statusClass = status === 'paid' ? 'text-emerald-400' : status === 'failed' ? 'text-rose-400' : 'text-amber-400';
+                          return (
+                            <tr key={t._id || t.stripeTransferId || t.createdAt}>
+                              <td className="py-3 align-top text-gray-200">{t.createdAt ? new Date(t.createdAt).toLocaleString() : '-'}</td>
+                              <td className="py-3 align-top text-gray-200">{t.type || '-'}</td>
+                              <td className="py-3 align-top text-emerald-300">£{(Number(t.amount) || 0).toFixed(2)}</td>
+                              <td className={`py-3 align-top ${statusClass}`}>{t.status || '-'}</td>
+                              {/* <td className="py-3 align-top text-gray-400">{t.description || '-'}</td> */}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="text-sm text-gray-400">No payout transactions found.</div>
+                  )}
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogContent>
+          </AlertDialog>
+ </div>
       {/* Plans & Billing */}
       <section>
         {/* <h2 className="text-lg font-semibold mb-6">Plans & Billing</h2> */}
@@ -140,16 +199,59 @@ export default function PaymentPage() {
             {/* <p className="text-[13px] text-gray-400 mt-1">Current discount: <span className="font-semibold text-white">{currentDiscount}%</span></p> */}
             <p className="text-[13px] text-gray-400 mt-1">Available credits: <span className="font-semibold text-white">£{availableCredit.toFixed(2)}</span></p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full">
             <label className="flex items-center gap-2 text-sm text-gray-200">
               <input type="checkbox" className="accent-emerald-600" checked={applyCredit} onChange={(e) => setApplyCredit(e.target.checked)} />
               Apply available credits at checkout
             </label>
           <Link href="/user/referrals">
-            <button className="inline-flex items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-5 py-2 text-sm hover:bg-[#0b1510]">
+            <button className="inline-flex items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510] w-full sm:w-auto">
               View Referral Dashboard
             </button>
           </Link>
+          {/* Payout / Withdraw */}
+          <div className="ml-0 sm:ml-2 w-full sm:w-auto">
+            {!isConnected ? (
+              <button
+                onClick={async () => {
+                  setConnectLoading(true);
+                  try {
+                    await connectBankAsync();
+                  } catch (e: any) {
+                    alert(e?.message || 'Connect failed');
+                  } finally {
+                    setConnectLoading(false);
+                  }
+                }}
+                disabled={connectLoading}
+                className="inline-flex items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-5 py-2 text-sm hover:bg-[#0b1510]"
+              >
+                {connectLoading ? 'Connecting...' : 'Connect Bank Account'}
+              </button>
+            ) : (
+              <div className="inline-flex items-center gap-2">
+                <div className="text-sm text-gray-300">£{(walletBalance || 0).toFixed(2)}</div>
+                <button
+                  onClick={async () => {
+                    setWithdrawLoading(true);
+                    try {
+                      await withdraw();
+                      window.location.reload();
+                    } catch (e: any) {
+                      alert(e?.message || 'Withdraw failed');
+                    } finally {
+                      setWithdrawLoading(false);
+                    }
+                  }}
+                  disabled={withdrawLoading || (walletBalance || 0) <= 0}
+                  className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm text-white w-full sm:w-auto ${withdrawLoading || (walletBalance || 0) <= 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                >
+                  {withdrawLoading ? 'Withdrawing...' : 'Withdraw'}
+                </button>
+              </div>
+            )}
+          </div>
+         
           {/* Cancel subscription at period end */}
           {activePlan !== 'free' && profileResp?.data?.subscriptionStatus === 'active' && !profileResp?.data?.cancelAtPeriodEnd && (
             <AlertDialog>
