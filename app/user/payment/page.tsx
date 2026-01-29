@@ -61,11 +61,12 @@ export default function PaymentPage() {
       console.log("User profile data:", profileResp.data);
     }
   }, [profileResp]);
-  const { walletQuery, connectBankAsync, withdraw } = usePayout();
+  const { walletQuery, connectBankAsync, withdraw, manageBankAsync } = usePayout();
   const walletData = walletQuery.data ?? {};
   const walletBalance = typeof walletData.balance === 'number' ? walletData.balance : availableCredit;
   const isConnected = !!walletData.isConnected;
   const [connectLoading, setConnectLoading] = useState(false);
+  const [manageLoading, setManageLoading] = useState(false);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
   const plans = PLANS;
   const planNumericPrice: Record<string, number> = Object.fromEntries(Object.entries(PLAN_PRICE_CENTS).map(([k, v]) => [k, Math.round((v || 0) / 100)]));
@@ -184,6 +185,7 @@ export default function PaymentPage() {
                     }}
                     className={`mt-5 w-full rounded-full px-4 py-2 text-sm ${highlight ? 'bg-emerald-600 text-white border-emerald-600' : 'border border-emerald-700 text-emerald-300 hover:bg-[#0b1510]'} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
                   >
+                    
                     {label}
                   </button>
                 );
@@ -228,26 +230,45 @@ export default function PaymentPage() {
               >
                 {connectLoading ? 'Connecting...' : 'Connect Bank Account'}
               </button>
-            ) : (
-              <div className="inline-flex items-center gap-2">
+              ) : (
+              <div className="inline-flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
                 <div className="text-sm text-gray-300">£{(walletBalance || 0).toFixed(2)}</div>
-                <button
-                  onClick={async () => {
-                    setWithdrawLoading(true);
-                    try {
-                      await withdraw();
-                      window.location.reload();
-                    } catch (e: any) {
-                      alert(e?.message || 'Withdraw failed');
-                    } finally {
-                      setWithdrawLoading(false);
-                    }
-                  }}
-                  disabled={withdrawLoading || (walletBalance || 0) <= 0}
-                  className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm text-white w-full sm:w-auto ${withdrawLoading || (walletBalance || 0) <= 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                >
-                  {withdrawLoading ? 'Withdrawing...' : 'Withdraw'}
-                </button>
+                <div className="inline-flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={async () => {
+                      setWithdrawLoading(true);
+                      try {
+                        await withdraw();
+                        window.location.reload();
+                      } catch (e: any) {
+                        alert(e?.message || 'Withdraw failed');
+                      } finally {
+                        setWithdrawLoading(false);
+                      }
+                    }}
+                    disabled={withdrawLoading || (walletBalance || 0) <= 0}
+                    className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm text-white w-full sm:w-auto ${withdrawLoading || (walletBalance || 0) <= 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                  >
+                    {withdrawLoading ? 'Withdrawing...' : 'Withdraw'}
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      setManageLoading(true);
+                      try {
+                        await manageBankAsync();
+                      } catch (e: any) {
+                        alert(e?.message || 'Failed to open bank dashboard');
+                      } finally {
+                        setManageLoading(false);
+                      }
+                    }}
+                    disabled={manageLoading}
+                    className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm text-white ${manageLoading ? 'bg-gray-500 cursor-not-allowed' : 'bg-transparent border border-emerald-700 text-emerald-300 hover:bg-[#0b1510]'} w-full sm:w-auto`}
+                  >
+                    {manageLoading ? 'Opening...' : 'Manage bank details'}
+                  </button>
+                </div>
               </div>
             )}
           </div>

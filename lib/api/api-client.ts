@@ -12,9 +12,13 @@ const apiClient = axios.create({
 // Attach access token to each request (except login/register endpoints)
 apiClient.interceptors.request.use((config) => {
   // Don't attach token for login/register endpoints
-  const isAuthEndpoint = config.url?.includes('/login') || 
-                        config.url?.includes('/register') ||
-                        config.url?.includes('/refresh-token');
+  // Treat explicit auth endpoints (login/register/refresh-token) specially.
+  // Use stricter checks so paths like `/payouts/login-link` are NOT considered auth endpoints.
+  const url = config.url || '';
+  const isLogin = /\/login($|\/|\?)/.test(url);
+  const isRegister = /\/register($|\/|\?)/.test(url);
+  const isRefresh = /\/refresh-token($|\/|\?)/.test(url) || url.includes('/refresh-token');
+  const isAuthEndpoint = isLogin || isRegister || isRefresh;
   
   if (!isAuthEndpoint) {
     const token = localStorage.getItem("authToken");
@@ -33,11 +37,12 @@ apiClient.interceptors.response.use(
       | undefined;
 
     // Don't try to refresh token on login/signup/auth endpoints
-    const isAuthEndpoint = originalRequest?.url?.includes('/login') || 
-                          originalRequest?.url?.includes('/register') ||
-                          originalRequest?.url?.includes('/refresh-token') ||
-                          originalRequest?.url?.includes('/auth/google') ||
-                          originalRequest?.url?.includes('/auth/facebook');
+    const origUrl = originalRequest?.url || '';
+    const isLoginReq = /\/login($|\/|\?)/.test(origUrl);
+    const isRegisterReq = /\/register($|\/|\?)/.test(origUrl);
+    const isRefreshReq = /\/refresh-token($|\/|\?)/.test(origUrl) || origUrl.includes('/refresh-token');
+    const isSocial = origUrl.includes('/auth/google') || origUrl.includes('/auth/facebook');
+    const isAuthEndpoint = isLoginReq || isRegisterReq || isRefreshReq || isSocial;
 
     if (
       error.response?.status === 401 &&

@@ -10,6 +10,11 @@ export async function createOnboardLink() {
   return res.data;
 }
 
+export async function createLoginLink() {
+  const res = await apiClient.post('/payouts/login-link');
+  return res.data;
+}
+
 export async function withdraw(amount?: number) {
   const res = await apiClient.post('/payouts/withdraw', { amount });
   return res.data;
