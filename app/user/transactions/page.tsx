@@ -197,16 +197,7 @@ export default function TransactionsPage() {
             console.error('Failed to sync Yapily accounts', err);
           }
         })();
-        // remove sensitive params from URL
-        // const url = new URL(window.location.href);
-        // url.searchParams.delete('consent');
-        // url.searchParams.delete('institution');
-        // url.searchParams.delete('institutionId');
-        // url.searchParams.delete('application-user-id');
-        // url.searchParams.delete('applicationUserId');
-        // url.searchParams.delete('user-uuid');
-        // url.searchParams.delete('userUuid');
-        // window.history.replaceState({}, document.title, url.toString());
+       
       }
     } catch (e) {
       // ignore
@@ -283,7 +274,6 @@ export default function TransactionsPage() {
     const amountMatch = tx.amount === tenant.rent;
     return nameMatch && amountMatch ? "Matched" : "Needs Review";
   }
-
   function computeMatchReason(tx: Transaction | null, tenant: Tenant): string {
     if (!tx) return "No transaction selected";
     const raw = (tx as any).raw;
@@ -364,22 +354,6 @@ export default function TransactionsPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">Transactions</h1>
 
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Bell className="w-6 h-6 text-gray-300" />
-            <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
-              2
-            </span>
-          </div>
-
-          <Image
-            src="/images/pexels.png"
-            alt="User Avatar"
-            width={36}
-            height={36}
-            className="rounded-full border border-gray-700"
-          />
-        </div>
       </div>
       {connectedInstitution && (
         <div className="mt-3 p-3 rounded-lg bg-emerald-900/10 border border-emerald-700 text-emerald-300 flex items-center justify-between">
@@ -475,10 +449,10 @@ export default function TransactionsPage() {
                                   <span>Accept</span>
                                 </button>
 
-                                <button onClick={() => rejectCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-[#0b0b0b] border border-[#111] text-gray-300 px-3 py-1 rounded-full text-xs hover:bg-white/5 transition">
+                                {/* <button onClick={() => rejectCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-[#0b0b0b] border border-[#111] text-gray-300 px-3 py-1 rounded-full text-xs hover:bg-white/5 transition">
                                   <X className="w-3 h-3" />
                                   <span>Reject</span>
-                                </button>
+                                </button> */}
                               </div>
                             </td>
                           </tr>

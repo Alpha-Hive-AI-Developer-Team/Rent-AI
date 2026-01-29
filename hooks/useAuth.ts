@@ -1,5 +1,6 @@
-import { useMutation } from "@tanstack/react-query";
-import { signUpUser, signInUser, logoutUser, verifySignupOtp } from "@/lib/api/authApi";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { signUpUser, signInUser, logoutUser, verifySignupOtp, getMyDetails } from "@/lib/api/authApi";
+import { getReferralsSummary } from "@/lib/api/referrals";
 import { SignUpInput } from "@/lib/validations/auth";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
@@ -121,5 +122,30 @@ export function useFacebookAuth() {
 export function useVerifySignupOtp() {
   return useMutation({
     mutationFn: (payload: { email: string; otp: string }) => verifySignupOtp(payload),
+  });
+}
+
+// Fetch authenticated user's profile (active plan + discount)
+export function useMyProfile() {
+  return useQuery({
+    queryKey: ["me"],
+    queryFn: async () => {
+      return await getMyDetails();
+    },
+    // only run on client where localStorage is available (api-client will attach token)
+    enabled: typeof window !== "undefined",
+    staleTime: 0, // 1 minute
+  });
+}
+
+// Fetch referrals summary for authenticated user
+export function useReferralsSummary() {
+  return useQuery({
+    queryKey: ["referrals-summary"],
+    queryFn: async () => {
+      return await getReferralsSummary();
+    },
+    enabled: typeof window !== "undefined",
+    staleTime: 0,
   });
 }

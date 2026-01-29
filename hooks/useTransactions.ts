@@ -5,12 +5,10 @@ import { useAuthUser } from "@/redux/useAuthUser";
 
 export function useUnreconciledTransactions() {
 	const authUser = useAuthUser();
-	const userId = authUser?.id || authUser?._id || authUser?.userId;
-
+	
 	return useQuery<any, Error, any>({
-		queryKey: ["unreconciledTransactions", userId],
+		queryKey: ["unreconciledTransactions"],
 		queryFn: () => getUnreconciledTransactions(),
-		enabled: !!userId,
 		staleTime: 0, // 
 	});
 }

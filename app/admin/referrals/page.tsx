@@ -1,71 +1,52 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import ReferralCard from "@/components/admin/referral-card";
 import ReferralGrowthChart from "@/components/admin/referral-chart";
 import ReferralTable from "@/components/admin/referral-table";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import { useAdminReferralsSummary, useAdminReferralsTrend, useAdminTopReferrers } from "@/hooks/useAdmin";
 
 export default function ReferralRewardCenter() {
-  const partners = [
-    {
-      name: "John Smith",
-      role: "Premium Partner",
-      rank: 1,
-      earnings: "$8,567",
-      referrals: 124,
-      imageSrc: "/images/johny.png",
-    },
-    {
-      name: "Sarah Chen",
-      role: "Premium Partner",
-      rank: 2,
-      earnings: "$8,567",
-      referrals: 124,
-      imageSrc: "/images/sara.png",
-    },
-    {
-      name: "Will Chen",
-      role: "Premium Partner",
-      rank: 3,
-      earnings: "$8,567",
-      referrals: 124,
-      imageSrc: "/images/will.png",
-    },
-  ];
+  const [statusFilter, setStatusFilter] = useState<string>("All");
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [page, setPage] = useState<number>(1);
+  const pageSize = 10;
 
-  const tableData = [
-    {
-      code: "12345678",
-      name: "Jhon Smith",
-      status: "Active",
-      reward: "$50",
-      users: "124/200",
-      created: "Mar 13, 2025",
-      action: "Approved",
-      image: "/images/johny.png",
-    },
-    {
-      code: "12345678",
-      name: "Sarah Chen",
-      status: "Active",
-      reward: "$123",
-      users: "213/200",
-      created: "Mar 13, 2025",
-      action: "Approved",
-      image: "/images/sara.png",
-    },
-    {
-      code: "12345678",
-      name: "Jack Bonds",
-      status: "Expired",
-      reward: "$567",
-      users: "111/200",
-      created: "Mar 13, 2025",
-      action: "Renew",
-      image: "/images/will.png",
-    },
-  ];
+  const filters = useMemo(() => ({
+    status: statusFilter === "All" ? undefined : statusFilter,
+    search: searchTerm || undefined,
+    page,
+    limit: pageSize,
+  }), [statusFilter, searchTerm, page]);
+
+  const { data, isLoading } = useAdminReferralsSummary(filters);
+  const { data: topResp } = useAdminTopReferrers();
+
+  const topReferrers = topResp?.data || [];
+  const tableData = data?.data?.table || [];
+  const total = data?.data?.total || 0;
+  const currentPage = data?.data?.page || page;
+  const { data: trendResp } = useAdminReferralsTrend();
+  const trendData = trendResp?.data?.series || [];
+  const trendPct = trendResp?.data?.trendPct || 0;
+
+  const formatMoney = (cents: number) => `£${(Math.max(0, Math.round(cents || 0)) / 100).toFixed(2)}`;
+
+  const handleStatusChange = (status: string) => {
+    setStatusFilter(status);
+    setPage(1);
+  };
+
+  const handleSearch = (term: string) => {
+    setSearchTerm(term);
+    setPage(1);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+  };
 
   return (
     <div className="p-6 bg-black min-h-screen text-white">
@@ -77,23 +58,40 @@ export default function ReferralRewardCenter() {
             Monitor all tenants across the platform
           </p>
         </div>
-        <Button className="bg-[#027A48] hover:bg-green-700 text-white">
+        {/* <Button className="bg-[#027A48] hover:bg-green-700 text-white">
           <Plus className="w-4 h-4 mr-1" /> Create Referral Code
-        </Button>
+        </Button> */}
       </div>
 
       {/* Cards */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {partners.map((partner) => (
-          <ReferralCard key={partner.rank} {...partner} />
+        {topReferrers.map((partner:any, idx:any) => (
+          <ReferralCard
+            key={partner.id}
+            name={partner.name}
+            rank={idx + 1}
+            earnings={formatMoney(partner.rewardCents)}
+            referrals={partner.referralsCount}
+            referralCode={partner.referralCode}
+          />
         ))}
       </div>
 
       {/* Chart */}
-      <ReferralGrowthChart />
+      <ReferralGrowthChart data={trendData} trendPct={trendPct} />
 
       {/* Table */}
-      <ReferralTable data={tableData} />
+      <ReferralTable
+        data={tableData}
+        total={total}
+        page={currentPage}
+        pageSize={pageSize}
+        statusFilter={statusFilter}
+        searchTerm={searchTerm}
+        onStatusChange={handleStatusChange}
+        onSearch={handleSearch}
+        onPageChange={handlePageChange}
+      />
     </div>
   );
 }

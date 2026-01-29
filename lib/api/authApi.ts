@@ -90,3 +90,22 @@ export async function facebookAuth(firebaseToken: string) {
   return res.data;
 }
 
+// Get authenticated user's details including active plan and current discount
+export async function getMyDetails() {
+  const res = await apiClient.get("/auth/me");
+  console.log("getMyDetails response:", res.data);
+  return res.data as { success: boolean; data: {
+    id: string; firstName: string; lastName: string; email: string; role: string;
+    planType: string; subscriptionStatus: string | null; currentDiscount: number; activePlan: string;
+    myReferralCode?: string;
+
+    // totalDiscountAmount returned in cents from backend
+    totalDiscountAmount?: number;
+    // subscription period end (ISO string or Date) and cancel flag
+    currentPeriodEnd?: string | Date | null;
+    cancelAtPeriodEnd?: boolean;
+
+    createdAt: string; updatedAt: string;
+  } };
+}
+

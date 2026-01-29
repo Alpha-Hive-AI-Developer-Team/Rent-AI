@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getExpectedSeries, getRentDetails } from "@/lib/api/tenantsApi";
+import { getCollectedSeries, getExpectedSeries, getRentDetails } from "@/lib/api/tenantsApi";
 import { useAuthUser } from "@/redux/useAuthUser";
 
 export function useRentDetails(month?: number, year?: number) {
@@ -23,6 +23,19 @@ export default function useExpectedSeries(options: SeriesOptions = { granularity
   return useQuery<any, Error, any>({
     queryKey: ["expectedSeries", userId, options],
     queryFn: () => getExpectedSeries(options),
+    enabled: !!userId,
+    staleTime: 0,
+  });
+}
+
+export function useCollectedSeries(options: SeriesOptions = { granularity: 'month', months: 3 }) {
+  console.log("useCollectedSeries called with options:", options);
+  const authUser = useAuthUser();
+  const userId = (authUser as any)?.id || (authUser as any)?._id || (authUser as any)?.userId;
+
+  return useQuery<any, Error, any>({
+    queryKey: ["collectedSeries", userId, options],
+    queryFn: () => getCollectedSeries(options),
     enabled: !!userId,
     staleTime: 0,
   });

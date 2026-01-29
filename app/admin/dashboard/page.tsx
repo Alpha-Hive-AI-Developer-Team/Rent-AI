@@ -45,7 +45,7 @@ import useAdminLandlords, { useAdminSummary } from "@/hooks/useAdmin";
       <div className="flex items-center justify-end gap-4 mb-8">
         <h1 className="text-xl font-semibold mr-auto">Dashboard</h1>
 
-        <div className="relative">
+        {/* <div className="relative">
           <Bell className="w-6 h-6 text-gray-300" />
           <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
             3
@@ -58,7 +58,7 @@ import useAdminLandlords, { useAdminSummary } from "@/hooks/useAdmin";
           width={36}
           height={36}
           className="rounded-full border border-gray-700"
-        />
+        /> */}
       </div>
 
       {/* Stats */}
@@ -85,7 +85,7 @@ import useAdminLandlords, { useAdminSummary } from "@/hooks/useAdmin";
       </div>
     
       {/* Recent Alerts Section */}
-      <AlertsCard />
+      {/* <AlertsCard /> */}
     </div>
   );
 }

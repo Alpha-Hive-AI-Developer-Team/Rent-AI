@@ -5,7 +5,7 @@ import StatCard from "@/components/admin/analytics-card";
 import TodaySection from "@/components/user/today-section";
 import Image from "next/image";
 import { Bell } from "lucide-react";
-import useExpectedSeries, { useRentDetails } from "@/hooks/useRentDetails";
+import useExpectedSeries, { useRentDetails, useCollectedSeries } from "@/hooks/useRentDetails";
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
@@ -25,18 +25,32 @@ export default function DashboardPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const initialRange = (searchParams?.get("range") || "3m") as "3m" | "6m" | "30d" | "7d";
-  const [range, setRange] = useState<"3m" | "6m" | "30d" | "7d">(initialRange);
+  const initialExpectedRange = (searchParams?.get("range") || "3m") as "3m" | "6m" | "30d" | "7d";
+  const initialCollectedRange = (searchParams?.get("collectedRange") || "3m") as "3m" | "6m" | "30d" | "7d";
+  const [range, setRange] = useState<"3m" | "6m" | "30d" | "7d">(initialExpectedRange);
+  const [collectedRange, setCollectedRange] = useState<"3m" | "6m" | "30d" | "7d">(initialCollectedRange);
 
   useEffect(() => {
     try {
       const base = searchParams ? searchParams.toString() : "";
       const params = new URLSearchParams(base);
       params.set("range", range);
+      params.set("collectedRange", collectedRange);
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname);
     } catch {}
   }, [range]);
+
+  useEffect(() => {
+    try {
+      const base = searchParams ? searchParams.toString() : "";
+      const params = new URLSearchParams(base);
+      params.set("range", range);
+      params.set("collectedRange", collectedRange);
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname);
+    } catch {}
+  }, [collectedRange]);
 
   const seriesOptions =
     range === "3m"
@@ -48,6 +62,30 @@ export default function DashboardPage() {
           : { granularity: "day", days: 7 };
   const { data: expectedRes, isLoading: expectedLoading } = useExpectedSeries(seriesOptions as any);
   const expectedSeries = expectedRes?.data?.series ?? [];
+  // collected has its own filters and API
+  const collectedOptions =
+    collectedRange === "3m"
+      ? { granularity: "month", months: 3 }
+      : collectedRange === "6m"
+        ? { granularity: "month", months: 6 }
+        : collectedRange === "30d"
+          ? { granularity: "day", days: 30 }
+          : { granularity: "day", days: 7 };
+
+  const { data: collectedRes, isLoading: collectedLoading } = useCollectedSeries(collectedOptions as any);
+  let collectedSeries = collectedRes?.data?.series ?? [];
+  // debug: log collected API response and errors to browser console
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line no-console
+      console.log("collectedRes:", collectedRes, "collectedLoading:", collectedLoading);
+    } catch (e) {}
+  }, [collectedRes, collectedLoading]);
+  // fallback: if collected series is empty (API may fail), use collected values from expected series
+  if ((!collectedSeries || collectedSeries.length === 0) && expectedSeries && expectedSeries.length > 0) {
+    collectedSeries = expectedSeries.map((p: any) => ({ name: p.name, collected: Number(p.collected || 0) }));
+  }
+  const collectedData = collectedLoading ? [] : collectedSeries.map((p: any) => ({ name: p.name, collected: Number(p.collected || 0) }));
   const stats = [
   {
       title: `Expected (${rentData?.monthName ?? ''})`,
@@ -71,13 +109,8 @@ export default function DashboardPage() {
     },
   ];
 
-  const transactionData = [
-    { name: "Mar 3", value: 2400 },
-    { name: "Mar 10", value: 1398 },
-    { name: "Mar 17", value: 9800 },
-    { name: "Mar 24", value: 3908 },
-    { name: "Mar 31", value: 4800 },
-  ];
+  // dynamic collected series (last N months/days)
+  const transactionData = collectedData;
 
   const arrearsData = [
     { name: "Jan", series1: 4000, series2: 2400 },
@@ -97,7 +130,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-end gap-4">
         <h1 className="text-xl font-semibold mr-auto">Dashboard</h1>
 
-        <div className="relative">
+        {/* <div className="relative">
           <Bell className="w-6 h-6 text-gray-300" />
           <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
             3
@@ -110,7 +143,7 @@ export default function DashboardPage() {
           width={36}
           height={36}
           className="rounded-full border border-gray-700"
-        />
+        /> */}
       </div>
 
       {/* Stats Section */}
@@ -220,16 +253,60 @@ export default function DashboardPage() {
 
   {/* Second chart */}
   <div className="w-full">
-    <LineChartCard
-      title="Collected"
-      subtitle="January - June 2024"
-      data={arrearsData}
-      lines={[
-        { key: "series1", color: "#00C6FF", name: "Current" },
-        { key: "series2", color: "#FF6B00", name: "Previous" },
-      ]}
-      footer="Trending up by 5.2% this month"
-    />
+    <div className="bg-[#111] text-white rounded-xl p-4 sm:p-5 md:p-6 border border-gray-800/50 shadow-md w-full">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div>
+          <h3 className="text-sm md:text-base font-medium text-gray-200">Collected {collectedRange}</h3>
+          <p className="text-xs md:text-sm text-gray-500 mt-1">Collected total for the last {collectedRange}</p>
+        </div>
+        <div className="flex flex-wrap justify-start sm:justify-end gap-2">
+          <button
+            onClick={() => setCollectedRange("3m")}
+            className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
+              collectedRange === "3m" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
+            }`}
+          >
+            Last 3 months
+          </button>
+          <button
+            onClick={() => setCollectedRange("6m")}
+            className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
+              collectedRange === "6m" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
+            }`}
+          >
+            Last 6 months
+          </button>
+          <button
+            onClick={() => setCollectedRange("30d")}
+            className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
+              collectedRange === "30d" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
+            }`}
+          >
+            Last 30 days
+          </button>
+          <button
+            onClick={() => setCollectedRange("7d")}
+            className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
+              collectedRange === "7d" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
+            }`}
+          >
+            Last 7 days
+          </button>
+        </div>
+      </div>
+
+      {collectedData.length === 0 ? (
+        <div className="text-sm text-gray-400 px-4 py-8">No collected payments found for the selected range.</div>
+      ) : (
+      <LineChartCard
+        title="Collected"
+        subtitle={`Last ${collectedRange}`}
+        data={transactionData}
+        lines={[{ key: "collected", color: "#00C6FF", name: "Collected" }]}
+        footer="Collected over selected range"
+      />
+      )}
+    </div>
   </div>
 </div>
 

@@ -2,6 +2,7 @@ import apiClient from "./api-client";
 
 export async function getUnreconciledTransactions() {
   const res = await apiClient.get(`/transactions/unreconciled`);
+  console.log("Unreconciled Transactions:", res.data);
   return res.data;
 }
 

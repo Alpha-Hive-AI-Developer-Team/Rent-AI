@@ -17,11 +17,14 @@ export default function VerifyOtpModal({ email, onClose }: Props) {
   const [timer, setTimer] = useState(60);
   const [canResend, setCanResend] = useState(false);
 
+
+
   useEffect(() => {
     if (timer === 0) {
       setCanResend(true);
       return;
     }
+
     const interval = setInterval(() => setTimer((t) => t - 1), 1000);
     return () => clearInterval(interval);
   }, [timer]);
@@ -56,8 +59,10 @@ export default function VerifyOtpModal({ email, onClose }: Props) {
       toast.error("Enter the 4-digit OTP");
       return;
     }
-    setLoading(true);
-    mutate(
+
+
+        setLoading(true);
+      mutate(
       { email, otp: finalOtp },
       {
         onSuccess: (data: any) => {
@@ -75,6 +80,11 @@ export default function VerifyOtpModal({ email, onClose }: Props) {
     );
   };
 
+
+
+
+
+
   const handleResend = () => {
     setOtp(["", "", "", ""]);
     setTimer(60);
@@ -82,7 +92,6 @@ export default function VerifyOtpModal({ email, onClose }: Props) {
     inputRefs.current[0]?.focus();
     toast.success("OTP resent");
   };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
