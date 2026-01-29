@@ -79,17 +79,18 @@ export default function PaymentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8">
+    <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8 max-w-screen-xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-end gap-4">
         <h1 className="text-xl font-semibold mr-auto">Payment Plan</h1>
 
       
       </div>
-    <div className="flex justify-between items-center">
+    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 
    
-      {/* Subscription status */}
+<div className="flex gap-2">
+        {/* Subscription status */}
       {profileResp?.data && (
         <div className="">
           {profileResp.data.subscriptionStatus === 'active' && !profileResp.data.cancelAtPeriodEnd && (
@@ -103,6 +104,41 @@ export default function PaymentPage() {
           )}
         </div>
       )}
+
+       {activePlan !== 'free' && profileResp?.data?.subscriptionStatus === 'active' && !profileResp?.data?.cancelAtPeriodEnd && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button className="inline-flex w-full sm:w-auto items-center justify-center rounded-full border border-rose-700 text-rose-300 px-3 py-1 text-sm hover:bg-[#1a0b0b]">
+                    Cancel at period end
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Cancel subscription</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will cancel your subscription at the end of the current billing period. You will keep access to paid features until that date.
+                      {profileResp?.data?.currentPeriodEnd && (
+                        <div className="mt-2 text-sm text-gray-400">Active until: {new Date(profileResp.data.currentPeriodEnd).toLocaleString()}</div>
+                      )}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Keep subscription</AlertDialogCancel>
+                    <AlertDialogAction onClick={async () => {
+                      try {
+                        await cancelSubscription();
+                        window.location.reload();
+                      } catch (e: any) {
+                        alert('Failed to cancel subscription: ' + (e?.message || e));
+                      }
+                    }}>
+                      Confirm cancel
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+</div>
        {/* View withdrawal history */}
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -120,7 +156,8 @@ export default function PaymentPage() {
               <AlertDialogDescription>
                 <div className="max-h-72 overflow-y-auto mt-4">
                   {walletData?.transactions && walletData.transactions.length > 0 ? (
-                    <table className="w-full text-sm text-left">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
                       <thead>
                         <tr className="text-gray-400 text-xs border-b border-[#24302a]">
                           <th className="py-3">Request Date</th>
@@ -145,7 +182,8 @@ export default function PaymentPage() {
                           );
                         })}
                       </tbody>
-                    </table>
+                      </table>
+                    </div>
                   ) : (
                     <div className="text-sm text-gray-400">No payout transactions found.</div>
                   )}
@@ -201,18 +239,24 @@ export default function PaymentPage() {
             {/* <p className="text-[13px] text-gray-400 mt-1">Current discount: <span className="font-semibold text-white">{currentDiscount}%</span></p> */}
             <p className="text-[13px] text-gray-400 mt-1">Available credits: <span className="font-semibold text-white">£{availableCredit.toFixed(2)}</span></p>
           </div>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full">
-            <label className="flex items-center gap-2 text-sm text-gray-200">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center sm:justify-end gap-3 sm:gap-4 w-full">
+            {/* Apply credits toggle */}
+            <label className="flex items-center gap-2 text-sm text-gray-200 w-full sm:w-auto">
               <input type="checkbox" className="accent-emerald-600" checked={applyCredit} onChange={(e) => setApplyCredit(e.target.checked)} />
               Apply available credits at checkout
             </label>
-          <Link href="/user/referrals">
-            <button className="inline-flex items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510] w-full sm:w-auto">
-              View Referral Dashboard
-            </button>
-          </Link>
-          {/* Payout / Withdraw */}
-          <div className="ml-0 sm:ml-2 w-full sm:w-auto">
+
+            {/* Referral dashboard */}
+            <Link href="/user/referrals" className="w-full sm:w-auto">
+              <button className="inline-flex w-full sm:w-auto items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510]">
+                View Referral Dashboard
+              </button>
+            </Link>
+
+            {/* Cancel subscription at period end */}
+           
+
+            {/* Payout / Bank actions now inline */}
             {!isConnected ? (
               <button
                 onClick={async () => {
@@ -226,90 +270,52 @@ export default function PaymentPage() {
                   }
                 }}
                 disabled={connectLoading}
-                className="inline-flex items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-5 py-2 text-sm hover:bg-[#0b1510]"
+                className="inline-flex w-full sm:w-auto items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-5 py-2 text-sm hover:bg-[#0b1510]"
               >
                 {connectLoading ? 'Connecting...' : 'Connect Bank Account'}
               </button>
-              ) : (
-              <div className="inline-flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
-                <div className="text-sm text-gray-300">£{(walletBalance || 0).toFixed(2)}</div>
-                <div className="inline-flex items-center gap-2 w-full sm:w-auto">
-                  <button
-                    onClick={async () => {
-                      setWithdrawLoading(true);
-                      try {
-                        await withdraw();
-                        window.location.reload();
-                      } catch (e: any) {
-                        alert(e?.message || 'Withdraw failed');
-                      } finally {
-                        setWithdrawLoading(false);
-                      }
-                    }}
-                    disabled={withdrawLoading || (walletBalance || 0) <= 0}
-                    className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm text-white w-full sm:w-auto ${withdrawLoading || (walletBalance || 0) <= 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                  >
-                    {withdrawLoading ? 'Withdrawing...' : 'Withdraw'}
-                  </button>
+            ) : (
+              <div className="inline-flex w-full sm:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <button
+                  onClick={async () => {
+                    setWithdrawLoading(true);
+                    try {
+                      await withdraw();
+                      window.location.reload();
+                    } catch (e: any) {
+                      alert(e?.message || 'Withdraw failed');
+                    } finally {
+                      setWithdrawLoading(false);
+                    }
+                  }}
+                  disabled={withdrawLoading || (walletBalance || 0) <= 0}
+                  className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm text-white w-full sm:w-auto ${withdrawLoading || (walletBalance || 0) <= 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                >
+                  {withdrawLoading ? 'Withdrawing...' : 'Withdraw'}
+                </button>
 
-                  <button
-                    onClick={async () => {
-                      setManageLoading(true);
-                      try {
-                        await manageBankAsync();
-                      } catch (e: any) {
-                        alert(e?.message || 'Failed to open bank dashboard');
-                      } finally {
-                        setManageLoading(false);
-                      }
-                    }}
-                    disabled={manageLoading}
-                    className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm text-white ${manageLoading ? 'bg-gray-500 cursor-not-allowed' : 'bg-transparent border border-emerald-700 text-emerald-300 hover:bg-[#0b1510]'} w-full sm:w-auto`}
-                  >
-                    {manageLoading ? 'Opening...' : 'Manage bank details'}
-                  </button>
-                </div>
+                <button
+                  onClick={async () => {
+                    setManageLoading(true);
+                    try {
+                      await manageBankAsync();
+                    } catch (e: any) {
+                      alert(e?.message || 'Failed to open bank dashboard');
+                    } finally {
+                      setManageLoading(false);
+                    }
+                  }}
+                  disabled={manageLoading}
+                  className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm text-white w-full sm:w-auto ${manageLoading ? 'bg-gray-500 cursor-not-allowed' : 'bg-transparent border border-emerald-700 text-emerald-300 hover:bg-[#0b1510]'}`}
+                >
+                  {manageLoading ? 'Opening...' : 'Manage bank details'}
+                </button>
               </div>
             )}
           </div>
-         
-          {/* Cancel subscription at period end */}
-          {activePlan !== 'free' && profileResp?.data?.subscriptionStatus === 'active' && !profileResp?.data?.cancelAtPeriodEnd && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <button className="inline-flex items-center justify-center rounded-full border border-rose-700 text-rose-300 px-5 py-2 text-sm hover:bg-[#1a0b0b]">
-                  Cancel at period end
-                </button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Cancel subscription</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will cancel your subscription at the end of the current billing period. You will keep access to paid features until that date.
-                    {profileResp?.data?.currentPeriodEnd && (
-                      <div className="mt-2 text-sm text-gray-400">Active until: {new Date(profileResp.data.currentPeriodEnd).toLocaleString()}</div>
-                    )}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Keep subscription</AlertDialogCancel>
-                  <AlertDialogAction onClick={async () => {
-                    try {
-                      await cancelSubscription();
-                      // refresh to show pending cancellation state
-                      window.location.reload();
-                    } catch (e: any) {
-                      alert('Failed to cancel subscription: ' + (e?.message || e));
-                    }
-                  }}>
-                    Confirm cancel
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-          </div>
+          
         </div>
+         
       </section>
       {/* Add Card Section */}
       {/* <section>
