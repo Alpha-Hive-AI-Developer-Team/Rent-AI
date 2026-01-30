@@ -30,7 +30,7 @@ export function usePayout() {
   });
 
   const withdrawMutation = useMutation({
-    mutationFn: (amount?: number) => apiWithdraw(amount),
+    mutationFn: (amount: number) => apiWithdraw(amount),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['payoutWallet'] });
       qc.invalidateQueries({ queryKey: ['me'] });
@@ -41,7 +41,7 @@ export function usePayout() {
   // async variant so callers can await and control local loading state
   const connectBankAsync = useCallback(() => onboardMutation.mutateAsync(), [onboardMutation]);
   const manageBankAsync = useCallback(() => manageMutation.mutateAsync(), [manageMutation]);
-  const withdraw = useCallback((amount?: number) => withdrawMutation.mutateAsync(amount), [withdrawMutation]);
+  const withdraw = useCallback((amount: number) => withdrawMutation.mutateAsync(amount), [withdrawMutation]);
 
   return {
     walletQuery,
