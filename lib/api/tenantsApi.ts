@@ -53,3 +53,8 @@ export async function getCollectedSeries(options: { granularity?: 'month' | 'day
   const res = await apiClient.get(`/tenants/rent-collected`, { params });
   return res.data;
 }
+
+export async function getArrears() {
+  const res = await apiClient.get(`/tenants/arrears`);
+  return res.data;
+}

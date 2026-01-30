@@ -125,7 +125,7 @@ export default function ReferralTable({ data, total, page, pageSize, statusFilte
               <th className="p-3 whitespace-nowrap">Reward Value</th>
               <th className="p-3 whitespace-nowrap">Users Ratio</th>
               <th className="p-3 whitespace-nowrap">Created</th>
-              <th className="p-3 whitespace-nowrap">Action</th>
+              {/* <th className="p-3 whitespace-nowrap">Action</th> */}
             </tr>
           </thead>
 
@@ -151,14 +151,14 @@ export default function ReferralTable({ data, total, page, pageSize, statusFilte
                 <td className="p-3">{formatMoney(item.rewardCents)}</td>
                 <td className="p-3">{item.usersRatio}</td>
                 <td className="p-3">{formatDate(item.createdAt)}</td>
-                <td className="p-3">
+                {/* <td className="p-3">
                   <Button
                     size="sm"
                     className="text-[10px] sm:text-xs px-3 py-1 bg-[#027A48] hover:bg-green-700 text-white"
                   >
                     Approve
                   </Button>
-                </td>
+                </td> */}
               </tr>
             ))}
           </tbody>

@@ -4,6 +4,7 @@ import "./globals.css";
 import Sidebar from "@/components/user/sidebar";
 import { useState } from "react";
 import Topbar from "@/components/user/topbar";
+import { Toaster } from "react-hot-toast";
 
 // export const metadata: Metadata = {
 //   title: "RentAI Dashboard",
@@ -35,6 +36,17 @@ export default function RootLayout({
         >
           {children}
         </main>
+        {/* Global toaster for user area */}
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            style: {
+              background: "#0b1510",
+              color: "#d1fae5",
+              border: "1px solid #064e3b",
+            },
+          }}
+        />
       </div>
    
   );

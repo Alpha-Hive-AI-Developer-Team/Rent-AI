@@ -47,6 +47,7 @@ export async function getConnectedAccounts() {
 
 export async function getConnectedYapilyInstitution() {
   const res = await apiClient.get(`/yapily/connected`);
+  console.log("Connected Yapily Institution:", res.data);
   return res.data;
 }
 

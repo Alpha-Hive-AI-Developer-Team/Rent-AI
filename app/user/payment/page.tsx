@@ -9,6 +9,7 @@ import plansConfig, { PLANS, PLAN_PRICE_CENTS, PlanKey } from "@/lib/plans";
 import Link from "next/link";
 import usePayout from '@/hooks/usePayout';
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog';
+import { toast } from "react-hot-toast";
 
 export default function PaymentPage() {
   const { startCheckout, cancelSubscription, cancelMutation, loading, error } = usePayment();
@@ -68,6 +69,8 @@ export default function PaymentPage() {
   const [connectLoading, setConnectLoading] = useState(false);
   const [manageLoading, setManageLoading] = useState(false);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState<number | "">("");
+  const [withdrawError, setWithdrawError] = useState<string>("");
   const plans = PLANS;
   const planNumericPrice: Record<string, number> = Object.fromEntries(Object.entries(PLAN_PRICE_CENTS).map(([k, v]) => [k, Math.round((v || 0) / 100)]));
 
@@ -127,9 +130,10 @@ export default function PaymentPage() {
                     <AlertDialogAction onClick={async () => {
                       try {
                         await cancelSubscription();
-                        window.location.reload();
+                        toast.success("Subscription will cancel at period end", { duration: 2000 });
+                        setTimeout(() => window.location.reload(), 2000);
                       } catch (e: any) {
-                        alert('Failed to cancel subscription: ' + (e?.message || e));
+                        toast.error(e?.message || 'Failed to cancel subscription');
                       }
                     }}>
                       Confirm cancel
@@ -154,6 +158,9 @@ export default function PaymentPage() {
                 </div>
               </AlertDialogHeader>
               <AlertDialogDescription>
+                <div className="text-xs text-gray-400 bg-[#0b1510] border border-[#24302a] rounded-lg p-3">
+                  Funds will automatically be transferred to your bank account in 5–7 days. You can view pending payouts in your Stripe Express account.
+                </div>
                 <div className="max-h-72 overflow-y-auto mt-4">
                   {walletData?.transactions && walletData.transactions.length > 0 ? (
                     <div className="overflow-x-auto">
@@ -262,9 +269,12 @@ export default function PaymentPage() {
                 onClick={async () => {
                   setConnectLoading(true);
                   try {
+                    toast.loading('Redirecting to Stripe onboarding...', { id: 'onboard' });
                     await connectBankAsync();
+                    toast.dismiss('onboard');
                   } catch (e: any) {
-                    alert(e?.message || 'Connect failed');
+                    toast.dismiss('onboard');
+                    toast.error(e?.message || 'Connect failed');
                   } finally {
                     setConnectLoading(false);
                   }
@@ -276,31 +286,94 @@ export default function PaymentPage() {
               </button>
             ) : (
               <div className="inline-flex w-full sm:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <button
-                  onClick={async () => {
-                    setWithdrawLoading(true);
-                    try {
-                      await withdraw();
-                      window.location.reload();
-                    } catch (e: any) {
-                      alert(e?.message || 'Withdraw failed');
-                    } finally {
-                      setWithdrawLoading(false);
-                    }
-                  }}
-                  disabled={withdrawLoading || (walletBalance || 0) <= 0}
-                  className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm text-white w-full sm:w-auto ${withdrawLoading || (walletBalance || 0) <= 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                >
-                  {withdrawLoading ? 'Withdrawing...' : 'Withdraw'}
-                </button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button
+                      disabled={withdrawLoading || (walletBalance || 0) <= 0}
+                      className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm text-white w-full sm:w-auto ${withdrawLoading || (walletBalance || 0) <= 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                    >
+                      {withdrawLoading ? 'Withdrawing...' : 'Withdraw'}
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="bg-[#07120b] text-white rounded-2xl p-6 w-full max-w-lg">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="text-lg">Confirm Withdrawal</AlertDialogTitle>
+                      <AlertDialogDescription className="text-sm text-gray-300">
+                        Available balance: £{(walletBalance || 0).toFixed(2)}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="mt-4 space-y-2">
+                      <label className="text-sm text-gray-200">Amount to withdraw (GBP)</label>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        step={0.01}
+                        placeholder={(walletBalance || 0).toFixed(2)}
+                        value={withdrawAmount === "" ? "" : withdrawAmount}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const num = Number(val);
+                          if (val === "") {
+                            setWithdrawAmount("");
+                            setWithdrawError("");
+                            return;
+                          }
+                          if (Number.isNaN(num) || num <= 0) {
+                            setWithdrawError("Enter a valid amount greater than 0");
+                          } else if (num > (walletBalance || 0)) {
+                            setWithdrawError("Amount exceeds available balance");
+                          } else {
+                            setWithdrawError("");
+                          }
+                          setWithdrawAmount(num);
+                        }}
+                        className="w-full bg-transparent border border-[#24302a] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-emerald-600"
+                      />
+                      {withdrawError && (
+                        <div className="text-xs text-rose-400">{withdrawError}</div>
+                      )}
+                      <div className="text-xs text-gray-400">
+                        Note: You can withdraw up to your available balance. Confirming will initiate a bank transfer to your connected account.
+                      </div>
+                    </div>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel className="text-sm text-gray-700">Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={async () => {
+                          const amountToWithdraw = typeof withdrawAmount === 'number' && withdrawAmount > 0 ? withdrawAmount : (walletBalance || 0);
+                          if (amountToWithdraw <= 0 || withdrawError) return;
+                          setWithdrawLoading(true);
+                          try {
+                            toast.loading('Submitting withdrawal...', { id: 'withdraw' });
+                            await withdraw(amountToWithdraw);
+                            toast.success('Amount Successfully transferred to your connected account', { id: 'withdraw', duration: 2000 });
+                            setTimeout(() => window.location.reload(), 2000);
+                          } catch (e: any) {
+                            toast.error(e?.message || 'Withdraw failed', { id: 'withdraw' });
+                          } finally {
+                            setWithdrawLoading(false);
+                          }
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-700"
+                        disabled={withdrawLoading || !!withdrawError || ((walletBalance || 0) <= 0)}
+                      >
+                        Confirm Withdraw
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
 
                 <button
                   onClick={async () => {
                     setManageLoading(true);
                     try {
+                      toast.loading('Opening bank dashboard...', { id: 'manage' });
                       await manageBankAsync();
+                      toast.dismiss('manage');
                     } catch (e: any) {
-                      alert(e?.message || 'Failed to open bank dashboard');
+                      toast.dismiss('manage');
+                      toast.error(e?.message || 'Failed to open bank dashboard');
                     } finally {
                       setManageLoading(false);
                     }
