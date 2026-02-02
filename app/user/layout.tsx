@@ -37,7 +37,7 @@ export default function RootLayout({
           {children}
         </main>
         {/* Global toaster for user area */}
-        <Toaster
+        {/* <Toaster
           position="top-right"
           toastOptions={{
             style: {
@@ -46,7 +46,7 @@ export default function RootLayout({
               border: "1px solid #064e3b",
             },
           }}
-        />
+        /> */}
       </div>
    
   );

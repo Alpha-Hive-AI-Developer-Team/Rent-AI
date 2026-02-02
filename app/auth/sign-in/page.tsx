@@ -173,7 +173,7 @@ export default function SignIn() {
           </button>
 
           {/* Connect with Open Banking — HIDE ONLY in Admin Mode */}
-          {!isAdmin && (
+          {/* {!isAdmin && (
             <Link href="/user/dashboard">
             <button
               type="button"
@@ -183,10 +183,10 @@ export default function SignIn() {
               Connect with Open Banking
             </button>
             </Link>
-          )}
+          )} */}
 
           {/* Admin Toggle */}
-          <button
+          {/* <button
             type="button"
             onClick={() => setIsAdmin(!isAdmin)}
             className={`mt-3 text-sm font-medium transition ${
@@ -194,7 +194,7 @@ export default function SignIn() {
             }`}
           >
             {isAdmin ? "Admin mode enabled ✔" : "Are you admin?"}
-          </button>
+          </button> */}
         </form>
       </div>
       {showOtp && (
