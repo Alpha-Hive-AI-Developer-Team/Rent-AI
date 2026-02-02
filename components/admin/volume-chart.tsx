@@ -11,22 +11,23 @@ import {
   Legend,
 } from "recharts";
 
-const data = [
-  { name: "Jan", paying: 2800, nonPaying: 600 },
-  { name: "Feb", paying: 3000, nonPaying: 700 },
-  { name: "Mar", paying: 3400, nonPaying: 800 },
-  { name: "Apr", paying: 3600, nonPaying: 900 },
-  { name: "May", paying: 3300, nonPaying: 650 },
-  { name: "Jun", paying: 3100, nonPaying: 550 },
-  { name: "Jul", paying: 3500, nonPaying: 500 },
+const fallbackData = [
+  { name: "Jan", paying: 0, nonPaying: 0 },
+  { name: "Feb", paying: 0, nonPaying: 0 },
+  { name: "Mar", paying: 0, nonPaying: 0 },
+  { name: "Apr", paying: 0, nonPaying: 0 },
+  { name: "May", paying: 0, nonPaying: 0 },
+  { name: "Jun", paying: 0, nonPaying: 0 },
 ];
 
 export default function TransactionVolumeChart({
   title = "Monthly Member Volume",
   subtitle = "Paying vs Non-paying members (monthly)",
+  data,
 }: {
   title?: string;
   subtitle?: string;
+  data?: Array<{ name: string; paying: number; nonPaying: number }>;
 }) {
   return (
     <div className="bg-[#111] text-white rounded-xl p-4 md:p-6 border border-gray-800/50 shadow-md w-full">
@@ -37,7 +38,7 @@ export default function TransactionVolumeChart({
 
       <div className="h-56">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ left: 0, right: 10 }}>
+          <BarChart data={Array.isArray(data) && data.length ? data : fallbackData} margin={{ left: 0, right: 10 }}>
             <CartesianGrid stroke="#2a2a2a" vertical={false} />
             <XAxis
               dataKey="name"

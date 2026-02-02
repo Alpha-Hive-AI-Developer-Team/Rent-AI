@@ -4,6 +4,7 @@ import { getAdminLandlords, getAdminReferralsTrend, getAdminTopReferrers } from 
 import { createExpense, getExpenses, getIncomeSummary } from "@/lib/api/adminApi";
 
 import { getLandlordTenants, getTenantTransactions, getAllTenants, getTenantStats, getAdminSummary, getAdminReferralsSummary } from "@/lib/api/adminApi";
+import { getPaidUnpaidSeries, getArrearsTrend } from "@/lib/api/adminApi";
 import { getAdmins, createAdmin } from "@/lib/api/adminApi";
 import { updateAdminStatus } from "@/lib/api/adminApi";
 
@@ -138,6 +139,23 @@ export function useCreateExpense() {
 			qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "expenses" });
 			qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "incomeSummary" });
 		},
+	});
+}
+
+// --- Admin Dashboard Chart Hooks ---
+export function useAdminPaidUnpaidSeries(months: number = 6) {
+	return useQuery<any, Error, any>({
+		queryKey: ["adminPaidUnpaidSeries", months],
+		queryFn: () => getPaidUnpaidSeries(months),
+		staleTime: 5 * 60_000,
+	});
+}
+
+export function useAdminArrearsTrend(months: number = 6) {
+	return useQuery<any, Error, any>({
+		queryKey: ["adminArrearsTrend", months],
+		queryFn: () => getArrearsTrend(months),
+		staleTime: 5 * 60_000,
 	});
 }
 

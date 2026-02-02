@@ -7,10 +7,12 @@ import StatCard from "@/components/admin/analytics-card";
 import Image from "next/image";
 import { Bell } from "lucide-react";
 import { withAuth } from "@/hooks/withAuth";
-import useAdminLandlords, { useAdminSummary } from "@/hooks/useAdmin";
+import useAdminLandlords, { useAdminSummary, useAdminPaidUnpaidSeries, useAdminArrearsTrend } from "@/hooks/useAdmin";
 
  function DashboardPage() {
   const { data: summaryResp, isLoading: summaryLoading } = useAdminSummary();
+    const { data: paidUnpaidResp } = useAdminPaidUnpaidSeries(6);
+    const { data: arrearsTrendResp } = useAdminArrearsTrend(6);
   const summary = summaryResp?.data;
   const stats = [
     {
@@ -29,15 +31,16 @@ import useAdminLandlords, { useAdminSummary } from "@/hooks/useAdmin";
     }
   ];
 
+  const paidUnpaidData = Array.isArray(paidUnpaidResp?.data?.series)
+    ? paidUnpaidResp.data.series.map((d: any) => ({ name: d.name, paying: d.paying, nonPaying: d.nonPaying }))
+    : [];
 
-  const arrearsData = [
-    { name: "Jan", series1: 4000, series2: 2400 },
-    { name: "Feb", series1: 3000, series2: 1398 },
-    { name: "Mar", series1: 2000, series2: 9800 },
-    { name: "Apr", series1: 2780, series2: 3908 },
-    { name: "May", series1: 1890, series2: 4800 },
-    { name: "Jun", series1: 2390, series2: 3800 },
-  ];
+  const arrearsSeries = Array.isArray(arrearsTrendResp?.data?.series)
+    ? arrearsTrendResp.data.series.map((d: any) => ({ name: d.name, arrears: d.arrears }))
+    : [];
+  const arrearsFooter = typeof arrearsTrendResp?.data?.changePct === "number"
+    ? `Trending ${arrearsTrendResp.data.changePct >= 0 ? "up" : "down"} by ${Math.abs(arrearsTrendResp.data.changePct)}% this month`
+    : undefined;
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-8">
@@ -70,17 +73,16 @@ import useAdminLandlords, { useAdminSummary } from "@/hooks/useAdmin";
 
       {/* Charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-        <TransactionVolumeChart />
+        <TransactionVolumeChart data={paidUnpaidData} />
 
         <LineChartCard
           title="Arrears Trends"
-          subtitle="January - June 2024"
-          data={arrearsData}
+          subtitle={summary ? `Up to ${summary.monthName}` : "Arrears by Month"}
+          data={arrearsSeries}
           lines={[
-            { key: "series1", color: "#00C6FF", name: "Current" },
-            { key: "series2", color: "#FF6B00", name: "Previous" },
+            { key: "arrears", color: "#FF6B00", name: "Unpaid" },
           ]}
-          footer="Trending up by 5.2% this month"
+          footer={arrearsFooter}
         />
       </div>
     

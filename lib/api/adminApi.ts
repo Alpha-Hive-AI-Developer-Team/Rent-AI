@@ -118,3 +118,14 @@ export async function getIncomeSummary(filters: { landlordId?: string; address: 
 	return res.data;
 }
 
+// --- Admin dashboard charts ---
+export async function getPaidUnpaidSeries(months: number = 6) {
+  const res = await apiClient.get(`/stats/paid-unpaid-series`, { params: { months } });
+  return res.data;
+}
+
+export async function getArrearsTrend(months: number = 6) {
+  const res = await apiClient.get(`/stats/arrears-trend`, { params: { months } });
+  return res.data;
+}
+
