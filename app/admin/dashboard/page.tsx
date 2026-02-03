@@ -11,6 +11,7 @@ import useAdminLandlords, { useAdminSummary, useAdminPaidUnpaidSeries, useAdminA
 
  function DashboardPage() {
   const { data: summaryResp, isLoading: summaryLoading } = useAdminSummary();
+  console.log("Summary Response:", summaryResp);
     const { data: paidUnpaidResp } = useAdminPaidUnpaidSeries(6);
     const { data: arrearsTrendResp } = useAdminArrearsTrend(6);
   const summary = summaryResp?.data;

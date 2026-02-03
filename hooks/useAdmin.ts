@@ -48,7 +48,7 @@ export function useAdminSummary() {
 	return useQuery<any, Error, any>({
 		queryKey: ["adminSummary"],
 		queryFn: () => getAdminSummary(),
-		staleTime: 60_000, // refresh every minute
+		staleTime: 0, // refresh every minute
 	});
 }
 

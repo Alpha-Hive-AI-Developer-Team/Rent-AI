@@ -14,7 +14,7 @@ export default function ReferralsPage() {
   const { data: profileResp } = useMyProfile();
 
   const referralCode = profileResp?.data?.myReferralCode || "OTMAN10";
-  const referralLink = (typeof window !== "undefined" ? window.location.origin : "https://rentai.app") + `/?r=${referralCode}`;
+  const referralLink = (typeof window !== "undefined" ? window.location.origin : "https://rentai.app") + `/auth/sign-up/?r=${referralCode}`;
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(referralLink);

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTodaySummary } from "@/hooks/useRentDetails";
 import { Info, Clock, UserPlus, CheckCircle, RotateCw } from "lucide-react";
 
 interface TodayCard {
@@ -17,23 +18,31 @@ const iconMap = {
 };
 
 export default function TodaySection() {
+  const { data, isLoading, refetch } = useTodaySummary  ();
+
+  const summary = data?.data || {};
+  const referralsCount = summary.referralsActivatedToday ?? 0;
+  // Each referral gives 10% discount; cap at 100%
+  const discountPercent = Math.min((referralsCount || 0) * 10, 100);
+  const referralSubtitle = discountPercent > 0 ? `+${discountPercent}% discount applied` : "No discount applied";
+
   const cards: TodayCard[] = [
     {
       id: 1,
-      title: "3 transactions need review",
-      subtitle: "AI confidence under 0.75",
+      title: `${isLoading ? "—" : (summary.unreconciledTransactions ?? 0)} transactions need review`,
+      subtitle: "transactions need manual review",
       icon: "info",
     },
     {
       id: 2,
-      title: "17 tenants late",
+      title: `${isLoading ? "—" : (summary.lateTenants ?? 0)} tenants late`,
       subtitle: "Open Arrears across D buckets",
       icon: "clock",
     },
     {
       id: 3,
-      title: "2 new referrals activated",
-      subtitle: "+20% discount applied",
+      title: `${isLoading ? "—" : (summary.referralsActivatedToday ?? 0)} new referrals activated`,
+      subtitle: referralSubtitle,
       icon: "referral",
     },
     {
@@ -49,10 +58,10 @@ export default function TodaySection() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">Today</h2>
-        <button className="flex items-center gap-2 text-sm text-gray-300 border border-gray-800 rounded-full px-3 py-1 hover:bg-gray-800 transition">
+        {/* <button onClick={() => refetch()} className="flex items-center gap-2 text-sm text-gray-300 border border-gray-800 rounded-full px-3 py-1 hover:bg-gray-800 transition">
           <RotateCw className="w-4 h-4" />
           Refresh
-        </button>
+        </button> */}
       </div>
 
       {/* Cards Grid */}

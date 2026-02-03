@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getCollectedSeries, getExpectedSeries, getRentDetails } from "@/lib/api/tenantsApi";
 import { useAuthUser } from "@/redux/useAuthUser";
+import { getTodaySummary } from "@/lib/api/statsApi";
 
 export function useRentDetails(month?: number, year?: number) {
   const authUser = useAuthUser();
@@ -36,6 +37,19 @@ export function useCollectedSeries(options: SeriesOptions = { granularity: 'mont
   return useQuery<any, Error, any>({
     queryKey: ["collectedSeries", userId, options],
     queryFn: () => getCollectedSeries(options),
+    enabled: !!userId,
+    staleTime: 0,
+  });
+}
+
+
+export  function useTodaySummary() {
+  const authUser = useAuthUser();
+  const userId = (authUser as any)?.id || (authUser as any)?._id || (authUser as any)?.userId;
+
+  return useQuery({
+    queryKey: ["todaySummary", userId],
+    queryFn: () => getTodaySummary(),
     enabled: !!userId,
     staleTime: 0,
   });
