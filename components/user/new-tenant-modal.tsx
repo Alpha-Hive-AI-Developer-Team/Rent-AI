@@ -26,7 +26,7 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
   // Attempt to load existing addresses from API; fall back to sample list
   const { data: addrRes } = useTenantAddresses();
   const apiAddresses: string[] = addrRes?.data ?? [];
-  const fallbackAddresses = ["119 The Avenue - R3", "42 Baker Street - Apt 2", "7 Willow Lane - Flat B"];
+  const fallbackAddresses = [""];
   const existingAddresses = apiAddresses.length ? apiAddresses : fallbackAddresses;
 
   useEffect(() => {
