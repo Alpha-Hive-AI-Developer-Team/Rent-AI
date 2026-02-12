@@ -8,10 +8,15 @@ import { Eye, EyeOff, LogIn, CreditCard } from "lucide-react";
 import { useLogin } from "@/hooks/useAuth";
 import toast from "react-hot-toast";
 import VerifyOtpModal from "@/components/auth/verify-otp";
-
+import {signInWithCustomToken} from 'firebase/auth'
+import {auth} from "@/firebase";
+import { useAppDispatch } from "@/redux/hooks";
+import { setCredentials } from "@/redux/authSlice";
+import { useQueryClient } from "@tanstack/react-query";
 export default function SignIn() {
   const router = useRouter();
-
+  const dispatch = useAppDispatch();
+   const queryClient = useQueryClient();
   const [showPassword, setShowPassword] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false); // NEW TOGGLE STATE
   const [loading, setLoading] = useState(false);
@@ -23,40 +28,62 @@ export default function SignIn() {
 
   const login = useLogin();
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit =async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     login.mutate(
       { email, password },
       {
-        onSuccess: (resp: any) => {
+        onSuccess: async(resp: any) => {
           setLoading(false);
-     
-          try {
             const user = resp?.data?.user || resp?.user || null;
             const accessToken = resp?.data?.accessToken || resp?.accessToken;
-     
-            console.debug("Login response:", resp.data || resp);
-            if (user) {
-              localStorage.setItem("authUser", JSON.stringify(user));
-            }
-            if (accessToken) {
-              localStorage.setItem("authToken", accessToken);
-            }
-         
+            const firebaseCustomToken = resp?.data?.firebaseToken || resp?.firebaseToken;
+           const role = user?.role || "user";
 
-            toast.success(resp?.message || "Login successful");
+            if(user && firebaseCustomToken)
+            {
+              const resp = await signInWithCustomToken(auth, firebaseCustomToken);
+   // 4. Update Redux & Local State
+        dispatch(setCredentials({ user, token: accessToken }));
+        queryClient.setQueryData(['Referee-authUser'], user);
+        queryClient.setQueryData(['Referee-authToken'], accessToken);
+        localStorage.setItem('Referee-authUser', JSON.stringify(user));
+        localStorage.setItem('Referee-authToken', accessToken);
 
-            const role = user?.role || "user";
-            console.debug("User role:", role);
-            if (role === "admin" || role === "superAdmin") router.push("/admin/dashboard");
-            else router.push("/user/dashboard");
-          } catch (err) {
-            console.error(err);
-            toast.success("Login successful");
-            router.push("/user/dashboard");
-          }
+               toast.success("Login successful");
+
+
+             if (role === "admin" || role === "superAdmin"){ router.push("/admin/dashboard");}
+            else{ router.push("/user/dashboard");}
+            }
+            else{
+              setLoading(false);
+            }
+
+
+
+
+
+
+
+          // try {
+          
+          //   console.debug("Login response:", resp.data || resp);
+          
+
+
+           
+
+           
+          //   console.debug("User role:", role);
+           
+          // } catch (err) {
+          //   console.error(err);
+          //   toast.success("Login successful");
+          //   router.push("/user/dashboard");
+          // }
         },
         onError: (err: any) => {
           setLoading(false);
