@@ -6,6 +6,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Home, Building2, Users, Gift, LogOut, X } from "lucide-react";
 import { useAuthUser } from "@/redux/useAuthUser";
+import { useCustomerLogout } from "@/hooks/useAuth";
+import { signOut } from "firebase/auth";
+import { auth } from "@/firebase";
 
 type AdminSidebarProps = {
   mobileOpen?: boolean;
@@ -18,6 +21,8 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
   const user=useAuthUser();
   const router = useRouter();
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const logout = useCustomerLogout();
+  const [loading, setLoading] = useState(false);
 
   const menuItems: { name: string; path: string; Icon: React.ElementType }[] = [
     { name: "Dashboard", path: "/admin/dashboard", Icon: Home },
@@ -129,7 +134,27 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
             <p className="text-sm text-gray-300 mb-4">Are you sure you want to logout? You will be redirected to the sign-in page.</p>
             <div className="flex justify-end gap-3">
               <button onClick={() => setLogoutOpen(false)} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Cancel</button>
-              <button onClick={() => { setLogoutOpen(false); router.push('/auth/sign-in'); }} className="px-4 py-2 rounded-full border border-rose-600 text-sm text-rose-300 bg-transparent hover:bg-rose-900/5">Logout</button>
+              <button
+                onClick={async () => {
+                  setLogoutOpen(false);
+                  setLoading(true);
+                  await signOut(auth);
+                  logout.mutate(undefined, {
+                    onSettled: () => setLoading(false),
+                  });
+                }}
+                disabled={loading}
+                className="px-4 py-2 rounded-full border border-rose-600 text-sm text-rose-300 bg-transparent hover:bg-rose-900/5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <span className="flex items-center">
+                    <span className="inline-block w-4 h-4 border-2 border-t-transparent border-rose-300 rounded-full animate-spin mr-2" />
+                    Logging out...
+                  </span>
+                ) : (
+                  "Logout"
+                )}
+              </button>
             </div>
           </div>
         </div>

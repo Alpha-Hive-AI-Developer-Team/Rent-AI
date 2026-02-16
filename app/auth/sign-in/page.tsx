@@ -45,12 +45,13 @@ export default function SignIn() {
             if(user && firebaseCustomToken)
             {
               const resp = await signInWithCustomToken(auth, firebaseCustomToken);
+              console.debug("Firebase sign-in successful:", resp);
    // 4. Update Redux & Local State
         dispatch(setCredentials({ user, token: accessToken }));
-        queryClient.setQueryData(['Referee-authUser'], user);
-        queryClient.setQueryData(['Referee-authToken'], accessToken);
-        localStorage.setItem('Referee-authUser', JSON.stringify(user));
-        localStorage.setItem('Referee-authToken', accessToken);
+        queryClient.setQueryData(['authUser'], user);
+        queryClient.setQueryData(['authToken'], accessToken);
+        localStorage.setItem('authUser', JSON.stringify(user));
+        localStorage.setItem('authToken', accessToken);
 
                toast.success("Login successful");
 

@@ -144,7 +144,7 @@ export default function AuthInitializer() {
           // 2. Fetch the MongoDB User Profile
           // We need this because Firebase only knows 'email' and 'uid', 
           // but your app needs 'role', 'name', etc.
-          const res = await apiClient.get('/auth/user/me'); // Ensure you have a 'get profile' route
+          const res = await apiClient.get('/auth/me'); // Ensure you have a 'get profile' route
           const userProfile = res?.data?.data || res?.data?.user || res?.data;
           console.log('Fetched user profile:', userProfile);
 

@@ -20,6 +20,8 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { useCustomerLogout } from "@/hooks/useAuth";
+import { signOut } from "firebase/auth";
+import { auth } from "@/firebase";
 
 type SidebarProps = {
   mobileOpen?: boolean;
@@ -194,9 +196,10 @@ export default function Sidebar({ mobileOpen, onClose }: SidebarProps) {
             <div className="flex justify-end gap-3">
               <button onClick={() => setLogoutOpen(false)} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Cancel</button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   setLogoutOpen(false);
                   setLoading(true);
+                  await signOut(auth); // Sign out from Firebase
                   logout.mutate(undefined, {
                     onSettled: () => setLoading(false),
                   });
