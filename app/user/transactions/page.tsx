@@ -139,7 +139,7 @@ export default function TransactionsPage() {
       try {
         setConnecting(true);
         // applicationUserId - replace with real landlord id when available
-        const callback = 'http://localhost:3000/user/transactions';
+        const callback = `${process.env.NEXT_PUBLIC_API_BASE_CALLBACK}/user/transactions`;
         const payload = {
 
           institutionId: inst.id,
