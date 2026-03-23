@@ -124,7 +124,7 @@ export default function TransactionsPage() {
       } catch (e) {
         console.warn('Failed to refetch unreconciled transactions', e);
       }
-      alert(`Yapily sync completed. Received ${res?.data?.length ?? (res?.data?.docs?.length ?? 'unknown')} items.`);
+      alert(`Yapily sync completed.`);
     } catch (err) {
       console.error('Failed to fetch Yapily transactions', err);
       alert('Failed to sync bank transactions');

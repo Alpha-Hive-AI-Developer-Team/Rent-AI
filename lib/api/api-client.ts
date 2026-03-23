@@ -122,17 +122,20 @@ const apiClient = axios.create({
 // --- REQUEST INTERCEPTOR ---
 apiClient.interceptors.request.use(async (config) => {
   
-  // 1. Define endpoints that DO NOT need the header token
-  // (We add '/auth/google' here because you send that token in the body manually)
-  const isAuthEndpoint = config.url?.includes('/login') || 
-                         config.url?.includes('/register') ||
-                         config.url?.includes('/auth/google');
+  // 1. Define endpoints that should NOT attempt to attach an auth header.
+  // IMPORTANT: do NOT use naive `includes('/login')` checks because they match
+  // routes like `/payouts/login-link` (which *do* require auth).
+  const rawUrl = config.url || '';
+  const pathOnly = rawUrl.split('?')[0];
+  const isAuthEndpoint = /^\/auth\/(login|register|refresh-token|forgot-password|reset-password|verify-otp|verify-signup-otp|resend-otp|google|facebook|logout)(\/|$)/.test(pathOnly);
   
   if (!isAuthEndpoint) {
     try {
-      // 2. [CRITICAL FIX] Wait for Firebase to initialize
-      // This ensures auth.currentUser is not null on page reloads
-      await auth.authStateReady(); 
+      // 2. Wait for Firebase to initialize (if supported)
+      // This ensures `auth.currentUser` is settled on page reloads.
+      if (typeof (auth as any).authStateReady === 'function') {
+        await (auth as any).authStateReady();
+      }
 
       const user = auth.currentUser;
       console.log("user in interceptor:", user);
