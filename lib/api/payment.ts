@@ -8,9 +8,13 @@ export interface CreateCheckoutPayload {
 
 import apiClient from './api-client';
 
-export async function createCheckoutSession(payload: CreateCheckoutPayload) {
+export type CheckoutSessionResponse =
+	| { success: boolean; url: string; id: string }
+	| { success: boolean; upgraded: true; message?: string; subscriptionId?: string };
+
+export async function createCheckoutSession(payload: CreateCheckoutPayload): Promise<CheckoutSessionResponse> {
   const res = await apiClient.post('/payments/checkout', payload);
-  return res.data as { success: boolean; url: string; id: string };
+  return res.data as CheckoutSessionResponse;
 }
 
 

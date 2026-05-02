@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createCheckoutSession, cancelSubscription as apiCancelSubscription } from '../lib/api/payment';
 import { loadStripe } from '@stripe/stripe-js';
-import plansConfig, { PRICE_ID_MAP } from '@/lib/plans';
+import { PRICE_ID_MAP } from '@/lib/plans';
+import toast from 'react-hot-toast';
 
 type PlanKey = 'starter' | 'pro' | 'enterprise';
 
@@ -24,13 +25,24 @@ export function usePayment() {
 			const priceId = priceMap[plan];
 			if (!priceId) throw new Error(`Missing Stripe price id for plan: ${plan}`);
 			const origin = typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_CLIENT_URL || 'http://localhost:3000';
-			const { url, id } = await createCheckoutSession({
+			const sessionResult = await createCheckoutSession({
 				priceId,
 				planType: plan,
 				successUrl: `${origin}/user/payment?status=success`,
 				cancelUrl: `${origin}/user/payment?status=cancel`,
 				applyCredit: !!applyCredit,
 			});
+
+			if ('upgraded' in sessionResult && sessionResult.upgraded) {
+				await qc.invalidateQueries({ queryKey: ['me'] });
+				toast.success(
+					sessionResult.message ||
+						'Plan upgraded. You were charged a prorated amount for the rest of your billing period.'
+				);
+				return;
+			}
+
+			const { url, id } = sessionResult;
 			const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 			if (pk) {
 				const stripe = await loadStripe(pk);
@@ -48,7 +60,7 @@ export function usePayment() {
 		} finally {
 			setLoading(false);
 		}
-	}, [priceMap]);
+	}, [priceMap, qc]);
 
 	const cancelMutation = useMutation({
 		mutationFn: async () => {
