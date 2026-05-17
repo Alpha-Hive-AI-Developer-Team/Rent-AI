@@ -19,7 +19,7 @@ export default function SignIn() {
    const queryClient = useQueryClient();
   const [showPassword, setShowPassword] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false); // NEW TOGGLE STATE
-  const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState(false);
   const [showOtp, setShowOtp] = useState(false);
 
   // Simple local state
@@ -30,13 +30,12 @@ export default function SignIn() {
 
   const onSubmit =async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setPending(true);
 
     login.mutate(
       { email, password },
       {
         onSuccess: async(resp: any) => {
-          setLoading(false);
             const user = resp?.data?.user || resp?.user || null;
             const accessToken = resp?.data?.accessToken || resp?.accessToken;
             const firebaseCustomToken = resp?.data?.firebaseToken || resp?.firebaseToken;
@@ -60,7 +59,7 @@ export default function SignIn() {
             else{ router.push("/user/dashboard");}
             }
             else{
-              setLoading(false);
+              setPending(false);
             }
 
 
@@ -87,7 +86,7 @@ export default function SignIn() {
           // }
         },
         onError: (err: any) => {
-          setLoading(false);
+          setPending(false);
                // If server indicates unverified account requiring OTP verification
                   const status = err?.response?.status
           if (status === 403) {
@@ -156,8 +155,9 @@ export default function SignIn() {
               placeholder="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={pending}
               className="w-full bg-transparent border border-[#2a2a2a] rounded-lg px-9 py-2 text-sm 
-              focus:border-[#0CEB77] outline-none"
+              focus:border-[#0CEB77] outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -168,8 +168,9 @@ export default function SignIn() {
     placeholder="Password"
     value={password}
     onChange={(e) => setPassword(e.target.value)}
+    disabled={pending}
     className="w-full bg-transparent border border-[#2a2a2a] rounded-lg px-4 py-2 text-sm
-    focus:border-[#0CEB77] outline-none pr-10"
+    focus:border-[#0CEB77] outline-none pr-10 disabled:opacity-50 disabled:cursor-not-allowed"
   />
   <button
     type="button"
@@ -194,10 +195,20 @@ export default function SignIn() {
           {/* Login Button */}
           <button
             type="submit"
-            className="w-full bg-[#1A1A1A] border border-[#2a2a2a] py-2 rounded-lg text-sm flex items-center justify-center gap-2 hover:bg-[#222] transition"
+            disabled={pending}
+            className="w-full bg-[#1A1A1A] border border-[#2a2a2a] py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 hover:bg-[#222] hover:border-[#0CEB77]/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <LogIn size={16} />
-            Login
+            {pending ? (
+              <>
+                <span className="inline-block w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin" />
+                Signing in...
+              </>
+            ) : (
+              <>
+                <LogIn size={16} />
+                Login
+              </>
+            )}
           </button>
 
           {/* Connect with Open Banking — HIDE ONLY in Admin Mode */}

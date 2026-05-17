@@ -12,7 +12,7 @@ import VerifyOtpModal from "@/components/auth/verify-otp";
 export default function SignUp() {
   const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState(false);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -36,15 +36,15 @@ export default function SignUp() {
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setPending(true);
     signUp.mutate(form, {
       onSuccess: (data: any) => {
-        setLoading(false);
+        setPending(false);
         toast.success(data?.message || "Signup successful. Enter OTP sent to your email.");
         setShowOtp(true);
       },
       onError: (err: any) => {
-        setLoading(false);
+        setPending(false);
         const message = err?.response?.data?.message || "Signup failed. Please try again.";
         toast.error(message);
       },
@@ -98,7 +98,8 @@ export default function SignUp() {
                 placeholder="First Name"
                 value={form.firstName}
                 onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-                className="w-full bg-transparent border border-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-green-500"
+                disabled={pending}
+                className="w-full bg-transparent border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0CEB77] disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -108,7 +109,8 @@ export default function SignUp() {
                 placeholder="Last Name"
                 value={form.lastName}
                 onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                className="w-full bg-transparent border border-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-green-500"
+                disabled={pending}
+                className="w-full bg-transparent border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0CEB77] disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
           </div>
@@ -121,7 +123,8 @@ export default function SignUp() {
               placeholder="Email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full bg-transparent border border-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-green-500"
+              disabled={pending}
+              className="w-full bg-transparent border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0CEB77] disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -134,7 +137,8 @@ export default function SignUp() {
                 placeholder="Password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full bg-transparent border border-gray-700 rounded-md px-3 py-2 pr-10 text-sm focus:outline-none focus:border-green-500"
+                disabled={pending}
+                className="w-full bg-transparent border border-[#2a2a2a] rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:border-[#0CEB77] disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 type="button"
@@ -150,14 +154,14 @@ export default function SignUp() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={loading}
-            className="mt-2 w-full py-2 rounded-md font-medium text-sm bg-[#027A48] hover:bg-[#02653d] transition disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={pending}
+            className="mt-2 w-full bg-[#1A1A1A] border border-[#2a2a2a] py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 hover:bg-[#222] hover:border-[#0CEB77]/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? (
-              <span className="flex items-center justify-center">
-                <span className="inline-block w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin mr-2" />
+            {pending ? (
+              <>
+                <span className="inline-block w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin" />
                 Creating account...
-              </span>
+              </>
             ) : (
               "Sign up"
             )}
@@ -167,7 +171,7 @@ export default function SignUp() {
         {/* Footer */}
         <p className="text-gray-400 text-sm mt-6">
           Already have an account?{" "}
-          <Link href="/auth/sign-in" className="text-green-500 hover:underline">
+          <Link href="/auth/sign-in" className="text-[#0CEB77] hover:underline">
             Sign in
           </Link>
         </p>

@@ -1,5 +1,15 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { signUpUser, signInUser, logoutUser, verifySignupOtp, getMyDetails } from "@/lib/api/authApi";
+import {
+  signUpUser,
+  signInUser,
+  logoutUser,
+  verifySignupOtp,
+  getMyDetails,
+  forgotPassword,
+  verifyOtp,
+  resendOtp,
+  resetPassword,
+} from "@/lib/api/authApi";
 import { getReferralsSummary } from "@/lib/api/referrals";
 import { SignUpInput } from "@/lib/validations/auth";
 import { useRouter } from "next/navigation";
@@ -122,6 +132,35 @@ export function useFacebookAuth() {
 export function useVerifySignupOtp() {
   return useMutation({
     mutationFn: (payload: { email: string; otp: string }) => verifySignupOtp(payload),
+  });
+}
+
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: (email: string) => forgotPassword(email),
+  });
+}
+
+export function useVerifyResetOtp() {
+  return useMutation({
+    mutationFn: (payload: { email: string; otp: string }) => verifyOtp(payload),
+  });
+}
+
+export function useResendOtp() {
+  return useMutation({
+    mutationFn: (payload: { email: string; purpose?: "signup" | "reset" }) =>
+      resendOtp(payload),
+  });
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: (payload: {
+      email: string;
+      newPassword: string;
+      confirmPassword: string;
+    }) => resetPassword(payload),
   });
 }
 

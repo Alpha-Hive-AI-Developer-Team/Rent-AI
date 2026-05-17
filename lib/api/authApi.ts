@@ -46,8 +46,14 @@ export async function verifyOtp({
 }
 
 
-export async function resendOtp({ email }: { email: string }) {
-  const response = await apiClient.post("/auth/resend-otp", { email });
+export async function resendOtp({
+  email,
+  purpose = "signup",
+}: {
+  email: string;
+  purpose?: "signup" | "reset";
+}) {
+  const response = await apiClient.post("/auth/resend-otp", { email, purpose });
   return response.data;
 }
 
