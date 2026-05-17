@@ -22,7 +22,7 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
   const router = useRouter();
   const [logoutOpen, setLogoutOpen] = useState(false);
   const logout = useCustomerLogout();
-  const [loading, setLoading] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
 
   const menuItems: { name: string; path: string; Icon: React.ElementType }[] = [
     { name: "Dashboard", path: "/admin/dashboard", Icon: Home },
@@ -114,10 +114,11 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
       <div className="p-4">
         <button
           onClick={() => setLogoutOpen(true)}
-          className={`group relative flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm transition border text-gray-300 border-[#2A2A2A] hover:text-white hover:border-emerald-700/60 ${!isDesktop ? "justify-center px-2 py-2 rounded-xl" : ""}`}
+          disabled={logoutPending}
+          className={`group relative flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm transition border text-gray-300 border-[#2A2A2A] hover:text-white hover:border-emerald-700/60 disabled:opacity-50 disabled:cursor-not-allowed ${!isDesktop ? "justify-center px-2 py-2 rounded-xl" : ""}`}
         >
           <LogOut className="w-4 h-4 text-gray-400 group-hover:text-rose-400" />
-          {isDesktop && <span>Logout</span>}
+          {isDesktop && <span>{logoutPending ? "Logging out..." : "Logout"}</span>}
         </button>
       </div>
 
@@ -127,28 +128,44 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
           <div className="w-full max-w-sm bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Confirm logout</h3>
-              <button onClick={() => setLogoutOpen(false)} className="text-gray-400 hover:text-white">
+              <button
+                onClick={() => setLogoutOpen(false)}
+                disabled={logoutPending}
+                className="text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
             <p className="text-sm text-gray-300 mb-4">Are you sure you want to logout? You will be redirected to the sign-in page.</p>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setLogoutOpen(false)} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Cancel</button>
+              <button
+                onClick={() => setLogoutOpen(false)}
+                disabled={logoutPending}
+                className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
               <button
                 onClick={async () => {
-                  setLogoutOpen(false);
-                  setLoading(true);
-                  await signOut(auth);
-                  logout.mutate(undefined, {
-                    onSettled: () => setLoading(false),
-                  });
+                  setLogoutPending(true);
+                  try {
+                    await signOut(auth);
+                    logout.mutate(undefined, {
+                      onSettled: () => {
+                        setLogoutPending(false);
+                        setLogoutOpen(false);
+                      },
+                    });
+                  } catch {
+                    setLogoutPending(false);
+                  }
                 }}
-                disabled={loading}
+                disabled={logoutPending}
                 className="px-4 py-2 rounded-full border border-rose-600 text-sm text-rose-300 bg-transparent hover:bg-rose-900/5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? (
-                  <span className="flex items-center">
-                    <span className="inline-block w-4 h-4 border-2 border-t-transparent border-rose-300 rounded-full animate-spin mr-2" />
+                {logoutPending ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="inline-block w-4 h-4 border-2 border-t-transparent border-rose-300 rounded-full animate-spin" />
                     Logging out...
                   </span>
                 ) : (
@@ -204,9 +221,13 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
               </nav>
 
               <div className="p-4">
-                <button onClick={() => setLogoutOpen(true)} className="group relative flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm transition border text-gray-300 border-[#2A2A2A] hover:text-white hover:border-emerald-700/60">
+                <button
+                  onClick={() => setLogoutOpen(true)}
+                  disabled={logoutPending}
+                  className="group relative flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm transition border text-gray-300 border-[#2A2A2A] hover:text-white hover:border-emerald-700/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   <LogOut className="w-4 h-4 text-gray-400 group-hover:text-rose-400" />
-                  <span>Logout</span>
+                  <span>{logoutPending ? "Logging out..." : "Logout"}</span>
                 </button>
               </div>
             </aside>

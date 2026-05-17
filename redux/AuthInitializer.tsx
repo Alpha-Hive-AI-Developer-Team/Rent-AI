@@ -170,7 +170,7 @@ export default function AuthInitializer() {
         // Cleanup
         localStorage.removeItem("authToken");
         localStorage.removeItem("authUser");
-         if (pathname !== '/auth/sign-in' && pathname !== '/auth/sign-up' && pathname !== '/' && !pathname.startsWith('/auth/forgot-password') && pathname !== '/admin/login') {
+         if (pathname !== '/auth/sign-in' && pathname !== '/auth/sign-up' && pathname !== '/'&& pathname !== '/auth/otp' && pathname !== '/auth/reset-password' && !pathname.startsWith('/auth/forgot-password') && pathname !== '/admin/login') {
           toast.error("Session expired. Please log in again.");
         }
         dispatch(initializeAuth(null));
