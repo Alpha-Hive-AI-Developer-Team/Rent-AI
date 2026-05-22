@@ -31,14 +31,10 @@ export default function SignIn() {
   const dispatch = useAppDispatch();
    const queryClient = useQueryClient();
   const [showPassword, setShowPassword] = useState(false);
-<<<<<<< HEAD
-  const [pending, setPending] = useState(false);
-  const [isSocialLoading, setIsSocialLoading] = useState(false);
-=======
   const [isAdmin, setIsAdmin] = useState(false); // NEW TOGGLE STATE
   const [pending, setPending] = useState(false);
->>>>>>> d46c2d6d1286e9cb010d5ed044fcbe848f6a91be
   const [showOtp, setShowOtp] = useState(false);
+  const [isSocialLoading, setIsSocialLoading] = useState(false);
 
   // Simple local state
   const [email, setEmail] = useState("");
