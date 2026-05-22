@@ -33,13 +33,17 @@ export function usePayment() {
 				applyCredit: !!applyCredit,
 			});
 
-			if ('upgraded' in sessionResult && sessionResult.upgraded) {
+			if ('upgraded' in sessionResult && sessionResult.upgraded === true) {
 				await qc.invalidateQueries({ queryKey: ['me'] });
 				toast.success(
 					sessionResult.message ||
 						'Plan upgraded. You were charged a prorated amount for the rest of your billing period.'
 				);
 				return;
+			}
+
+			if (!('url' in sessionResult) || !('id' in sessionResult)) {
+				throw new Error('Unexpected checkout session response');
 			}
 
 			const { url, id } = sessionResult;
