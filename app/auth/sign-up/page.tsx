@@ -31,7 +31,10 @@ export default function SignUp() {
   const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
+<<<<<<< HEAD
   const [isSocialLoading, setIsSocialLoading] = useState(false);
+=======
+>>>>>>> d46c2d6d1286e9cb010d5ed044fcbe848f6a91be
 
   const [form, setForm] = useState({
     firstName: "",
