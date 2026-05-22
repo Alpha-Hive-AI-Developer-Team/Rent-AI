@@ -110,11 +110,11 @@ export function useCustomerLogout() {
 }
 
 // Social Authentication Hooks
-export function useGoogleAuth() {
+export function useGoogleAuth(role = "landlord") {
   return useMutation({
     mutationFn: async (firebaseToken: string) => {
       const { googleAuth } = await import("@/lib/api/authApi");
-      return googleAuth(firebaseToken);
+      return googleAuth(firebaseToken, role);
     },
   });
 }

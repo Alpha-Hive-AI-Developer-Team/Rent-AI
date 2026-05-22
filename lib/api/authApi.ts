@@ -80,10 +80,10 @@ export async function verifySignupOtp({ email, otp }: { email: string; otp: stri
 }
 
 // Social authentication functions
-export async function googleAuth(firebaseToken: string) {
-  const res = await apiClient.post("/auth/google", { 
+export async function googleAuth(firebaseToken: string, role = "landlord") {
+  const res = await apiClient.post("/auth/google", {
     token: firebaseToken,
-    type: "user" // default role for users
+    role,
   });
   return res.data;
 }

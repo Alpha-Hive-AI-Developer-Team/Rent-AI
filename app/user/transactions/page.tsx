@@ -1,9 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { Plus, Search, Check, X, Bell, Eye, ChevronDown, Info } from "lucide-react";
+import { Plus, Search, Check, X, Bell, Eye, ChevronDown, Info, CheckCircle2, AlertCircle } from "lucide-react";
 import { useState, useEffect, Fragment } from "react";
-import { useConnectedAccounts, useUnreconciledTransactions, useYapilyInstitutions, useConnectedInstitution } from "@/hooks/useTransactions";
+import { useConnectedAccounts, useUnreconciledTransactions, useYapilyInstitutions, useConnectedInstitution, useReconcileTransaction } from "@/hooks/useTransactions";
 import { createYapilyAccountAuthRequest, connectYapilyAccounts, getYapilyTransactions } from "@/lib/api/transactionApi";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
@@ -13,10 +13,12 @@ interface Transaction {
   status: "Matched" | "Needs Review";
   date: string;
   description: string;
+  payer: string;
 }
 
 interface Tenant {
   id: number;
+  tenantId?: string;
   name: string;
   property: string;
   rent: string;
@@ -41,6 +43,7 @@ export default function TransactionsPage() {
       id: 1,
       date: "01/09/2025",
       description: "FPI JACK LEAH 119AV RENT",
+      payer: "Jack Leah",
       amount: "£1200",
       status: "Matched",
     }
@@ -77,6 +80,7 @@ export default function TransactionsPage() {
     id: i + 1,
     date: d.transaction?.date ? formatDate(d.transaction.date) : "-",
     description: d.transaction?.description || d.transaction?.reference || "",
+    payer: (d.transaction?.payerName || "").toString().trim() || "—",
     amount: typeof d.transaction?.amount === "number" ? `£${d.transaction.amount}` : String(d.transaction?.amount ?? ""),
     status: d.matchStatus === "matched" ? "Matched" : "Needs Review",
     raw: d,
@@ -86,7 +90,10 @@ export default function TransactionsPage() {
   const displayTransactions: Transaction[] = apiRows.length > 0 ? apiRows : [];
 
   const filteredDisplay = displayTransactions.filter(
-    (t) => t.description.toLowerCase().includes(search.toLowerCase()) || t.amount.toLowerCase().includes(search.toLowerCase())
+    (t) =>
+      t.description.toLowerCase().includes(search.toLowerCase()) ||
+      t.payer.toLowerCase().includes(search.toLowerCase()) ||
+      t.amount.toLowerCase().includes(search.toLowerCase())
   );
 
   // Sample tenants shown in the modal (UI-only)
@@ -100,12 +107,19 @@ export default function TransactionsPage() {
 
   
 
-  // Track which transactions have been "reconciled" in the UI
-  const [reconciled, setReconciled] = useState<number[]>([]);
-
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null);
   const [showYapilyModal, setShowYapilyModal] = useState(false);
+  const [pendingReconcile, setPendingReconcile] = useState<{ tenant: Tenant; transactionId: string } | null>(null);
+  const [reconcileError, setReconcileError] = useState<string | null>(null);
+  const [syncFeedback, setSyncFeedback] = useState<{
+    type: "success" | "error";
+    title: string;
+    message: string;
+    accountName?: string;
+  } | null>(null);
+
+  const reconcileMutation = useReconcileTransaction();
 
   // react-query hook (disabled by default) — call refetch() to fetch
   const yapilyQuery = useYapilyInstitutions(false);
@@ -113,6 +127,7 @@ export default function TransactionsPage() {
   const [showAccountsModal, setShowAccountsModal] = useState(false);
   async function handleAccountSync(acc: any) {
     const accountId = acc?.accountId || acc?.id || String(acc?.name || Date.now());
+    const accountName = acc?.name || accountId;
     try {
       // mark this account as syncing (allow multiple concurrent syncs)
       setSyncingAccounts((prev) => (prev.includes(accountId) ? prev : [...prev, accountId]));
@@ -124,10 +139,26 @@ export default function TransactionsPage() {
       } catch (e) {
         console.warn('Failed to refetch unreconciled transactions', e);
       }
-      alert(`Yapily sync completed.`);
-    } catch (err) {
+      const inserted = res?.saved?.inserted ?? res?.data?.saved?.inserted;
+      const detail =
+        typeof inserted === "number" && inserted > 0
+          ? `${inserted} new transaction${inserted === 1 ? "" : "s"} imported.`
+          : "Your bank feed is up to date.";
+      setSyncFeedback({
+        type: "success",
+        title: "Bank feed synced",
+        message: detail,
+        accountName,
+      });
+    } catch (err: any) {
       console.error('Failed to fetch Yapily transactions', err);
-      alert('Failed to sync bank transactions');
+      const msg = err?.response?.data?.message || err?.message || "Could not sync transactions from your bank.";
+      setSyncFeedback({
+        type: "error",
+        title: "Sync failed",
+        message: msg,
+        accountName,
+      });
     } finally {
       setSyncingAccounts((prev) => prev.filter((id) => id !== accountId));
     }
@@ -231,6 +262,7 @@ export default function TransactionsPage() {
       if (arr.length === 0) return [];
       return arr.map((c: any, i: number) => ({
         id: i + 1,
+        tenantId: c._id ? String(c._id) : undefined,
         name: Array.isArray(c.tenantName) ? (c.tenantName[0] || c.tenantName.join(", ")) : (c.tenantName || c.tenantName?.name || ""),
         property: c.property || c.propertyAddress || "",
         rent: typeof c.rent === "number" ? `£${c.rent}` : String(c.rent || ""),
@@ -334,15 +366,49 @@ export default function TransactionsPage() {
 
   const paginatedCandidates = sortedCandidates.slice((candidatePage - 1) * candidatePageSize, candidatePage * candidatePageSize);
 
-  function acceptCandidate(txId: number, tenantId: number) {
-    // UI-only: mark tenant as Paid and mark transaction as reconciled
-    setTenantCandidates((prev) => prev.map((c) => (c.id === tenantId ? { ...c, status: "Paid" } : c)));
-    setReconciled((prev) => (prev.includes(txId) ? prev : [...prev, txId]));
+  function getTransactionIdFromSelected(): string | null {
+    const raw = selectedTransaction?.raw;
+    const txId = raw?.transaction?.transactionId;
+    return txId ? String(txId) : null;
   }
 
-  function rejectCandidate(_txId: number, tenantId: number) {
-    // UI-only: mark tenant as Needs Review (visually)
-    setTenantCandidates((prev) => prev.map((c) => (c.id === tenantId ? { ...c, status: "Unknown" } : c)));
+  function requestReconcile(tenant: Tenant) {
+    const transactionId = getTransactionIdFromSelected();
+    if (!tenant.tenantId || !transactionId) {
+      setReconcileError("Missing tenant or transaction id — cannot reconcile.");
+      return;
+    }
+    setReconcileError(null);
+    setPendingReconcile({ tenant, transactionId });
+  }
+
+  async function confirmReconcile() {
+    if (!pendingReconcile) return;
+    const { tenant, transactionId } = pendingReconcile;
+    if (!tenant.tenantId) {
+      setReconcileError("Tenant id is missing.");
+      return;
+    }
+    setReconcileError(null);
+    reconcileMutation.mutate(
+      { tenantId: tenant.tenantId, transactionId },
+      {
+        onSuccess: async () => {
+          setPendingReconcile(null);
+          setViewModalOpen(false);
+          setSelectedTransaction(null);
+          try {
+            await unreconciledQuery.refetch();
+          } catch (e) {
+            console.warn("Failed to refetch unreconciled transactions", e);
+          }
+        },
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message || err?.message || "Failed to reconcile transaction.";
+          setReconcileError(msg);
+        },
+      }
+    );
   }
 
  
@@ -368,7 +434,9 @@ export default function TransactionsPage() {
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold">Transaction — {selectedTransaction.description}</h3>
-                <p className="text-sm text-gray-400">Date: {selectedTransaction.date} • Amount: {selectedTransaction.amount}</p>
+                <p className="text-sm text-gray-400">
+                  Date: {selectedTransaction.date} • Payer: {selectedTransaction.payer || "—"} • Amount: {selectedTransaction.amount}
+                </p>
               </div>
               <div className="flex items-center gap-3">
                 <span className={`px-2 py-1 text-xs rounded-full border ${statusColors[computeTransactionOverallStatus(selectedTransaction)]}`}>{computeTransactionOverallStatus(selectedTransaction)}</span>
@@ -444,7 +512,11 @@ export default function TransactionsPage() {
                             </td>
                             <td className="py-3 px-4 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <button onClick={() => acceptCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-3 py-1 rounded-full text-xs hover:bg-emerald-900/5 transition">
+                                <button
+                                  onClick={() => requestReconcile(c)}
+                                  disabled={!c.tenantId || !getTransactionIdFromSelected() || reconcileMutation.isPending}
+                                  className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-3 py-1 rounded-full text-xs hover:bg-emerald-900/5 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
                                   <Check className="w-3 h-3" />
                                   <span>Accept</span>
                                 </button>
@@ -508,11 +580,104 @@ export default function TransactionsPage() {
               </div>
             </div>
 
-            <div className="mt-4 flex items-center justify-between">
-              <div className="text-sm text-gray-400">This is UI-only: accepting marks the tenant as Paid locally and marks the transaction as Reconciled.</div>
-              <div className="flex items-center gap-3">
-                <button onClick={() => { setViewModalOpen(false); setSelectedTransaction(null); }} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Close</button>
+            {reconcileError && (
+              <div className="mt-3 text-sm text-rose-400">{reconcileError}</div>
+            )}
+
+            <div className="mt-4 flex items-center justify-end">
+              <button onClick={() => { setViewModalOpen(false); setSelectedTransaction(null); setReconcileError(null); }} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bank sync feedback modal */}
+      {syncFeedback && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70">
+          <div className="w-full max-w-md bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
+            <div className="flex items-start gap-3 mb-4">
+              {syncFeedback.type === "success" ? (
+                <CheckCircle2 className="w-6 h-6 text-emerald-400 flex-shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-6 h-6 text-rose-400 flex-shrink-0 mt-0.5" />
+              )}
+              <div>
+                <h3 className="text-lg font-semibold">{syncFeedback.title}</h3>
+                {syncFeedback.accountName && (
+                  <p className="text-sm text-gray-400 mt-0.5">{syncFeedback.accountName}</p>
+                )}
               </div>
+            </div>
+            <p className="text-sm text-gray-300 mb-6">{syncFeedback.message}</p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setSyncFeedback(null)}
+                className={`px-4 py-2 rounded-full text-sm hover:brightness-105 ${
+                  syncFeedback.type === "success"
+                    ? "bg-emerald-600 text-black"
+                    : "border border-[#2A2A2A] text-gray-300 hover:bg-white/5"
+                }`}
+              >
+                {syncFeedback.type === "success" ? "Done" : "Close"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reconcile confirmation modal */}
+      {pendingReconcile && selectedTransaction && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
+          <div className="w-full max-w-md bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">Confirm reconciliation</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Apply this bank transaction to <span className="text-white font-medium">{pendingReconcile.tenant.name}</span>&apos;s oldest unpaid rent?
+            </p>
+            <div className="bg-[#050505] border border-[#111] rounded-lg p-3 mb-4 space-y-2">
+              <div className="flex justify-between text-sm text-gray-300">
+                <span>Transaction</span>
+                <span className="text-right max-w-[60%] truncate">{selectedTransaction.description}</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-300">
+                <span>Amount</span>
+                <span>{selectedTransaction.amount}</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-300">
+                <span>Date</span>
+                <span>{selectedTransaction.date}</span>
+              </div>
+              <div className="border-t border-[#1a1a1a] my-2" />
+              <div className="flex justify-between text-sm text-gray-300">
+                <span>Tenant</span>
+                <span>{pendingReconcile.tenant.name}</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-300">
+                <span>Property</span>
+                <span className="text-right max-w-[60%] truncate">{pendingReconcile.tenant.property || "—"}</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-300">
+                <span>Rent</span>
+                <span>{pendingReconcile.tenant.rent}</span>
+              </div>
+            </div>
+            {reconcileError && (
+              <p className="text-sm text-rose-400 mb-3">{reconcileError}</p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setPendingReconcile(null); setReconcileError(null); }}
+                disabled={reconcileMutation.isPending}
+                className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmReconcile}
+                disabled={reconcileMutation.isPending}
+                className="px-4 py-2 rounded-full bg-emerald-600 text-black text-sm hover:brightness-105 disabled:opacity-50"
+              >
+                {reconcileMutation.isPending ? "Reconciling…" : "Confirm"}
+              </button>
             </div>
           </div>
         </div>
@@ -705,6 +870,7 @@ export default function TransactionsPage() {
             <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
               <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tl-2xl">Date</th>
               <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Description</th>
+              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Payer</th>
               <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Amount</th>
               <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Status</th>
               <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tr-2xl text-right">Action</th>
@@ -714,7 +880,7 @@ export default function TransactionsPage() {
           <tbody>
             {filteredDisplay.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-gray-400">No transactions found.</td>
+                <td colSpan={6} className="py-6 text-center text-gray-400">No transactions found.</td>
               </tr>
             ) : (
               filteredDisplay.map((t) => {
@@ -722,7 +888,8 @@ export default function TransactionsPage() {
                 return (
                   <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e] transition">
                     <td className="py-4 px-6 text-gray-300 text-sm">{t.date}</td>
-                    <td className="py-4 px-6 text-gray-300 text-sm">{t.description}</td>
+                    <td className="py-4 px-6 text-gray-300 text-sm max-w-[200px] truncate" title={t.description}>{t.description}</td>
+                    <td className="py-4 px-6 text-gray-300 text-sm">{t.payer}</td>
                     <td className="py-4 px-6 text-gray-300 text-sm">{t.amount}</td>
                     <td className="py-4 px-6 text-gray-300 text-sm">
                       <span className={`px-2.5 py-1 text-xs rounded-full border ${statusColors[overall]}`}>
@@ -736,9 +903,6 @@ export default function TransactionsPage() {
                           <span className="whitespace-nowrap">View</span>
                         </button>
 
-                        {reconciled.includes(t.id) && (
-                          <span className="px-2 py-1 text-xs rounded-full bg-emerald-900/20 text-emerald-400 border border-emerald-700">Reconciled</span>
-                        )}
                       </div>
                     </td>
                   </tr>

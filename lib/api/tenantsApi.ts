@@ -35,6 +35,12 @@ export async function payRentByCash(tenantId: string, payload: { index?: number;
   return res.data;
 }
 
+/** Reconcile a bank transaction against a tenant's oldest unpaid rent. */
+export async function markRentPaidWithTransaction(tenantId: string, transactionId: string) {
+  const res = await apiClient.post(`/tenants/${tenantId}/pay`, { transactionId });
+  return res.data;
+}
+
 export async function getExpectedSeries(options: { granularity?: 'month' | 'day'; months?: number; days?: number } = {}) {
   const { granularity = 'month', months = 3, days } = options;
   const params: any = { granularity };
