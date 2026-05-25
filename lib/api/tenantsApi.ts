@@ -18,6 +18,23 @@ export async function createTenant(payload: { tenantName: string | string[]; pro
 
 export async function getLandlordAddresses(landlordId: string) {
   const res = await apiClient.get(`/tenants/landlord/${landlordId}/addresses`);
+  const payload = res.data;
+  const normalizedAddresses = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload?.data?.addresses)
+    ? payload.data.addresses
+        .map((item: any) => (typeof item === "string" ? item : item?.address))
+        .filter(Boolean)
+    : [];
+
+  return {
+    ...payload,
+    data: normalizedAddresses,
+  };
+}
+
+export async function updateTenant(id: string, payload: { tenantName: string | string[] }) {
+  const res = await apiClient.put(`/tenants/${id}`, payload);
   return res.data;
 }
 

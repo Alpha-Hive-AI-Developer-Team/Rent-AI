@@ -6,9 +6,12 @@ export function useTenantAddresses() {
   const authUser = useAuthUser();
   const userId = authUser?.id || authUser?._id || authUser?.userId;
 
-  return useQuery<any, Error, any>({
+  return useQuery<string[], Error>({
     queryKey: ["tenantAddresses", userId],
-    queryFn: () => getLandlordAddresses(userId),
+    queryFn: async () => {
+      const response = await getLandlordAddresses(userId);
+      return Array.isArray(response?.data) ? response.data : [];
+    },
     enabled: !!userId,
     staleTime: 1000 * 60 * 5,
   });

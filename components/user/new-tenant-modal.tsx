@@ -1,6 +1,6 @@
 "use client";
 
-import { X, ChevronDown } from "lucide-react";
+import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import useCreateTenant from "@/hooks/useCreateTenant";
@@ -19,36 +19,40 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
   const [dueOn, setDueOn] = useState<number>(1);
   const [moveInDate, setMoveInDate] = useState<string>("");
 
-  const [selectedAddress, setSelectedAddress] = useState<string>("existing-0");
-  // single input will handle both selecting existing and adding new
-  const [useNewAddress, setUseNewAddress] = useState(false);
-
-  // Attempt to load existing addresses from API; fall back to sample list
-  const { data: addrRes } = useTenantAddresses();
-  const apiAddresses: string[] = addrRes?.data ?? [];
-  const fallbackAddresses = [""];
-  const existingAddresses = apiAddresses.length ? apiAddresses : fallbackAddresses;
+  const { data: existingAddresses = [], isLoading: isAddrLoading } = useTenantAddresses();
 
   useEffect(() => {
-    // When modal opens, choose a sensible default: use first existing address if present
     if (open) {
-      if (apiAddresses.length > 0) {
-        setUseNewAddress(false);
-        setSelectedAddress("existing-0");
-        setProperty(apiAddresses[0]);
+      if (property.trim()) return;
+      if (existingAddresses.length > 0) {
+        setProperty(existingAddresses[0]);
       } else {
-        setUseNewAddress(true);
-        setSelectedAddress("__new");
         setProperty("");
       }
     }
-  }, [open, addrRes]);
-  const addrQuery = useTenantAddresses();
-  const isAddrLoading = addrQuery.isLoading;
+  }, [open, existingAddresses, property]);
+
   const [addrFilter, setAddrFilter] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dropdownUp, setDropdownUp] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const resetForm = () => {
+    setTenantNames([]);
+    setCurrentName("");
+    setRent("");
+    setProperty("");
+    setDueOn(1);
+    setMoveInDate("");
+    setAddrFilter("");
+    setDropdownOpen(false);
+  };
+
+  useEffect(() => {
+    if (!open) {
+      resetForm();
+    }
+  }, [open]);
 
   // create tenant mutation
   const createMutation = useCreateTenant();
@@ -77,13 +81,7 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
       };
       createMutate(tenantPayload);
     }
-    setTenantNames([]);
-    setRent("");
-    setProperty("");
-    setDueOn(1);
-    setMoveInDate("");
-    setUseNewAddress(false);
-    setSelectedAddress("existing-0");
+    resetForm();
     onClose();
   };
 
@@ -157,7 +155,7 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
           >
             <div className="flex items-start justify-between mb-4">
               <h3 className="text-lg font-semibold">Add new tenant</h3>
-              <button onClick={onClose} className="text-gray-400 hover:text-white">
+              <button onClick={() => { resetForm(); onClose(); }} className="text-gray-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -269,16 +267,6 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
                             setProperty(val);
                             setAddrFilter(val);
                             setDropdownOpen(true);
-                            // when user types, check whether it exactly matches an existing address (trimmed)
-                            const matchIndex = existingAddresses.findIndex(a => a.toLowerCase() === val.trim().toLowerCase());
-                            if (matchIndex >= 0) {
-                              // mark that there's an exact match, but do NOT overwrite the user's input
-                              setUseNewAddress(false);
-                              setSelectedAddress(`existing-${matchIndex}`);
-                            } else {
-                              setUseNewAddress(true);
-                              setSelectedAddress("__typed");
-                            }
                           }}
                           onFocus={() => setDropdownOpen(true)}
                           onKeyDown={(e) => {
@@ -289,12 +277,6 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
                               const matchIndex = existingAddresses.findIndex(a => a.toLowerCase() === v.toLowerCase());
                               if (matchIndex >= 0) {
                                 setProperty(existingAddresses[matchIndex]);
-                                setSelectedAddress(`existing-${matchIndex}`);
-                                setUseNewAddress(false);
-                              } else {
-                                // only allow creating new when no exact existing match
-                                setSelectedAddress('__new');
-                                setUseNewAddress(true);
                               }
                               setDropdownOpen(false);
                               setAddrFilter("");
@@ -321,8 +303,6 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
                               key={i}
                               onClick={() => {
                                 setProperty(a);
-                                setSelectedAddress(`existing-${i}`);
-                                setUseNewAddress(false);
                                 setDropdownOpen(false);
                                 setAddrFilter("");
                               }}
@@ -341,8 +321,6 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
                                 const typed = property.trim();
                                 if (!typed) return;
                                 setProperty(typed);
-                                setSelectedAddress('__new');
-                                setUseNewAddress(true);
                                 setDropdownOpen(false);
                                 setAddrFilter("");
                               }}
@@ -363,7 +341,7 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={() => { resetForm(); onClose(); }}
                   className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5"
                 >
                   Cancel

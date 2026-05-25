@@ -429,8 +429,8 @@ export default function TransactionsPage() {
       )}
       {/* View Modal: show transaction details and candidate tenants (UI-only) */}
       {viewModalOpen && selectedTransaction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-6xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl max-h-[80vh] overflow-auto">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 md:items-center md:p-6">
+          <div className="my-4 max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold">Transaction — {selectedTransaction.description}</h3>
@@ -593,8 +593,8 @@ export default function TransactionsPage() {
 
       {/* Bank sync feedback modal */}
       {syncFeedback && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70">
-          <div className="w-full max-w-md bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
+        <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-black/70 p-4 md:items-center md:p-6">
+          <div className="my-4 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <div className="flex items-start gap-3 mb-4">
               {syncFeedback.type === "success" ? (
                 <CheckCircle2 className="w-6 h-6 text-emerald-400 flex-shrink-0 mt-0.5" />
@@ -627,8 +627,8 @@ export default function TransactionsPage() {
 
       {/* Reconcile confirmation modal */}
       {pendingReconcile && selectedTransaction && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
-          <div className="w-full max-w-md bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/70 p-4 md:items-center md:p-6">
+          <div className="my-4 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <h3 className="text-lg font-semibold mb-2">Confirm reconciliation</h3>
             <p className="text-sm text-gray-400 mb-4">
               Apply this bank transaction to <span className="text-white font-medium">{pendingReconcile.tenant.name}</span>&apos;s oldest unpaid rent?
@@ -741,8 +741,8 @@ export default function TransactionsPage() {
 
       {/* Yapily Institutions Modal */}
       {showYapilyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-3xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl max-h-[80vh] overflow-auto">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 md:items-center md:p-6">
+          <div className="my-4 max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold">Open Banking Institutions</h3>
@@ -812,8 +812,8 @@ export default function TransactionsPage() {
 
       {/* Connected Accounts Modal */}
       {showAccountsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-3xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl max-h-[80vh] overflow-auto">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 md:items-center md:p-6">
+          <div className="my-4 max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold">Connected Accounts</h3>

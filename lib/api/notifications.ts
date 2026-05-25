@@ -11,7 +11,20 @@ export type NotificationItem = {
   updatedAt?: string;
 };
 
-export async function getMyNotifications() {
-  const res = await apiClient.get("/notifications/my");
-  return res.data as { success: boolean; data: NotificationItem[] };
+export type NotificationsResponse = {
+  success: boolean;
+  data: NotificationItem[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
+};
+
+export async function getMyNotifications(params?: { page?: number; limit?: number }) {
+  const res = await apiClient.get("/notifications/my", { params });
+  return res.data as NotificationsResponse;
 }
