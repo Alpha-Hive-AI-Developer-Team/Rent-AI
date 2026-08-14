@@ -11,44 +11,44 @@ export async function createTransaction(payload: any) {
   return res.data;
 }
 
-// Fetch institutions proxied by backend (/api/yapily/institutions)
-export async function getYapilyInstitutions() {
-  const res = await apiClient.get(`/yapily/institutions`);
-  console.log("Yapily Institutions:", res.data);
+export async function createPlaidLinkToken() {
+  const res = await apiClient.post(`/plaid/link-token`);
   return res.data;
 }
 
-export async function createYapilyAccountAuthRequest(payload: any) {
-  const res = await apiClient.post(`/yapily/account-auth-requests`, payload);
+export async function exchangePlaidPublicToken(payload: {
+  public_token: string;
+  institution?: { institution_id?: string; name?: string } | null;
+}) {
+  const res = await apiClient.post(`/plaid/exchange`, payload);
   return res.data;
 }
 
-// Send consent to backend to fetch and store accounts: POST /api/transactions/yapily/accounts
-export async function connectYapilyAccounts(consent: string, institution: string) {
-  const res = await apiClient.post(`/transactions/yapily/accounts`, {}, {
-    headers: {
-      consent,
-      institution,
-    },
-  });
-  console.log("Connect Yapily Accounts Response:", res.data);
+export async function getPlaidTransactions(params: { accountId?: string } = {}) {
+  const res = await apiClient.get(`/transactions/plaid`, { params });
   return res.data;
 }
 
-// Fetch transactions from Yapily via backend proxy: GET /api/transactions/yapily
-export async function getYapilyTransactions(params: { accountId?: string; consent?: string; from?: string } = {}) {
-  const res = await apiClient.get(`/transactions/yapily`, { params });
-  return res.data;
-}
 export async function getConnectedAccounts() {
   const res = await apiClient.get(`/accounts`);
   return res.data;
 }
 
-export async function getConnectedYapilyInstitution() {
-  const res = await apiClient.get(`/yapily/connected`);
-  console.log("Connected Yapily Institution:", res.data);
+export async function getConnectedBank() {
+  const res = await apiClient.get(`/plaid/connected`);
   return res.data;
 }
 
-export default { getUnreconciledTransactions, createTransaction, getYapilyInstitutions, createYapilyAccountAuthRequest, connectYapilyAccounts, getYapilyTransactions, getConnectedAccounts };
+export async function simulatePlaidIncoming(payload: { amount?: number; description?: string } = {}) {
+  const res = await apiClient.post(`/plaid/sandbox/simulate-incoming`, payload);
+  return res.data;
+}
+
+export default {
+  getUnreconciledTransactions,
+  createTransaction,
+  createPlaidLinkToken,
+  exchangePlaidPublicToken,
+  getPlaidTransactions,
+  getConnectedAccounts,
+};
