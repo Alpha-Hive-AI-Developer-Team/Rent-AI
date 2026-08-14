@@ -2,9 +2,10 @@
 
 import Image from "next/image";
 import { Plus, Search, Check, X, Bell, Eye, ChevronDown, Info, CheckCircle2, AlertCircle } from "lucide-react";
-import { useState, useEffect, Fragment } from "react";
-import { useConnectedAccounts, useUnreconciledTransactions, useYapilyInstitutions, useConnectedInstitution, useReconcileTransaction } from "@/hooks/useTransactions";
-import { createYapilyAccountAuthRequest, connectYapilyAccounts, getYapilyTransactions } from "@/lib/api/transactionApi";
+import { useState, useEffect, useCallback, Fragment } from "react";
+import { usePlaidLink } from "react-plaid-link";
+import { useConnectedAccounts, useUnreconciledTransactions, useConnectedInstitution, useReconcileTransaction } from "@/hooks/useTransactions";
+import { createPlaidLinkToken, exchangePlaidPublicToken, getPlaidTransactions, simulatePlaidIncoming } from "@/lib/api/transactionApi";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
 interface Transaction {
@@ -109,7 +110,6 @@ export default function TransactionsPage() {
 
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null);
-  const [showYapilyModal, setShowYapilyModal] = useState(false);
   const [pendingReconcile, setPendingReconcile] = useState<{ tenant: Tenant; transactionId: string } | null>(null);
   const [reconcileError, setReconcileError] = useState<string | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<{
@@ -121,23 +121,26 @@ export default function TransactionsPage() {
 
   const reconcileMutation = useReconcileTransaction();
 
-  // react-query hook (disabled by default) — call refetch() to fetch
-  const yapilyQuery = useYapilyInstitutions(false);
   const connectedAccountsQuery = useConnectedAccounts(false);
   const [showAccountsModal, setShowAccountsModal] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [connectedInstitution, setConnectedInstitution] = useState<string | null>(null);
+  const [connectedInstitutionId, setConnectedInstitutionId] = useState<string | null>(null);
+  const [syncingAccounts, setSyncingAccounts] = useState<string[]>([]);
+  const [simulating, setSimulating] = useState(false);
+  const connectedInstitutionQuery = useConnectedInstitution(true);
+
   async function handleAccountSync(acc: any) {
     const accountId = acc?.accountId || acc?.id || String(acc?.name || Date.now());
     const accountName = acc?.name || accountId;
     try {
-      // mark this account as syncing (allow multiple concurrent syncs)
       setSyncingAccounts((prev) => (prev.includes(accountId) ? prev : [...prev, accountId]));
-      const res = await getYapilyTransactions({ accountId });
-      console.log('Yapily transactions response', res);
-      // After successful sync, refresh unreconciled transactions
+      const res = await getPlaidTransactions({ accountId });
       try {
         await unreconciledQuery.refetch();
       } catch (e) {
-        console.warn('Failed to refetch unreconciled transactions', e);
+        console.warn("Failed to refetch unreconciled transactions", e);
       }
       const inserted = res?.saved?.inserted ?? res?.data?.saved?.inserted;
       const detail =
@@ -151,7 +154,7 @@ export default function TransactionsPage() {
         accountName,
       });
     } catch (err: any) {
-      console.error('Failed to fetch Yapily transactions', err);
+      console.error("Failed to fetch Plaid transactions", err);
       const msg = err?.response?.data?.message || err?.message || "Could not sync transactions from your bank.";
       setSyncFeedback({
         type: "error",
@@ -164,76 +167,79 @@ export default function TransactionsPage() {
     }
   }
 
-  function connectInstitution(inst: any) {
-    // Create account-auth-request for selected institution and open authorisationUrl
-    (async () => {
+  const onPlaidSuccess = useCallback(
+    async (public_token: string | null, metadata: any) => {
+      if (!public_token) return;
       try {
         setConnecting(true);
-        // applicationUserId - replace with real landlord id when available
-        const callback = `${process.env.NEXT_PUBLIC_API_BASE_CALLBACK}/user/transactions`;
-        const payload = {
-
-          institutionId: inst.id,
-          callback,
-        };
-
-        const res = await createYapilyAccountAuthRequest(payload);
-        // res is the Yapily response object { meta, data }
-        const authUrl = res?.data?.authorisationUrl || res?.data?.authorisationUrl;
-        const qrUrl = res?.data?.qrCodeUrl;
-
-        if (authUrl) {
-          window.open(authUrl, '_blank');
-        } else {
-          alert('No authorisationUrl returned');
-        }
-      } catch (err) {
-        console.error('account-auth-request failed', err);
-        alert('Failed to create account auth request');
+        const res = await exchangePlaidPublicToken({
+          public_token,
+          institution: metadata?.institution || null,
+        });
+        try {
+          await connectedInstitutionQuery.refetch();
+        } catch (e) {}
+        try {
+          await connectedAccountsQuery.refetch();
+        } catch (e) {}
+        try {
+          await unreconciledQuery.refetch();
+        } catch (e) {}
+        const inserted = res?.data?.saved?.inserted ?? res?.saved?.inserted;
+        const detail =
+          typeof inserted === "number" && inserted > 0
+            ? `${inserted} incoming payment${inserted === 1 ? "" : "s"} imported for reconcile.`
+            : "Bank connected. Use Sync Bank Feed if transactions are still loading.";
+        setSyncFeedback({
+          type: "success",
+          title: "Bank connected",
+          message: detail,
+          accountName: metadata?.institution?.name,
+        });
+      } catch (err: any) {
+        console.error("Plaid exchange failed", err);
+        setSyncFeedback({
+          type: "error",
+          title: "Bank connect failed",
+          message: err?.response?.data?.message || err?.message || "Could not complete Plaid connection.",
+        });
       } finally {
         setConnecting(false);
+        setLinkToken(null);
       }
-    })();
-  }
+    },
+    [connectedAccountsQuery, connectedInstitutionQuery, unreconciledQuery]
+  );
 
-  const [connecting, setConnecting] = useState(false);
-  const [connectedInstitution, setConnectedInstitution] = useState<string | null>(null);
-  const [connectedInstitutionId, setConnectedInstitutionId] = useState<string | null>(null);
-  const [connectedConsent, setConnectedConsent] = useState<string | null>(null);
-  const [syncingAccounts, setSyncingAccounts] = useState<string[]>([]);
-
-  const connectedInstitutionQuery = useConnectedInstitution(true);
+  const { open, ready } = usePlaidLink({
+    token: linkToken,
+    onSuccess: onPlaidSuccess,
+    onExit: () => {
+      setConnecting(false);
+    },
+  });
 
   useEffect(() => {
-    try {
-      if (typeof window === 'undefined') return;
-      const params = new URLSearchParams(window.location.search);
-      const consent = params.get('consent');
-      const institution = params.get('institution') || params.get('institutionId') || params.get('application-user-id') || params.get('applicationUserId');
-      if (consent) {
-        setConnectedConsent(consent);
-        if (institution) {
-          setConnectedInstitutionId(institution as string);
-          setConnectedInstitution(institution as string);
-        }
-        // send consent to backend to fetch & save accounts (requires auth cookie/token)
-        (async () => {
-          try {
-            await connectYapilyAccounts(consent, institution || '');
-            // after saving consent & accounts on backend, refresh connected institution
-            try { await connectedInstitutionQuery.refetch(); } catch (e) { }
-            // optionally provide user feedback - keep minimal
-            console.log('Yapily accounts synced');
-          } catch (err) {
-            console.error('Failed to sync Yapily accounts', err);
-          }
-        })();
-       
-      }
-    } catch (e) {
-      // ignore
+    if (linkToken && ready) {
+      open();
     }
-  }, []);
+  }, [linkToken, ready, open]);
+
+  async function startPlaidConnect() {
+    try {
+      setConnecting(true);
+      const res = await createPlaidLinkToken();
+      const token = res?.data?.link_token;
+      if (!token) {
+        throw new Error("No link_token returned");
+      }
+      setLinkToken(token);
+    } catch (err: any) {
+      console.error(err);
+      setConnecting(false);
+      alert(err?.response?.data?.error || err?.message || "Failed to start Plaid Link. Check PLAID_CLIENT_ID and PLAID_SECRET.");
+    }
+  }
 
   // when backend returns connected institution, update local state
   useEffect(() => {
@@ -703,20 +709,12 @@ export default function TransactionsPage() {
 
     {/* Quick Action */}
     <button
-      onClick={async () => {
-        try {
-          await yapilyQuery.refetch();
-         
-          setShowYapilyModal(true);
-        } catch (err) {
-          console.error(err);
-          alert("Failed to fetch institutions");
-        }
-      }}
-      className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-4 py-2 rounded-full text-sm hover:bg-emerald-900/5 transition"
+      onClick={startPlaidConnect}
+      disabled={connecting}
+      className="flex items-center gap-2 bg-transparent border border-emerald-700 text-emerald-400 px-4 py-2 rounded-full text-sm hover:bg-emerald-900/5 transition disabled:opacity-50"
     >
       <Plus className="w-4 h-4 text-emerald-400" />
-      <span>Connect Open Banking</span>
+      <span>{connecting ? "Connecting…" : connectedInstitution ? "Reconnect bank" : "Connect bank"}</span>
     </button>
 
     {/* Sync Bank Feed */}
@@ -734,81 +732,44 @@ export default function TransactionsPage() {
       Sync Bank Feed
     </button>
 
+    {connectedInstitutionQuery.data?.sandbox && connectedInstitution && (
+      <button
+        onClick={async () => {
+          try {
+            setSimulating(true);
+            const res = await simulatePlaidIncoming({ amount: 1200, description: "RENT JACK LEAH" });
+            await unreconciledQuery.refetch();
+            const inserted = res?.data?.saved?.inserted ?? 0;
+            setSyncFeedback({
+              type: res?.data?.created || inserted > 0 ? "success" : "error",
+              title: res?.data?.created ? "Sandbox payment created" : "Webhook fired",
+              message:
+                res?.data?.warning ||
+                (inserted > 0
+                  ? `${inserted} incoming payment${inserted === 1 ? "" : "s"} saved for reconcile.`
+                  : "Webhook was fired. If nothing appeared, reconnect with user_transactions_dynamic."),
+            });
+          } catch (err: any) {
+            setSyncFeedback({
+              type: "error",
+              title: "Sandbox simulate failed",
+              message: err?.response?.data?.message || err?.message || "Could not create a test payment.",
+            });
+          } finally {
+            setSimulating(false);
+          }
+        }}
+        disabled={simulating}
+        className="bg-transparent text-amber-400 text-sm border border-amber-600 rounded-full px-4 py-2 hover:bg-amber-900/5 transition disabled:opacity-50"
+      >
+        {simulating ? "Simulating…" : "Simulate rent payment"}
+      </button>
+    )}
+
   </div>
 
 </div>
 
-
-      {/* Yapily Institutions Modal */}
-      {showYapilyModal && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 md:items-center md:p-6">
-          <div className="my-4 max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold">Open Banking Institutions</h3>
-                <p className="text-sm text-gray-400">Results from Yapily</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="text-sm text-gray-400">{yapilyQuery.isFetching ? 'Loading…' : ''}</div>
-                <button onClick={() => setShowYapilyModal(false)} className="text-gray-400 hover:text-white">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {yapilyQuery.isError && (
-                <div className="text-rose-400">Failed to load institutions.</div>
-              )}
-
-              {!yapilyQuery.data && !yapilyQuery.isFetching && (
-                <div className="text-sm text-gray-400">No results. Click Connect Open Banking to fetch.</div>
-              )}
-
-                  {(yapilyQuery.data?.data ?? []).map((inst: any) => (
-                <div key={inst.id} className="flex items-center gap-4 p-3 bg-[#050505] border border-[#111] rounded-lg">
-                  <div className="w-12 h-12 flex-shrink-0">
-                    {inst.media?.[0]?.source ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={inst.media[0].source} alt={inst.name} className="w-12 h-12 object-contain" />
-                    ) : (
-                      <div className="w-12 h-12 bg-gray-800 rounded" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium">{inst.name}</div>
-                    <div className="text-xs text-gray-400 truncate">{inst.fullName}</div>
-                    <div className="text-xs text-gray-500 mt-1">{inst.environmentType} • {inst.countries?.map((c: any) => c.displayName).join(', ')}</div>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    {(() => {
-                      const instId = inst.id || inst.institution?.id || inst.institutionId || null;
-                      const isConnected = connectedInstitutionId && String(connectedInstitutionId) === String(instId);
-                      if (isConnected) {
-                        return (
-                          <>
-                            <div className="text-xs text-emerald-300">Connected</div>
-                            <div className="flex items-center gap-2">
-                              <button onClick={() => connectInstitution(inst)} className="px-3 py-1 rounded-full bg-amber-600 text-black text-xs hover:brightness-105">Reconnect</button>
-                            </div>
-                          </>
-                        );
-                      }
-                      return (
-                        <button onClick={() => connectInstitution(inst)} className="px-3 py-1 rounded-full bg-emerald-600 text-black text-xs hover:brightness-105">Connect</button>
-                      );
-                    })()}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-4 flex justify-end">
-              <button onClick={() => setShowYapilyModal(false)} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Close</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Connected Accounts Modal */}
       {showAccountsModal && (
