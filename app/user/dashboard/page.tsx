@@ -156,15 +156,14 @@ export default function DashboardPage() {
      {/* Charts Section — full width */}
 <div className="space-y-6">
   {/* Chart with filter buttons */}
-  <div className="bg-[#111] text-white rounded-xl p-4 sm:p-5 md:p-6 border border-gray-800/50 shadow-md w-full">
+  {/* <div className="bg-[#111] text-white rounded-xl p-4 sm:p-5 md:p-6 border border-gray-800/50 shadow-md w-full">
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-      {/* Left side — text */}
+  
       <div>
         <h3 className="text-sm md:text-base font-medium text-gray-200">Expected {range}</h3>
         <p className="text-xs md:text-sm text-gray-500 mt-1">Total for the last {range}</p>
       </div>
 
-      {/* Right side — Filter Buttons */}
       <div className="flex flex-wrap justify-start sm:justify-end gap-2">
         <button
           onClick={() => setRange("3m")}
@@ -201,13 +200,13 @@ export default function DashboardPage() {
       </div>
     </div>
 
-    {/* Chart itself */}
+
     <div className="w-full overflow-x-auto">
    <div className="bg-[#111] text-white rounded-xl  shadow-md w-full">
-             {/* <div className="mb-4">
+             <div className="mb-4">
                <h3 className="text-sm font-medium text-gray-200">Expected Rent</h3>
                <p className="text-xs text-gray-500 mt-1">Expected rent per month</p>
-             </div> */}
+             </div>
    
              <div className="h-56">
                <ResponsiveContainer width="100%" height="100%">
@@ -247,7 +246,7 @@ export default function DashboardPage() {
              </div>
            </div>
     </div>
-  </div>
+  </div> */}
 
 
 

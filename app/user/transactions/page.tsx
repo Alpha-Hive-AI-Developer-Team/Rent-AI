@@ -830,7 +830,6 @@ export default function TransactionsPage() {
           <thead>
             <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
               <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tl-2xl">Date</th>
-              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Description</th>
               <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Payer</th>
               <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Amount</th>
               <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Status</th>
@@ -841,7 +840,7 @@ export default function TransactionsPage() {
           <tbody>
             {filteredDisplay.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-gray-400">No transactions found.</td>
+                <td colSpan={5} className="py-6 text-center text-gray-400">No transactions found.</td>
               </tr>
             ) : (
               filteredDisplay.map((t) => {
@@ -849,7 +848,6 @@ export default function TransactionsPage() {
                 return (
                   <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e] transition">
                     <td className="py-4 px-6 text-gray-300 text-sm">{t.date}</td>
-                    <td className="py-4 px-6 text-gray-300 text-sm max-w-[200px] truncate" title={t.description}>{t.description}</td>
                     <td className="py-4 px-6 text-gray-300 text-sm">{t.payer}</td>
                     <td className="py-4 px-6 text-gray-300 text-sm">{t.amount}</td>
                     <td className="py-4 px-6 text-gray-300 text-sm">
