@@ -1,5 +1,11 @@
 import apiClient from "./api-client";
 
+export async function getPayerSuggestions() {
+  const res = await apiClient.get("/tenants/payer-suggestions");
+  const payload = res.data;
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
+
 export async function getTenants() {
   const res = await apiClient.get("/tenants");
   return res.data;

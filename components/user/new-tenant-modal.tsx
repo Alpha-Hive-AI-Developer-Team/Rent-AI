@@ -2,13 +2,28 @@
 
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import useCreateTenant from "@/hooks/useCreateTenant";
 import { useTenantAddresses } from "@/hooks/useTenantAddresses";
+import { getPayerSuggestions } from "@/lib/api/tenantsApi";
+
 interface NewTenantModalProps {
   open: boolean;
   onClose: () => void;
   onSubmit?: (data: { name: string; rent: string; property: string; dueOn?: number; moveInDate?: string }) => void;
+}
+
+const RENT_NUMERIC = /[^0-9.]/g;
+
+function sanitizeRentInput(value: string) {
+  // allow digits and a single decimal point
+  let cleaned = value.replace(RENT_NUMERIC, "");
+  const firstDot = cleaned.indexOf(".");
+  if (firstDot !== -1) {
+    cleaned =
+      cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
+  }
+  return cleaned;
 }
 
 export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantModalProps) {
@@ -18,6 +33,9 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
   const [property, setProperty] = useState("");
   const [dueOn, setDueOn] = useState<number>(1);
   const [moveInDate, setMoveInDate] = useState<string>("");
+  const [payerSuggestions, setPayerSuggestions] = useState<string[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [nameDropdownOpen, setNameDropdownOpen] = useState(false);
 
   const { data: existingAddresses = [], isLoading: isAddrLoading } = useTenantAddresses();
 
@@ -32,10 +50,39 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
     }
   }, [open, existingAddresses, property]);
 
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingSuggestions(true);
+        const list = await getPayerSuggestions();
+        if (!cancelled) setPayerSuggestions(Array.isArray(list) ? list : []);
+      } catch {
+        if (!cancelled) setPayerSuggestions([]);
+      } finally {
+        if (!cancelled) setLoadingSuggestions(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   const [addrFilter, setAddrFilter] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dropdownUp, setDropdownUp] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const nameContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const filteredPayerSuggestions = useMemo(() => {
+    const q = currentName.trim().toLowerCase();
+    const already = new Set(tenantNames.map((n) => n.toLowerCase()));
+    return payerSuggestions
+      .filter((s) => !already.has(s.toLowerCase()))
+      .filter((s) => !q || s.toLowerCase().includes(q))
+      .slice(0, 40);
+  }, [payerSuggestions, currentName, tenantNames]);
 
   const resetForm = () => {
     setTenantNames([]);
@@ -46,6 +93,7 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
     setMoveInDate("");
     setAddrFilter("");
     setDropdownOpen(false);
+    setNameDropdownOpen(false);
   };
 
   useEffect(() => {
@@ -54,13 +102,24 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
     }
   }, [open]);
 
-  // create tenant mutation
   const createMutation = useCreateTenant();
   const createMutate = createMutation.mutate;
 
+  const tryAddName = (raw: string) => {
+    const v = String(raw || "").trim();
+    if (!v) return;
+    if (tenantNames.some((n) => n.toLowerCase() === v.toLowerCase())) {
+      setCurrentName("");
+      setNameDropdownOpen(false);
+      return;
+    }
+    setTenantNames((p) => [...p, v]);
+    setCurrentName("");
+    setNameDropdownOpen(false);
+  };
+
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    // gather names (include any typed-but-not-added name)
     const names = [...tenantNames];
     if (currentName.trim()) names.push(currentName.trim());
     if (names.length === 0) {
@@ -68,30 +127,40 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
       return;
     }
 
-    const payload = { name: names.join(", "), rent: rent.trim(), property: property.trim(), dueOn, moveInDate };
+    const rentValue = sanitizeRentInput(rent.trim());
+    const rentNum = Number(rentValue);
+    if (!rentValue || Number.isNaN(rentNum) || rentNum <= 0) {
+      alert("Rent must be a positive number.");
+      return;
+    }
+
+    const payload = {
+      name: names.join(", "),
+      rent: rentValue,
+      property: property.trim(),
+      dueOn,
+      moveInDate,
+    };
     if (onSubmit) onSubmit(payload);
-    // call API mutation if available
     if (createMutate) {
-      const tenantPayload: any = {
+      createMutate({
         tenantName: names,
         property: payload.property,
-        rent: Number(payload.rent.replace(/[^0-9.-]+/g, "")) || payload.rent,
+        rent: rentNum,
         dueOn,
         moveInDate: moveInDate ? new Date(moveInDate).toISOString() : undefined,
-      };
-      createMutate(tenantPayload);
+      });
     }
     resetForm();
     onClose();
   };
 
-  // measure available space and render dropdown above when necessary
   useEffect(() => {
     function checkPosition() {
       if (!containerRef.current || !dropdownOpen) return;
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      const approxDropdownNeeded = 240; // px
+      const approxDropdownNeeded = 240;
       setDropdownUp(spaceBelow < approxDropdownNeeded);
     }
 
@@ -104,7 +173,6 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
     };
   }, [dropdownOpen]);
 
-  // close dropdown when clicking or focusing outside, or when pressing Escape
   useEffect(() => {
     if (!dropdownOpen) return;
 
@@ -137,6 +205,28 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
     };
   }, [dropdownOpen]);
 
+  useEffect(() => {
+    if (!nameDropdownOpen) return;
+
+    function onPointerDown(e: PointerEvent) {
+      const target = e.target as Node | null;
+      if (nameContainerRef.current && target && !nameContainerRef.current.contains(target)) {
+        setNameDropdownOpen(false);
+      }
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setNameDropdownOpen(false);
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [nameDropdownOpen]);
+
   return (
     <AnimatePresence>
       {open && (
@@ -163,36 +253,64 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-200 mb-1">Tenant name(s)</label>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    value={currentName}
-                    onChange={(e) => setCurrentName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        const v = currentName.trim();
-                        if (v) {
-                          setTenantNames((p) => [...p, v]);
-                          setCurrentName("");
+                <div className="relative mb-2" ref={nameContainerRef}>
+                  <div className="flex gap-2">
+                    <input
+                      value={currentName}
+                      onChange={(e) => {
+                        setCurrentName(e.target.value);
+                        setNameDropdownOpen(true);
+                      }}
+                      onFocus={() => setNameDropdownOpen(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          tryAddName(currentName);
                         }
-                      }
-                    }}
-                    className="flex-1 bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                    placeholder="Type a name and press Enter or click Add"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const v = currentName.trim();
-                      if (!v) return;
-                      setTenantNames((p) => [...p, v]);
-                      setCurrentName("");
-                    }}
-                    className="px-3 py-2 rounded-full border border-emerald-700 text-sm text-emerald-300 bg-transparent hover:bg-[#0b1510]"
-                  >
-                    Add
-                  </button>
+                      }}
+                      className="flex-1 bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                      placeholder="Type or select a payer name"
+                      inputMode="text"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => tryAddName(currentName)}
+                      className="px-3 py-2 rounded-full border border-emerald-700 text-sm text-emerald-300 bg-transparent hover:bg-[#0b1510]"
+                    >
+                      Add
+                    </button>
+                  </div>
+
+                  {nameDropdownOpen && (
+                    <div className="absolute z-30 mt-2 w-full max-h-56 overflow-auto rounded-lg bg-[#0B0B0B] border border-[#222] shadow-lg">
+                      {loadingSuggestions && (
+                        <div className="px-3 py-2 text-sm text-gray-400">Loading payer names…</div>
+                      )}
+                      {!loadingSuggestions && filteredPayerSuggestions.length === 0 && (
+                        <div className="px-3 py-2 text-sm text-gray-400">
+                          {payerSuggestions.length === 0
+                            ? "No payer names from transactions yet"
+                            : "No matching payer names"}
+                        </div>
+                      )}
+                      <ul className="divide-y divide-[#151515]">
+                        {filteredPayerSuggestions.map((name) => (
+                          <li
+                            key={name}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => tryAddName(name)}
+                            className="cursor-pointer px-3 py-2 hover:bg-[#111] text-sm text-gray-200"
+                          >
+                            {name}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
+                <p className="text-xs text-gray-500 mb-2">
+                  Suggestions use unique payers from your bank feed.
+                </p>
 
                 <div className="flex flex-wrap gap-2">
                   {tenantNames.map((n, i) => (
@@ -215,9 +333,11 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
                 <label className="block text-sm text-gray-200 mb-1">Rent</label>
                 <input
                   value={rent}
-                  onChange={(e) => setRent(e.target.value)}
+                  onChange={(e) => setRent(sanitizeRentInput(e.target.value))}
+                  inputMode="decimal"
+                  pattern="[0-9]*[.]?[0-9]*"
                   className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                  placeholder="e.g. £1200"
+                  placeholder="e.g. 1200"
                   required
                 />
               </div>
@@ -242,13 +362,12 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
                 <div>
                   <label className="block text-sm text-gray-200 mb-1">Move-in date</label>
                   <input
-                  min={new Date().toISOString().split("T")[0]}
+                    min={new Date().toISOString().split("T")[0]}
                     type="date"
                     value={moveInDate}
                     onChange={(e) => setMoveInDate(e.target.value)}
                     className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
                   />
-                  {/* <p className="text-xs text-gray-400 mt-1">Initial rent will be prorated from move-in to next month start; due on selected day next month.</p> */}
                 </div>
               </div>
 
@@ -256,64 +375,64 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
                 <label className="block text-sm text-gray-200 mb-1">Property address</label>
                 <div className="space-y-2">
                   <div className="relative" ref={containerRef}>
-                    {/* Combobox: show selected property in an input, open dropdown to choose */}
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={property}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            // allow typing to filter existing addresses but keep selection mode
-                            setProperty(val);
-                            setAddrFilter(val);
-                            setDropdownOpen(true);
-                          }}
-                          onFocus={() => setDropdownOpen(true)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              const v = property.trim();
-                              if (!v) return;
-                              const matchIndex = existingAddresses.findIndex(a => a.toLowerCase() === v.toLowerCase());
-                              if (matchIndex >= 0) {
-                                setProperty(existingAddresses[matchIndex]);
-                              }
-                              setDropdownOpen(false);
-                              setAddrFilter("");
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={property}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setProperty(val);
+                          setAddrFilter(val);
+                          setDropdownOpen(true);
+                        }}
+                        onFocus={() => setDropdownOpen(true)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const v = property.trim();
+                            if (!v) return;
+                            const matchIndex = existingAddresses.findIndex((a) => a.toLowerCase() === v.toLowerCase());
+                            if (matchIndex >= 0) {
+                              setProperty(existingAddresses[matchIndex]);
                             }
-                          }}
-                          placeholder={isAddrLoading ? "Loading addresses..." : "Select or type an address"}
-                          className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                          required
-                        />
-                      </div>
+                            setDropdownOpen(false);
+                            setAddrFilter("");
+                          }
+                        }}
+                        placeholder={isAddrLoading ? "Loading addresses..." : "Select or type an address"}
+                        className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                        required
+                      />
+                    </div>
 
                     {dropdownOpen && (
-                      <div className={`absolute z-20 w-full max-h-56 overflow-auto rounded-lg bg-[#0B0B0B] border border-[#222] shadow-lg ${dropdownUp ? 'bottom-full mb-2' : 'mt-2'}`}>
-                        {/* Using the main input for filtering; no separate dropdown search input shown */}
+                      <div className={`absolute z-20 w-full max-h-56 overflow-auto rounded-lg bg-[#0B0B0B] border border-[#222] shadow-lg ${dropdownUp ? "bottom-full mb-2" : "mt-2"}`}>
                         <ul className="divide-y divide-[#151515]">
                           {isAddrLoading && (
                             <li className="px-3 py-2 text-gray-400">Loading addresses...</li>
                           )}
-                          {!isAddrLoading && existingAddresses.filter(a => a.toLowerCase().includes(((addrFilter || property) || "").trim().toLowerCase())).length === 0 && (
+                          {!isAddrLoading && existingAddresses.filter((a) => a.toLowerCase().includes(((addrFilter || property) || "").trim().toLowerCase())).length === 0 && (
                             <li className="px-3 py-2 text-gray-400">No addresses found</li>
                           )}
-                          {!isAddrLoading && existingAddresses.filter(a => a.toLowerCase().includes(((addrFilter || property) || "").trim().toLowerCase())).slice(0,50).map((a, i) => (
-                            <li
-                              key={i}
-                              onClick={() => {
-                                setProperty(a);
-                                setDropdownOpen(false);
-                                setAddrFilter("");
-                              }}
-                              className="cursor-pointer px-3 py-2 hover:bg-[#111] text-gray-200"
-                            >
-                              {a}
-                            </li>
-                          ))}
+                          {!isAddrLoading &&
+                            existingAddresses
+                              .filter((a) => a.toLowerCase().includes(((addrFilter || property) || "").trim().toLowerCase()))
+                              .slice(0, 50)
+                              .map((a, i) => (
+                                <li
+                                  key={i}
+                                  onClick={() => {
+                                    setProperty(a);
+                                    setDropdownOpen(false);
+                                    setAddrFilter("");
+                                  }}
+                                  className="cursor-pointer px-3 py-2 hover:bg-[#111] text-gray-200"
+                                >
+                                  {a}
+                                </li>
+                              ))}
                         </ul>
-                        {/* Show 'use as new' only when typed value is non-empty and doesn't exactly match an existing address */}
-                        {property.trim() && existingAddresses.findIndex(a => a.toLowerCase() === property.trim().toLowerCase()) === -1 && (
+                        {property.trim() && existingAddresses.findIndex((a) => a.toLowerCase() === property.trim().toLowerCase()) === -1 && (
                           <div className="p-2 border-t border-[#151515]">
                             <button
                               type="button"
@@ -326,15 +445,13 @@ export default function NewTenantModal({ open, onClose, onSubmit }: NewTenantMod
                               }}
                               className="w-full text-left text-sm text-emerald-300"
                             >
-                              Use "{(property || addrFilter).trim()}" as new address
+                              Use &quot;{(property || addrFilter).trim()}&quot; as new address
                             </button>
                           </div>
                         )}
                       </div>
                     )}
                   </div>
-
-                  {/* single input handles both existing selection and new entry; no extra input needed */}
                 </div>
               </div>
 
