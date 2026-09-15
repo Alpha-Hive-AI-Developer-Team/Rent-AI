@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { useAppDispatch } from "@/redux/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { signInWithGoogle } from "@/lib/auth/google-auth";
+import { withGuest } from "@/hooks/withGuest";
 
 function GoogleIcon() {
   return (
@@ -24,7 +25,9 @@ function GoogleIcon() {
   );
 }
 
-export default function SignUp() {
+export default withGuest(SignUp);
+
+function SignUp() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
@@ -41,6 +44,8 @@ export default function SignUp() {
     role: "landlord", // default role
     referralCode: "",
   });
+  const [acceptedPrivacyPolicy, setAcceptedPrivacyPolicy] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const [showOtp, setShowOtp] = useState(false);
 
@@ -55,8 +60,18 @@ export default function SignUp() {
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!acceptedPrivacyPolicy || !acceptedTerms) {
+      toast.error("Please accept the Privacy Policy and Terms & Conditions.");
+      return;
+    }
     setPending(true);
-    signUp.mutate(form, {
+    signUp.mutate(
+      {
+        ...form,
+        acceptedPrivacyPolicy: true as const,
+        acceptedTerms: true as const,
+      },
+      {
       onSuccess: (data: any) => {
         setPending(false);
         toast.success(data?.message || "Signup successful. Enter OTP sent to your email.");
@@ -71,6 +86,10 @@ export default function SignUp() {
   };
 
   const handleGoogleSignUp = async () => {
+    if (!acceptedPrivacyPolicy || !acceptedTerms) {
+      toast.error("Please accept the Privacy Policy and Terms & Conditions before continuing with Google.");
+      return;
+    }
     setIsSocialLoading(true);
     try {
       await signInWithGoogle({
@@ -78,6 +97,8 @@ export default function SignUp() {
         queryClient,
         router,
         role: form.role,
+        acceptedPrivacyPolicy: true,
+        acceptedTerms: true,
       });
     } catch (err: unknown) {
       const error = err as { response?: { data?: { message?: string } }; message?: string };
@@ -191,10 +212,45 @@ export default function SignUp() {
             <p className="text-gray-500 text-xs mt-1">Minimum 8 characters.</p>
           </div>
 
+          <div className="space-y-3 rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] p-3">
+            <label className="flex items-start gap-2 text-sm text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acceptedPrivacyPolicy}
+                onChange={(e) => setAcceptedPrivacyPolicy(e.target.checked)}
+                disabled={pending}
+                className="mt-1 h-4 w-4 rounded border-gray-600 bg-transparent accent-emerald-600"
+              />
+              <span>
+                I have read and accept the{" "}
+                <Link href="/privacy-policy" target="_blank" className="text-emerald-400 hover:underline">
+                  Privacy Policy
+                </Link>{" "}
+                (v1.0)
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                disabled={pending}
+                className="mt-1 h-4 w-4 rounded border-gray-600 bg-transparent accent-emerald-600"
+              />
+              <span>
+                I have read and accept the{" "}
+                <Link href="/terms-and-conditions" target="_blank" className="text-emerald-400 hover:underline">
+                  Terms &amp; Conditions
+                </Link>{" "}
+                (v1.0)
+              </span>
+            </label>
+          </div>
+
           {/* Submit */}
           <button
             type="submit"
-            disabled={pending}
+            disabled={pending || !acceptedPrivacyPolicy || !acceptedTerms}
             className="mt-2 w-full bg-[#1A1A1A] border border-[#2a2a2a] py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 hover:bg-[#222] hover:border-[#0CEB77]/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {pending ? (
@@ -219,7 +275,7 @@ export default function SignUp() {
           <button
             type="button"
             onClick={handleGoogleSignUp}
-            disabled={pending || isSocialLoading}
+            disabled={pending || isSocialLoading || !acceptedPrivacyPolicy || !acceptedTerms}
             className="w-full flex items-center justify-center gap-2 bg-transparent border border-[#2a2a2a] py-2.5 rounded-lg text-sm hover:bg-[#222] hover:border-[#0CEB77]/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSocialLoading ? (

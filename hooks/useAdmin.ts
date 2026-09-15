@@ -5,7 +5,7 @@ import { createExpense, getExpenses, getIncomeSummary } from "@/lib/api/adminApi
 
 import { getLandlordTenants, getTenantTransactions, getAllTenants, getTenantStats, getAdminSummary, getAdminReferralsSummary } from "@/lib/api/adminApi";
 import { getPaidUnpaidSeries, getArrearsTrend } from "@/lib/api/adminApi";
-import { getAdmins, createAdmin } from "@/lib/api/adminApi";
+import { getAdmins, inviteAdmin, getAdminInvites, resendAdminInvite, revokeAdminInvite } from "@/lib/api/adminApi";
 import { updateAdminStatus } from "@/lib/api/adminApi";
 
 export function useAdminLandlords(filters: { search?: string; plan?: string; status?: string; page?: number; limit?: number } = {}) {
@@ -93,11 +93,38 @@ export function useAdmins(filters: { search?: string; status?: string; page?: nu
 	});
 }
 
-export function useCreateAdmin() {
+export function useAdminInvites(search?: string) {
+	return useQuery<any, Error, any>({
+		queryKey: ["adminInvites", search],
+		queryFn: () => getAdminInvites(search),
+		staleTime: 0,
+	});
+}
+
+export function useInviteAdmin() {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (payload: any) => createAdmin(payload),
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["adminsList"] }),
+		mutationFn: (payload: { email: string }) => inviteAdmin(payload),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["adminInvites"] });
+			qc.invalidateQueries({ queryKey: ["adminsList"] });
+		},
+	});
+}
+
+export function useResendAdminInvite() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (inviteId: string) => resendAdminInvite(inviteId),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["adminInvites"] }),
+	});
+}
+
+export function useRevokeAdminInvite() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (inviteId: string) => revokeAdminInvite(inviteId),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["adminInvites"] }),
 	});
 }
 

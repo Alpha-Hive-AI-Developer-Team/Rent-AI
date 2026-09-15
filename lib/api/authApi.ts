@@ -79,11 +79,33 @@ export async function verifySignupOtp({ email, otp }: { email: string; otp: stri
   return res.data;
 }
 
+export async function getAdminInviteByToken(token: string) {
+  const res = await apiClient.get(`/auth/admin-invite/${encodeURIComponent(token)}`);
+  return res.data;
+}
+
+export async function acceptAdminInvite(payload: {
+  token: string;
+  firstName: string;
+  lastName: string;
+  password: string;
+  confirmPassword: string;
+}) {
+  const res = await apiClient.post("/auth/admin-invite/accept", payload);
+  return res.data;
+}
+
 // Social authentication functions
-export async function googleAuth(firebaseToken: string, role = "landlord") {
+export async function googleAuth(
+  firebaseToken: string,
+  role = "landlord",
+  consents?: { acceptedPrivacyPolicy?: boolean; acceptedTerms?: boolean }
+) {
   const res = await apiClient.post("/auth/google", {
     token: firebaseToken,
     role,
+    acceptedPrivacyPolicy: consents?.acceptedPrivacyPolicy,
+    acceptedTerms: consents?.acceptedTerms,
   });
   return res.data;
 }

@@ -7,8 +7,9 @@ import { Mail, ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useForgotPassword } from "@/hooks/useAuth";
 import toast from "react-hot-toast";
+import { withGuest } from "@/hooks/withGuest";
 
-export default function ForgotPassword() {
+function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [pending, setPending] = useState(false);
   const router = useRouter();
@@ -110,3 +111,5 @@ export default function ForgotPassword() {
     </main>
   );
 }
+
+export default withGuest(ForgotPassword);

@@ -127,9 +127,11 @@ apiClient.interceptors.request.use(async (config) => {
   // routes like `/payouts/login-link` (which *do* require auth).
   const rawUrl = config.url || '';
   const pathOnly = rawUrl.split('?')[0];
-  const isAuthEndpoint = /^\/auth\/(login|register|refresh-token|forgot-password|reset-password|verify-otp|verify-signup-otp|resend-otp|google|facebook|logout)(\/|$)/.test(pathOnly);
+  const isAuthEndpoint = /^\/auth\/(login|register|refresh-token|forgot-password|reset-password|verify-otp|verify-signup-otp|resend-otp|google|facebook|logout|admin-invite)(\/|$)/.test(pathOnly);
+  // Public consent endpoints only — status/reaccept require Firebase auth
+  const isPublicConsentEndpoint = /^\/consent\/(versions|cookies)(\/|$)/.test(pathOnly);
   
-  if (!isAuthEndpoint) {
+  if (!isAuthEndpoint && !isPublicConsentEndpoint) {
     try {
       // 2. Wait for Firebase to initialize (if supported)
       // This ensures `auth.currentUser` is settled on page reloads.

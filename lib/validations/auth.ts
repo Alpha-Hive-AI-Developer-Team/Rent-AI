@@ -19,6 +19,12 @@ export const signUpSchema = z.object({
     .regex(/[@$!%*?&]/, "Password must contain at least one special character"),
   role: z.string().default("landlord"),
   referralCode: z.string().trim().min(1, "Invalid referral code").max(20).optional(),
+  acceptedPrivacyPolicy: z.literal(true, {
+    errorMap: () => ({ message: "You must accept the Privacy Policy" }),
+  }),
+  acceptedTerms: z.literal(true, {
+    errorMap: () => ({ message: "You must accept the Terms & Conditions" }),
+  }),
 });
 
 export type SignUpInput = z.infer<typeof signUpSchema>;

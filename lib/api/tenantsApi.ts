@@ -16,9 +16,35 @@ export async function getTenantById(id: string) {
   return res.data;
 }
 
-export async function createTenant(payload: { tenantName: string | string[]; property: string; rent: number | string; dueOn?: number; moveInDate?: string }) {
-  // backend accepts tenantName as string or array; now also dueOn (day-of-month) and moveInDate (ISO date)
+export async function createTenant(payload: {
+  tenantName: string | string[];
+  property: string;
+  rent: number | string;
+  dueOn?: number;
+  moveInDate?: string;
+  room?: string;
+  propertyName?: string;
+  postcode?: string;
+  tenancyType?: "single" | "hmo";
+}) {
   const res = await apiClient.post(`/tenants`, payload);
+  return res.data;
+}
+
+export async function createPropertySetup(payload: {
+  property: string;
+  propertyName?: string;
+  postcode?: string;
+  tenancyType: "single" | "hmo";
+  tenants: Array<{
+    tenantName: string | string[];
+    rent: number | string;
+    dueOn?: number;
+    moveInDate?: string;
+    room?: string;
+  }>;
+}) {
+  const res = await apiClient.post(`/tenants/property-setup`, payload);
   return res.data;
 }
 

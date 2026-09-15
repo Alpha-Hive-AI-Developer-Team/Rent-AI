@@ -14,6 +14,7 @@ import { useAppDispatch } from "@/redux/hooks";
 import { setCredentials } from "@/redux/authSlice";
 import { useQueryClient } from "@tanstack/react-query";
 import { signInWithGoogle } from "@/lib/auth/google-auth";
+import { withGuest } from "@/hooks/withGuest";
 
 function GoogleIcon() {
   return (
@@ -26,7 +27,9 @@ function GoogleIcon() {
   );
 }
 
-export default function SignIn() {
+export default withGuest(SignIn);
+
+function SignIn() {
   const router = useRouter();
   const dispatch = useAppDispatch();
    const queryClient = useQueryClient();
@@ -282,6 +285,12 @@ export default function SignIn() {
             )}
           </button>
         </form>
+
+        <p className="mt-6 text-center text-xs text-gray-500">
+          <Link href="/privacy-policy" className="hover:text-emerald-400">Privacy Policy</Link>
+          <span className="mx-2">·</span>
+          <Link href="/terms-and-conditions" className="hover:text-emerald-400">Terms &amp; Conditions</Link>
+        </p>
       </div>
       {showOtp && (
         <VerifyOtpModal email={email} onClose={() => setShowOtp(false)} />
