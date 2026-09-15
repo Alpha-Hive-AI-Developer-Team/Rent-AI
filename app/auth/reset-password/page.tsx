@@ -7,15 +7,18 @@ import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { useResetPassword } from "@/hooks/useAuth";
 import toast from "react-hot-toast";
+import { withGuest } from "@/hooks/withGuest";
 
 export const dynamic = "force-dynamic";
 
-export default function ResetPasswordWrapper() {
+function ResetPasswordWrapper() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
   return <ResetPassword />;
 }
+
+export default withGuest(ResetPasswordWrapper);
 
 function ResetPassword() {
   const router = useRouter();

@@ -3,6 +3,7 @@ import './globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Suspense } from 'react'
+import CookieConsentBanner from '@/components/CookieConsentBanner'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -23,6 +24,7 @@ export default function RootLayout({
       <Suspense>
         {children}
       </Suspense>
+      <CookieConsentBanner />
         </Providers>
         </body>
     </html>

@@ -22,8 +22,25 @@ export async function getAdmins(filters: { search?: string; status?: string; pag
 	return res.data;
 }
 
-export async function createAdmin(payload: { firstName: string; lastName: string; email: string; password: string }) {
-	const res = await apiClient.post(`/auth/admins`, payload);
+export async function inviteAdmin(payload: { email: string }) {
+	const res = await apiClient.post(`/auth/admins/invite`, payload);
+	return res.data;
+}
+
+export async function getAdminInvites(search?: string) {
+	const params: Record<string, string> = {};
+	if (search) params.search = search;
+	const res = await apiClient.get(`/auth/admins/invites`, { params });
+	return res.data;
+}
+
+export async function resendAdminInvite(inviteId: string) {
+	const res = await apiClient.post(`/auth/admins/invites/${inviteId}/resend`);
+	return res.data;
+}
+
+export async function revokeAdminInvite(inviteId: string) {
+	const res = await apiClient.delete(`/auth/admins/invites/${inviteId}`);
 	return res.data;
 }
 
@@ -87,7 +104,7 @@ export async function getAdminTopReferrers() {
 	return res.data;
 }
 
-export default { getAdminLandlords, getLandlordTenants, getTenantTransactions, getAllTenants, getAdmins, createAdmin, updateAdminStatus, getAdminReferralsSummary, getAdminTopReferrers };
+export default { getAdminLandlords, getLandlordTenants, getTenantTransactions, getAllTenants, getAdmins, inviteAdmin, getAdminInvites, resendAdminInvite, revokeAdminInvite, updateAdminStatus, getAdminReferralsSummary, getAdminTopReferrers };
 
 // --- Expenses & Income Summary ---
 export async function createExpense(payload: { landlordId?: string; address: string; description: string; amount: number; date?: string }) {

@@ -12,6 +12,8 @@ type GoogleSignInOptions = {
   queryClient: QueryClient;
   router: AppRouterInstance;
   role?: string;
+  acceptedPrivacyPolicy?: boolean;
+  acceptedTerms?: boolean;
 };
 
 export async function signInWithGoogle({
@@ -19,12 +21,17 @@ export async function signInWithGoogle({
   queryClient,
   router,
   role = "landlord",
+  acceptedPrivacyPolicy,
+  acceptedTerms,
 }: GoogleSignInOptions): Promise<void> {
   const provider = new GoogleAuthProvider();
   const result = await signInWithPopup(auth, provider);
   const idToken = await result.user.getIdToken();
 
-  const res = await googleAuth(idToken, role);
+  const res = await googleAuth(idToken, role, {
+    acceptedPrivacyPolicy,
+    acceptedTerms,
+  });
   const data = res?.data || res;
   const user = data?.user;
   const firebaseCustomToken = data?.firebaseToken || data?.firebaseCustomToken;

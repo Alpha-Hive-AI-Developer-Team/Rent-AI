@@ -62,6 +62,12 @@ export default function SplashScreen() {
        
       </div>
 
+      <footer className="mt-8 mb-20 flex flex-wrap items-center justify-center gap-4 text-xs text-gray-500">
+        <Link href="/privacy-policy" className="hover:text-emerald-400">Privacy Policy</Link>
+        <span>·</span>
+        <Link href="/terms-and-conditions" className="hover:text-emerald-400">Terms &amp; Conditions</Link>
+      </footer>
+
     </main>
   );
 }

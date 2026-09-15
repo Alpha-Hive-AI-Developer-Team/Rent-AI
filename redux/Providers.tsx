@@ -4,12 +4,14 @@ import QueryProvider from "@/lib/providers/query-provider";
 import ReduxProvider from "@/lib/providers/ReduxProvider";
 import AuthInitializer from "./AuthInitializer";
 import { Toaster } from 'react-hot-toast';
+import LegalReconsentGate from "@/components/LegalReconsentGate";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ReduxProvider>
       <QueryProvider>
         <AuthInitializer />
+        <LegalReconsentGate />
         {children}
         {/* <Toaster position="top-right" /> */}
                 <Toaster

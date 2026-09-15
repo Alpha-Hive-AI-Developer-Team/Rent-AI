@@ -36,6 +36,92 @@ export default function TenantsPage() {
     return `${day}/${month}/${year}`;
   };
 
+  const formatMoney = (value: number) =>
+    `£${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  /** Positive = overpaid credit; negative = underpaid / owes. */
+  const getBalanceSummary = (tenant: any) => {
+    const balance = Number(tenant?.currentBalance) || 0;
+
+    if (balance > 0) {
+      return {
+        label: "Overpaid",
+        amount: formatMoney(balance),
+        className: "border-emerald-800/60 bg-emerald-950/40 text-emerald-300",
+      };
+    }
+
+    if (balance < 0) {
+      return {
+        label: "Underpaid",
+        amount: formatMoney(Math.abs(balance)),
+        className: "border-rose-800/60 bg-rose-950/40 text-rose-300",
+      };
+    }
+
+    return {
+      label: "Settled",
+      amount: formatMoney(0),
+      className: "border-gray-700 bg-[#121212] text-gray-300",
+    };
+  };
+
+  /** Remaining unpaid amount across rentHistory entries. */
+  const getRemainingAmount = (tenant: any) => {
+    const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
+    const fromHistory = history.reduce((sum: number, entry: any) => {
+      const due = Number(entry?.amountDue) || 0;
+      const paid = Number(entry?.amountPaid) || 0;
+      return sum + Math.max(0, due - paid);
+    }, 0);
+
+    if (fromHistory > 0) return fromHistory;
+
+    if (typeof tenant?.currentBalance === "number" && tenant.currentBalance < 0) {
+      return Math.abs(tenant.currentBalance);
+    }
+
+    return 0;
+  };
+
+  /**
+   * Derive display status from rentHistory:
+   * - Paid when nothing is owed
+   * - Unpaid / Partial only when at least one month still has remaining due
+   */
+  const getEffectiveStatus = (tenant: any): { key: "Paid" | "Unpaid" | "Partial"; label: string } => {
+    const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
+    const remaining = getRemainingAmount(tenant);
+
+    if (remaining <= 0) {
+      return { key: "Paid", label: "Paid" };
+    }
+
+    const hasPartial = history.some((entry: any) => {
+      const due = Number(entry?.amountDue) || 0;
+      const paid = Number(entry?.amountPaid) || 0;
+      const rem = Math.max(0, due - paid);
+      return rem > 0 && (paid > 0 || String(entry?.status || "").toLowerCase() === "partial");
+    });
+
+    if (hasPartial) {
+      return { key: "Partial", label: formatMoney(remaining) };
+    }
+
+    return { key: "Unpaid", label: formatMoney(remaining) };
+  };
+
+  const getStatusLabel = (tenant: any) => getEffectiveStatus(tenant).label;
+
+  const getStatusColorKey = (tenant: any) => getEffectiveStatus(tenant).key;
+
+  const getPropertyDisplay = (tenant: any) => {
+    const address = tenant?.property || "";
+    const room = tenant?.room ? String(tenant.room).trim() : "";
+    if (address && room) return `${address} · ${room}`;
+    return address || "—";
+  };
+
   const [search, setSearch] = useState("");
   const [newTenantOpen, setNewTenantOpen] = useState(false);
   const [transactionModalOpen, setTransactionModalOpen] = useState(false);
@@ -60,7 +146,9 @@ export default function TenantsPage() {
 
   const filtered = tenantsFromApi.filter((t: any) =>
     getTenantDisplayName(t).toLowerCase().includes(search.toLowerCase()) ||
-    (t.property || "").toLowerCase().includes(search.toLowerCase())
+    (t.property || "").toLowerCase().includes(search.toLowerCase()) ||
+    (t.room || "").toLowerCase().includes(search.toLowerCase()) ||
+    (t.propertyName || "").toLowerCase().includes(search.toLowerCase())
   );
 
   const closeTransactionModal = () => {
@@ -162,7 +250,7 @@ export default function TenantsPage() {
           className="flex w-full items-center justify-center gap-2 rounded-full border border-emerald-700 bg-transparent px-4 py-2 text-emerald-400 transition hover:bg-emerald-900/5 sm:w-auto md:ml-auto"
         >
           <Plus className="h-4 w-4 text-emerald-400" />
-          <span className="text-sm">New Tenant</span>
+          <span className="text-sm">Add Tenant</span>
         </button>
       </div>
 
@@ -203,11 +291,11 @@ export default function TenantsPage() {
                 className="cursor-pointer border-t border-[#151515] transition hover:bg-[#0e0e0e]"
               >
                 <td className="px-6 py-4 text-sm text-gray-300">{getTenantDisplayName(tenant)}</td>
-                <td className="px-6 py-4 text-sm text-gray-300">{tenant.property}</td>
-                <td className="px-6 py-4 text-sm text-gray-300">{typeof tenant.rent === "number" ? `£${tenant.rent}` : tenant.rent}</td>
+                <td className="px-6 py-4 text-sm text-gray-300">{getPropertyDisplay(tenant)}</td>
+                <td className="px-6 py-4 text-sm text-gray-300">{typeof tenant.rent === "number" ? formatMoney(tenant.rent) : tenant.rent}</td>
                 <td className="px-6 py-4 text-sm text-gray-300">
-                  <span className={`rounded-full border px-2.5 py-1 text-xs ${statusColors[(tenant.status || "").charAt(0).toUpperCase() + (tenant.status || "").slice(1) as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
-                    {tenant.status?.charAt(0).toUpperCase() + tenant.status?.slice(1)}
+                  <span className={`rounded-full border px-2.5 py-1 text-xs ${statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
+                    {getStatusLabel(tenant)}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-300">{formatDate(tenant.lastPayment)}</td>
@@ -222,15 +310,28 @@ export default function TenantsPage() {
           <div style={{
           scrollbarWidth: 'none',
           }} className="my-4 max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
-            <div className="mb-4 flex items-start justify-between">
+            <div className="mb-4 flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold">{getTenantDisplayName(selectedTenant)} — Transaction History</h3>
-                <p className="text-sm text-gray-400">{selectedTenant.property}</p>
+                <p className="text-sm text-gray-400">{getPropertyDisplay(selectedTenant)}</p>
               </div>
-              <button onClick={closeTransactionModal} className="text-gray-400 hover:text-white">
+              <button onClick={closeTransactionModal} className="shrink-0 text-gray-400 hover:text-white">
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            {(() => {
+              const balance = getBalanceSummary(selectedTenant);
+              return (
+                <div className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 ${balance.className}`}>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide opacity-70">Current balance</p>
+                    <p className="text-sm font-medium">{balance.label}</p>
+                  </div>
+                  <p className="text-lg font-semibold">{balance.amount}</p>
+                </div>
+              );
+            })()}
 
             <div className="w-full overflow-x-auto rounded-lg border border-[#1a1a1a] bg-[#0B0B0B]">
               <table className="min-w-full text-sm">
@@ -250,8 +351,10 @@ export default function TenantsPage() {
                     selectedTenant.rentHistory.map((entry: any, index: number) => (
                       <tr key={entry._id || index} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
                         <td className="px-4 py-3 text-gray-300">{formatDate(entry.month)}</td>
-                        <td className="px-4 py-3 text-gray-300">{typeof entry.amountDue === "number" ? `£${entry.amountDue}` : entry.amountDue}</td>
-                        <td className={`px-4 py-3 ${entry.status === "unpaid" ? "text-rose-400" : "text-gray-300"}`}>£{entry.amountPaid ?? "—"}</td>
+                        <td className="px-4 py-3 text-gray-300">{formatMoney(Number(entry.amountDue) || 0)}</td>
+                        <td className={`px-4 py-3 ${(Number(entry.amountDue) || 0) - (Number(entry.amountPaid) || 0) > 0 ? "text-rose-400" : "text-gray-300"}`}>
+                          {formatMoney(Number(entry.amountPaid) || 0)}
+                        </td>
                         <td className="px-4 py-3 text-gray-300">{formatDate(entry.paidOn)}</td>
                         <td className="px-4 py-3 text-gray-300">{formatDate(entry.dueDate)}</td>
                         <td className="px-4 py-3">
@@ -260,17 +363,22 @@ export default function TenantsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          {entry.status === "unpaid" ? (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPendingCash({ index, entry });
-                              }}
-                              className="flex items-center gap-2 rounded-full border border-amber-700 px-3 py-1 text-xs text-amber-400 hover:bg-amber-900/5"
-                            >
-                              <DollarSign className="h-4 w-4" />
-                              Pay By Cash
-                            </button>
+                          {((Number(entry.amountDue) || 0) - (Number(entry.amountPaid) || 0)) > 0 ? (
+                            <div className="flex flex-col items-start gap-1">
+                              {entry.paymentMethod && entry.paymentMethod !== "none" && (
+                                <span className="text-xs text-gray-500">{entry.paymentMethod}</span>
+                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPendingCash({ index, entry });
+                                }}
+                                className="flex items-center gap-2 rounded-full border border-amber-700 px-3 py-1 text-xs text-amber-400 hover:bg-amber-900/5"
+                              >
+                                <DollarSign className="h-4 w-4" />
+                                Pay By Cash
+                              </button>
+                            </div>
                           ) : (
                             <span className="text-xs text-gray-400">{entry.paymentMethod ? (entry.paymentMethod === "none" ? "—" : entry.paymentMethod) : "—"}</span>
                           )}
@@ -308,7 +416,11 @@ export default function TenantsPage() {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
           <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <h3 className="mb-2 text-lg font-semibold">Confirm Cash Payment</h3>
-            <p className="mb-4 text-sm text-gray-400">Mark this rent as paid in <strong>cash</strong>?</p>
+            <p className="mb-4 text-sm text-gray-400">
+              {((Number(pendingCash.entry.amountDue) || 0) - (Number(pendingCash.entry.amountPaid) || 0)) < (Number(pendingCash.entry.amountDue) || 0)
+                ? <>Mark the <strong>remaining</strong> balance as paid in <strong>cash</strong>?</>
+                : <>Mark this rent as paid in <strong>cash</strong>?</>}
+            </p>
 
             <div className="mb-4 rounded-lg border border-[#111] bg-[#050505] p-3">
               <div className="flex justify-between text-sm text-gray-300">
@@ -317,7 +429,22 @@ export default function TenantsPage() {
               </div>
               <div className="flex justify-between text-sm text-gray-300">
                 <div>Amount Due</div>
-                <div>{typeof pendingCash.entry.amountDue === "number" ? `£${pendingCash.entry.amountDue}` : pendingCash.entry.amountDue}</div>
+                <div>{formatMoney(Number(pendingCash.entry.amountDue) || 0)}</div>
+              </div>
+              <div className="flex justify-between text-sm text-gray-300">
+                <div>Already Paid</div>
+                <div>{formatMoney(Number(pendingCash.entry.amountPaid) || 0)}</div>
+              </div>
+              <div className="mt-1 flex justify-between border-t border-[#1a1a1a] pt-2 text-sm font-medium text-amber-300">
+                <div>Remaining to pay</div>
+                <div>
+                  {formatMoney(
+                    Math.max(
+                      0,
+                      (Number(pendingCash.entry.amountDue) || 0) - (Number(pendingCash.entry.amountPaid) || 0)
+                    )
+                  )}
+                </div>
               </div>
             </div>
 
@@ -356,7 +483,7 @@ export default function TenantsPage() {
             <div className="mb-4 flex items-start justify-between">
               <div>
                 <h3 className="text-lg font-semibold">Edit tenant names</h3>
-                <p className="text-sm text-gray-400">{selectedTenant.property}</p>
+                <p className="text-sm text-gray-400">{getPropertyDisplay(selectedTenant)}</p>
               </div>
               <button onClick={() => closeEditTenantModal()} className="text-gray-400 hover:text-white">
                 <X className="h-5 w-5" />
@@ -435,7 +562,7 @@ export default function TenantsPage() {
           <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <h3 className="mb-2 text-lg font-semibold">Confirm tenant update</h3>
             <p className="mb-4 text-sm text-gray-400">
-              Save these tenant names for <span className="text-white">{selectedTenant.property}</span>?
+              Save these tenant names for <span className="text-white">{getPropertyDisplay(selectedTenant)}</span>?
             </p>
 
             <div className="mb-4 rounded-lg border border-[#111] bg-[#050505] p-3">
