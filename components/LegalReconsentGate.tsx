@@ -83,7 +83,10 @@ export default function LegalReconsentGate() {
       const res = await recordLegalReconsent({
         acceptedPrivacyPolicy: status.privacy.required ? true : undefined,
         acceptedTerms: status.terms.required ? true : undefined,
-        cookieStatus: status.cookies.required ? cookieChoice : undefined,
+        cookieStatus:
+          status.cookies.required && (cookieChoice === "accepted" || cookieChoice === "rejected")
+            ? cookieChoice
+            : undefined,
         categories:
           cookieChoice === "accepted"
             ? { necessary: true, analytics: true, marketing: false }
