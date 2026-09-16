@@ -70,6 +70,12 @@ export async function updateTenant(id: string, payload: { tenantName: string | s
   return res.data;
 }
 
+/** Soft-end tenancy — removes from active list, keeps history for the property. */
+export async function endTenancy(id: string, payload?: { moveOutDate?: string }) {
+  const res = await apiClient.delete(`/tenants/${id}`, { data: payload || {} });
+  return res.data;
+}
+
 export async function getRentDetails(month?: number, year?: number) {
   const params: Record<string, any> = {};
   if (month) params.month = month;

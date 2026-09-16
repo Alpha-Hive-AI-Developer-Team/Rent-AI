@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getTenants, payRentByCash, updateTenant } from "@/lib/api/tenantsApi";
+import { endTenancy, getTenants, payRentByCash, updateTenant } from "@/lib/api/tenantsApi";
 import { useAuthUser } from "@/redux/useAuthUser";
 import toast from "react-hot-toast";
 
@@ -47,6 +47,25 @@ export function useUpdateTenant() {
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.message || err?.message || "Failed to update tenant";
+      toast.error(msg);
+    },
+  });
+}
+
+export function useEndTenancy() {
+  const qc = useQueryClient();
+  const authUser = useAuthUser();
+  const userId = authUser?.id || authUser?._id || authUser?.userId;
+
+  return useMutation({
+    mutationFn: ({ tenantId, moveOutDate }: { tenantId: string; moveOutDate?: string }) =>
+      endTenancy(tenantId, moveOutDate ? { moveOutDate } : undefined),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["tenants", userId] });
+      toast.success(res?.message || "Tenant removed. History kept for this property.");
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || err?.message || "Failed to remove tenant";
       toast.error(msg);
     },
   });
