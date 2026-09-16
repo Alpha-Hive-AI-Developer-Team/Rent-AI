@@ -337,9 +337,9 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                       >
                         New property
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
+                  <button
+                    type="button"
+                    onClick={() => {
                           setPropertyMode("existing");
                           setProperty("");
                         }}
@@ -514,8 +514,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                         </div>
                         <p className="font-medium text-white">HMO</p>
                         <p className="mt-1 text-xs text-gray-400">Multiple rooms with different tenants.</p>
-                      </button>
-                    </div>
+                  </button>
+                </div>
 
                     <div className="mt-6 flex items-center justify-between">
                       <button
@@ -560,8 +560,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                 ? "Single let"
                                 : "HMO"}
                           </h3>
-                        </div>
-                      </div>
+                </div>
+              </div>
                       {(tenancyType === "hmo" || addingToExisting) && (
                         <button
                           type="button"
@@ -593,9 +593,9 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                             className={inputClass}
                           />
                         </div>
-                        <div>
+              <div>
                           <label className={labelClass}>Monthly rent (£)</label>
-                          <input
+                <input
                             value={singleTenant.rent}
                             onChange={(e) =>
                               setSingleTenant((s) => ({
@@ -605,14 +605,14 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                             }
                             placeholder="e.g. 1200"
                             className={inputClass}
-                          />
-                        </div>
-                        <div>
+                />
+              </div>
+                <div>
                           <label className={labelClass}>Due day of month</label>
-                          <input
-                            type="number"
-                            min={1}
-                            max={31}
+                  <input
+                    type="number"
+                    min={1}
+                    max={31}
                             value={singleTenant.dueOn}
                             onChange={(e) =>
                               setSingleTenant((s) => ({
@@ -621,12 +621,12 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                               }))
                             }
                             className={inputClass}
-                          />
-                        </div>
-                        <div>
+                  />
+                </div>
+                <div>
                           <label className={labelClass}>Move-in date</label>
-                          <input
-                            type="date"
+                  <input
+                    type="date"
                             value={singleTenant.moveInDate}
                             onChange={(e) =>
                               setSingleTenant((s) => ({ ...s, moveInDate: e.target.value }))
@@ -649,14 +649,14 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                 className="w-32 rounded-md border border-[#2a2a2a] bg-transparent px-2 py-1 text-sm font-medium text-white outline-none focus:border-emerald-600"
                               />
                               {rooms.length > 1 && (
-                                <button
-                                  type="button"
+                            <button
+                              type="button"
                                   onClick={() => removeRoom(room.id)}
                                   className="rounded-md p-1.5 text-rose-400 transition hover:bg-rose-950/40"
                                   aria-label={`Remove ${room.room || `room ${index + 1}`}`}
                                 >
                                   <Trash2 className="h-4 w-4" />
-                                </button>
+                            </button>
                               )}
                             </div>
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -727,14 +727,14 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                     </datalist>
 
                     <div className="mt-6 flex items-center justify-between">
-                      <button
-                        type="button"
+                <button
+                  type="button"
                         onClick={() => setStep(addingToExisting ? 1 : 2)}
                         className="rounded-lg border border-[#2a2a2a] px-4 py-2.5 text-sm text-gray-300 transition hover:bg-white/5"
-                      >
+                >
                         Back
-                      </button>
-                      <button
+                </button>
+                <button
                         type="button"
                         disabled={!validateStep3() || createMutation.isPending}
                         onClick={handleSubmit}
@@ -745,7 +745,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                           : addingToExisting
                             ? "Add room"
                             : "Add property"}
-                      </button>
+                </button>
                     </div>
                   </section>
                 )}

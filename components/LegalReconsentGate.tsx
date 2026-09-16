@@ -93,7 +93,10 @@ export default function LegalReconsentGate() {
             : { necessary: true, analytics: false, marketing: false },
       });
 
-      if (cookieChoice && status.currentVersions?.cookies) {
+      if (
+        (cookieChoice === "accepted" || cookieChoice === "rejected") &&
+        status.currentVersions?.cookies
+      ) {
         writeLocalCookieConsent(cookieChoice, status.currentVersions.cookies);
       }
 

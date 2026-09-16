@@ -1,9 +1,9 @@
 "use client";
 
-import { Search, Plus, X, DollarSign, Pencil } from "lucide-react";
+import { Search, Plus, X, DollarSign, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import NewTenantModal from "@/components/user/new-tenant-modal";
-import usePayByCash, { useTenants, useUpdateTenant } from "@/hooks/usetenants";
+import usePayByCash, { useEndTenancy, useTenants, useUpdateTenant } from "@/hooks/usetenants";
 
 export default function TenantsPage() {
   const normalizeTenantNames = (value: any): string[] => {
@@ -131,10 +131,12 @@ export default function TenantsPage() {
   const [editTenantNames, setEditTenantNames] = useState<string[]>([]);
   const [currentEditName, setCurrentEditName] = useState("");
   const [editConfirmationOpen, setEditConfirmationOpen] = useState(false);
+  const [endTenancyOpen, setEndTenancyOpen] = useState(false);
 
   const { data, isLoading, isError } = useTenants();
   const payByCashMutation = usePayByCash();
   const updateTenantMutation = useUpdateTenant();
+  const endTenancyMutation = useEndTenancy();
 
   const tenantsFromApi = data?.data ?? [];
 
@@ -222,6 +224,24 @@ export default function TenantsPage() {
         },
         onError: () => {
           setEditConfirmationOpen(false);
+        },
+      }
+    );
+  };
+
+  const openEndTenancyModal = () => {
+    if (!selectedTenant) return;
+    setEndTenancyOpen(true);
+  };
+
+  const confirmEndTenancy = () => {
+    if (!selectedTenant) return;
+    endTenancyMutation.mutate(
+      { tenantId: selectedTenant._id },
+      {
+        onSuccess: () => {
+          setEndTenancyOpen(false);
+          closeTransactionModal();
         },
       }
     );
@@ -396,13 +416,22 @@ export default function TenantsPage() {
             </div>
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <button
-                onClick={openEditTenantModal}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510]"
-              >
-                <Pencil className="h-4 w-4" />
-                Edit tenant names
-              </button>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <button
+                  onClick={openEditTenantModal}
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510]"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit tenant names
+                </button>
+                <button
+                  onClick={openEndTenancyModal}
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-rose-800 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/40"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Remove tenant
+                </button>
+              </div>
 
               <div className="flex justify-end">
                 <button onClick={closeTransactionModal} className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5">Close</button>
@@ -471,6 +500,39 @@ export default function TenantsPage() {
                 className="rounded-full bg-amber-600 px-4 py-2 text-sm text-black hover:brightness-105"
               >
                 Confirm Cash
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {endTenancyOpen && selectedTenant && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+            <h3 className="mb-2 text-lg font-semibold">Remove tenant?</h3>
+            <p className="mb-3 text-sm text-gray-400">
+              <span className="text-gray-200">{getTenantDisplayName(selectedTenant)}</span> will be removed from your
+              active tenants list for <span className="text-gray-200">{getPropertyDisplay(selectedTenant)}</span>.
+            </p>
+            <p className="mb-5 text-sm text-gray-500">
+              Payment and occupancy history are kept so you can later see who lived at this property.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setEndTenancyOpen(false)}
+                className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+                disabled={endTenancyMutation.isPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmEndTenancy}
+                disabled={endTenancyMutation.isPending}
+                className="rounded-full border border-rose-700 bg-rose-900/40 px-4 py-2 text-sm text-rose-200 hover:bg-rose-900/60 disabled:opacity-60"
+              >
+                {endTenancyMutation.isPending ? "Removing..." : "Remove tenant"}
               </button>
             </div>
           </div>
