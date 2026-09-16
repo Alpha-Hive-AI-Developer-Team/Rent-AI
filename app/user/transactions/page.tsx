@@ -266,15 +266,38 @@ export default function TransactionsPage() {
       if (!rawTenants) return [];
       const arr = Array.isArray(rawTenants) ? rawTenants : [rawTenants];
       if (arr.length === 0) return [];
-      return arr.map((c: any, i: number) => ({
-        id: i + 1,
-        tenantId: c._id ? String(c._id) : undefined,
-        name: Array.isArray(c.tenantName) ? (c.tenantName[0] || c.tenantName.join(", ")) : (c.tenantName || c.tenantName?.name || ""),
-        property: c.property || c.propertyAddress || "",
-        rent: typeof c.rent === "number" ? `£${c.rent}` : String(c.rent || ""),
-        status: "Unpaid",
-        transactions: c.rentHistory ? (c.rentHistory.map((rh: any) => ({ month: rh.month, rent: rh.amountDue ?? rh.amount, amountPaid: rh.amountPaid ?? 0, paidDate: rh.paidOn ?? null, status: rh.status ?? 'Unpaid' }))) : [],
-      }));
+      return arr.map((c: any, i: number) => {
+        const history = Array.isArray(c.rentHistory) ? [...c.rentHistory] : [];
+        history.sort((a: any, b: any) => new Date(a?.month || 0).getTime() - new Date(b?.month || 0).getTime());
+        const formatMoney = (value: any) =>
+          `£${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const normalizeStatus = (s: any): "Paid" | "Unpaid" | "Partial" => {
+          const v = String(s || "unpaid").toLowerCase();
+          if (v === "paid") return "Paid";
+          if (v === "partial") return "Partial";
+          return "Unpaid";
+        };
+        const room = c.room ? String(c.room).trim() : "";
+        const propertyLabel = room && c.property ? `${c.property} · ${room}` : c.property || c.propertyAddress || "";
+
+        return {
+          id: i + 1,
+          tenantId: c._id ? String(c._id) : undefined,
+          name: Array.isArray(c.tenantName)
+            ? c.tenantName.filter(Boolean).join(", ")
+            : c.tenantName || c.tenantName?.name || "",
+          property: propertyLabel,
+          rent: typeof c.rent === "number" ? formatMoney(c.rent) : String(c.rent || ""),
+          status: "Unpaid" as const,
+          transactions: history.map((rh: any) => ({
+            month: formatDate(rh.month),
+            rent: formatMoney(rh.amountDue ?? rh.amount ?? 0),
+            amountPaid: formatMoney(rh.amountPaid ?? 0),
+            paidDate: rh.paidOn ?? null,
+            status: normalizeStatus(rh.status),
+          })),
+        };
+      });
     }
     return tenantCandidates;
   })();
@@ -551,17 +574,37 @@ export default function TransactionsPage() {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {(c.transactions ?? []).map((tr: any, i: number) => (
-                                        <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
-                                          <td className="py-2 px-3 text-gray-300">{tr.month}</td>
-                                          <td className="py-2 px-3 text-gray-300">{tr.rent}</td>
-                                          <td className={`py-2 px-3 ${tr.status === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{tr.amountPaid}</td>
-                                          <td className="py-2 px-3 text-gray-300">{tr.paidDate ? formatDate(tr.paidDate) : '—'}</td>
-                                          <td className="py-2 px-3">
-                                            <span className={`px-2 py-1 text-xs rounded-full border ${tr.status === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : tr.status === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{tr.status}</span>
+                                      {(c.transactions ?? []).length === 0 ? (
+                                        <tr>
+                                          <td colSpan={5} className="py-4 px-3 text-center text-gray-500">
+                                            No previous rent history for this tenant.
                                           </td>
                                         </tr>
-                                      ))}
+                                      ) : (
+                                        (c.transactions ?? []).map((tr: any, i: number) => (
+                                          <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
+                                            <td className="py-2 px-3 text-gray-300">{tr.month}</td>
+                                            <td className="py-2 px-3 text-gray-300">{tr.rent}</td>
+                                            <td className={`py-2 px-3 ${tr.status === "Unpaid" ? "text-rose-400" : "text-gray-300"}`}>
+                                              {tr.amountPaid}
+                                            </td>
+                                            <td className="py-2 px-3 text-gray-300">{tr.paidDate ? formatDate(tr.paidDate) : "—"}</td>
+                                            <td className="py-2 px-3">
+                                              <span
+                                                className={`px-2 py-1 text-xs rounded-full border ${
+                                                  tr.status === "Paid"
+                                                    ? "bg-emerald-900/20 text-emerald-400 border-emerald-700"
+                                                    : tr.status === "Partial"
+                                                      ? "bg-yellow-900/20 text-yellow-400 border-yellow-700"
+                                                      : "bg-gray-800 text-gray-400 border-gray-700"
+                                                }`}
+                                              >
+                                                {tr.status}
+                                              </span>
+                                            </td>
+                                          </tr>
+                                        ))
+                                      )}
                                     </tbody>
                                   </table>
                                 </div>
