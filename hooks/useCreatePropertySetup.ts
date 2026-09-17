@@ -9,11 +9,12 @@ export type PropertySetupPayload = {
   postcode?: string;
   tenancyType: "single" | "hmo";
   tenants: Array<{
-    tenantName: string | string[];
-    rent: number | string;
+    tenantName?: string | string[];
+    rent?: number | string;
     dueOn?: number;
     moveInDate?: string;
     room?: string;
+    vacant?: boolean;
   }>;
 };
 

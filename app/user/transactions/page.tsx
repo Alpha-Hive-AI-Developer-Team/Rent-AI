@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Plus, Search, Check, X, Bell, Eye, ChevronDown, Info, CheckCircle2, AlertCircle } from "lucide-react";
+import { Plus, Search, Check, X, Bell, ChevronDown, Info, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { useConnectedAccounts, useUnreconciledTransactions, useConnectedInstitution, useReconcileTransaction } from "@/hooks/useTransactions";
@@ -9,7 +9,7 @@ import { createPlaidLinkToken, exchangePlaidPublicToken, getPlaidTransactions, s
 // Table is implemented inline to avoid dependency on shared DataTable component
 
 interface Transaction {
-  id: number;
+  id: number | string;
   amount: string;
   status: "Matched" | "Needs Review";
   date: string;
@@ -38,6 +38,17 @@ interface TenantTxn {
 
 export default function TransactionsPage() {
   const [search, setSearch] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(search.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const transactions: Transaction[] = [
     {
@@ -73,12 +84,25 @@ export default function TransactionsPage() {
   
 
   // Fetch unreconciled transactions from API (keep the full query so we can refetch)
-  const unreconciledQuery = useUnreconciledTransactions();
+  const unreconciledQuery = useUnreconciledTransactions({
+    page,
+    limit: pageSize,
+    search: searchQuery || undefined,
+  });
   const unreconciledRes = unreconciledQuery.data;
   const txLoading = unreconciledQuery.isLoading;
   const apiDocs = unreconciledRes?.data?.docs ?? [];
+  const total = Number(unreconciledRes?.data?.total) || 0;
+  const totalPages = Math.max(1, Number(unreconciledRes?.data?.totalPages) || 1);
+  const startIndex = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endIndex = total === 0 ? 0 : Math.min(page * pageSize, total);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   const apiRows = apiDocs.map((d: any, i: number) => ({
-    id: i + 1,
+    id: d.transaction?.transactionId || d.transaction?._id || `${page}-${i}`,
     date: d.transaction?.date ? formatDate(d.transaction.date) : "-",
     description: d.transaction?.description || d.transaction?.reference || "",
     payer: (d.transaction?.payerName || "").toString().trim() || "—",
@@ -89,13 +113,7 @@ export default function TransactionsPage() {
 
   // Prefer API-backed rows. If none returned, show an empty list (no dummy/sample transactions).
   const displayTransactions: Transaction[] = apiRows.length > 0 ? apiRows : [];
-
-  const filteredDisplay = displayTransactions.filter(
-    (t) =>
-      t.description.toLowerCase().includes(search.toLowerCase()) ||
-      t.payer.toLowerCase().includes(search.toLowerCase()) ||
-      t.amount.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredDisplay = displayTransactions;
 
   // Sample tenants shown in the modal (UI-only)
   const [tenantCandidates, setTenantCandidates] = useState<Tenant[]>([
@@ -388,10 +406,10 @@ export default function TransactionsPage() {
   });
 
   // keep page within bounds when filtered list changes
-  const totalPages = Math.max(1, Math.ceil(sortedCandidates.length / candidatePageSize));
+  const candidateTotalPages = Math.max(1, Math.ceil(sortedCandidates.length / candidatePageSize));
   useEffect(() => {
-    if (candidatePage > totalPages) setCandidatePage(totalPages);
-  }, [sortedCandidates.length, totalPages]);
+    if (candidatePage > candidateTotalPages) setCandidatePage(candidateTotalPages);
+  }, [sortedCandidates.length, candidateTotalPages]);
 
   const paginatedCandidates = sortedCandidates.slice((candidatePage - 1) * candidatePageSize, candidatePage * candidatePageSize);
 
@@ -624,8 +642,8 @@ export default function TransactionsPage() {
               <div className="text-sm text-gray-400">Showing {(sortedCandidates.length === 0) ? 0 : ( (candidatePage - 1) * candidatePageSize + 1)}–{Math.min(candidatePage * candidatePageSize, sortedCandidates.length)} of {sortedCandidates.length}</div>
               <div className="flex items-center gap-2">
                 <button disabled={candidatePage <= 1} onClick={() => setCandidatePage((p) => Math.max(1, p - 1))} className={`px-3 py-1 rounded-md border ${candidatePage <= 1 ? 'border-gray-700 text-gray-600' : 'border-gray-600 text-gray-200 hover:bg-white/5'}`}>Prev</button>
-                <div className="text-sm text-gray-300">Page {candidatePage} / {totalPages}</div>
-                <button disabled={candidatePage >= totalPages} onClick={() => setCandidatePage((p) => Math.min(totalPages, p + 1))} className={`px-3 py-1 rounded-md border ${candidatePage >= totalPages ? 'border-gray-700 text-gray-600' : 'border-gray-600 text-gray-200 hover:bg-white/5'}`}>Next</button>
+                <div className="text-sm text-gray-300">Page {candidatePage} / {candidateTotalPages}</div>
+                <button disabled={candidatePage >= candidateTotalPages} onClick={() => setCandidatePage((p) => Math.min(candidateTotalPages, p + 1))} className={`px-3 py-1 rounded-md border ${candidatePage >= candidateTotalPages ? 'border-gray-700 text-gray-600' : 'border-gray-600 text-gray-200 hover:bg-white/5'}`}>Next</button>
               </div>
             </div>
 
@@ -875,21 +893,34 @@ export default function TransactionsPage() {
               <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tl-2xl">Date</th>
               <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Payer</th>
               <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Amount</th>
-              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Status</th>
-              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tr-2xl text-right">Action</th>
+              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tr-2xl">Status</th>
             </tr>
           </thead>
 
           <tbody>
-            {filteredDisplay.length === 0 ? (
+            {txLoading && filteredDisplay.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-gray-400">No transactions found.</td>
+                <td colSpan={4} className="py-6 text-center text-gray-400">
+                  Loading transactions…
+                </td>
+              </tr>
+            ) : filteredDisplay.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="py-6 text-center text-gray-400">
+                  {searchQuery
+                    ? `No unreconciled transactions match “${searchQuery}”.`
+                    : "No unreconciled transactions. Reconciled payments are on each tenant’s history."}
+                </td>
               </tr>
             ) : (
               filteredDisplay.map((t) => {
                 const overall = (t as any).status ? (t as any).status : computeTransactionOverallStatus(t as any);
                 return (
-                  <tr key={t.id} className="border-t border-[#151515] hover:bg-[#0e0e0e] transition">
+                  <tr
+                    key={t.id}
+                    onClick={() => openView(t)}
+                    className="cursor-pointer border-t border-[#151515] hover:bg-[#0e0e0e] transition"
+                  >
                     <td className="py-4 px-6 text-gray-300 text-sm">{t.date}</td>
                     <td className="py-4 px-6 text-gray-300 text-sm">{t.payer}</td>
                     <td className="py-4 px-6 text-gray-300 text-sm">{t.amount}</td>
@@ -898,15 +929,6 @@ export default function TransactionsPage() {
                         {overall}
                       </span>
                     </td>
-                    <td className="py-4 px-6 text-right text-gray-300">
-                      <div className="flex items-center justify-end gap-3">
-                        <button onClick={() => openView(t)} className="flex items-center gap-2 bg-transparent border border-[#111] text-gray-200 px-3 py-1 rounded-full text-xs md:text-sm hover:bg-white/5 transition">
-                          <Eye className="w-3 h-3" />
-                          <span className="whitespace-nowrap">View</span>
-                        </button>
-
-                      </div>
-                    </td>
                   </tr>
                 );
               })
@@ -914,6 +936,38 @@ export default function TransactionsPage() {
           </tbody>
         </table>
       </div>
+
+      {total > 0 && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-gray-400">
+            Showing {startIndex} to {endIndex} of {total} transactions
+            {unreconciledQuery.isFetching && !txLoading ? " · Updating…" : ""}
+          </p>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={page <= 1 || unreconciledQuery.isFetching}
+              className="inline-flex items-center gap-2 rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </button>
+            <span className="text-sm text-gray-400">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={page >= totalPages || unreconciledQuery.isFetching}
+              className="inline-flex items-center gap-2 rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

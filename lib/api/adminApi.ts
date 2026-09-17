@@ -45,7 +45,6 @@ export async function revokeAdminInvite(inviteId: string) {
 }
 
 export async function updateAdminStatus(adminId: string, status: 'active' | 'disable') {
-	console.log(`Updating admin ${adminId} status to ${status}`);
 	const res = await apiClient.put(`/auth/admins/${adminId}/status`, { status });
 	return res.data;
 }
@@ -108,7 +107,6 @@ export default { getAdminLandlords, getLandlordTenants, getTenantTransactions, g
 
 // --- Expenses & Income Summary ---
 export async function createExpense(payload: { landlordId?: string; address: string; description: string; amount: number; date?: string }) {
-	console.log('Creating expense with payload:', payload);
 	const res = await apiClient.post(`/expenses`, payload);
 	return res.data;
 }

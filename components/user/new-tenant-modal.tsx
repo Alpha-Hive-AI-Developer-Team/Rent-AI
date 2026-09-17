@@ -1,12 +1,15 @@
 "use client";
 
-import { X, Home, Users, Trash2, ChevronRight, Plus } from "lucide-react";
+import { X, Home, Users, Trash2, ChevronRight, Plus, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import useCreatePropertySetup from "@/hooks/useCreatePropertySetup";
-import { getPayerSuggestions } from "@/lib/api/tenantsApi";
+import { assignTenantToRoom, endTenancy, getPayerSuggestions } from "@/lib/api/tenantsApi";
 import { useTenantAddresses } from "@/hooks/useTenantAddresses";
 import { useTenants } from "@/hooks/usetenants";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuthUser } from "@/redux/useAuthUser";
+import toast from "react-hot-toast";
 
 interface NewTenantModalProps {
   open: boolean;
@@ -23,6 +26,14 @@ type RoomTenant = {
   dueOn: number;
   moveInDate: string;
   room: string;
+  /** Already on this property — shown read-only when adding more rooms */
+  isExisting?: boolean;
+  /** New room kept empty (no occupant yet) */
+  vacant?: boolean;
+  /** DB id for existing room tenancy */
+  tenantId?: string;
+  /** Editing an existing vacant room to assign an occupant */
+  assigning?: boolean;
 };
 
 const RENT_NUMERIC = /[^0-9.]/g;
@@ -37,6 +48,45 @@ function sanitizeRentInput(value: string) {
   return cleaned;
 }
 
+/** Letters, spaces, hyphens, apostrophes only — no digits or other symbols. */
+function sanitizeTenantNameInput(value: string) {
+  return value.replace(/[^\p{L}\s'-]/gu, "");
+}
+
+function formatTenantNames(value: unknown): string {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean).join(", ");
+  if (typeof value === "string") return value;
+  return value != null ? String(value) : "";
+}
+
+function roomNumberFromLabel(label: string): number {
+  const match = String(label || "").match(/(\d+)/);
+  return match ? Number(match[1]) : 0;
+}
+
+function nextRoomIndex(rooms: RoomTenant[]): number {
+  const max = rooms.reduce((acc, r) => Math.max(acc, roomNumberFromLabel(r.room)), 0);
+  return max + 1;
+}
+
+/** Days in the month of a YYYY-MM-DD date; defaults to 31 if unset. */
+function daysInMonthForDate(dateStr: string): number {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return 31;
+  const [year, month] = dateStr.split("-").map(Number);
+  if (!year || !month) return 31;
+  return new Date(year, month, 0).getDate();
+}
+
+function clampDueOn(dueOn: number, moveInDate: string): number {
+  const max = daysInMonthForDate(moveInDate);
+  return Math.min(max, Math.max(1, Number(dueOn) || 1));
+}
+
+function dueDayOptions(moveInDate: string): number[] {
+  const max = daysInMonthForDate(moveInDate);
+  return Array.from({ length: max }, (_, i) => i + 1);
+}
+
 function newRoom(index: number): RoomTenant {
   return {
     id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
@@ -45,7 +95,47 @@ function newRoom(index: number): RoomTenant {
     dueOn: 1,
     moveInDate: "",
     room: `Room ${index}`,
+    isExisting: false,
+    vacant: false,
   };
+}
+
+function buildExistingRoomsForProperty(address: string, tenants: any[]): RoomTenant[] {
+  const key = address.trim().toLowerCase();
+  if (!key) return [];
+
+  return tenants
+    .filter((t) => String(t.property || "").trim().toLowerCase() === key)
+    .filter((t) => t.tenancyStatus !== "ended")
+    .map((t, i) => ({
+      id: `existing-${t._id || i}`,
+      tenantId: t._id ? String(t._id) : undefined,
+      tenantName: formatTenantNames(t.tenantName),
+      rent: t.rent != null && t.rent !== "" ? String(t.rent) : "",
+      dueOn: Number(t.dueOn) || 1,
+      moveInDate: t.moveInDate ? String(t.moveInDate).slice(0, 10) : "",
+      room: t.room ? String(t.room).trim() : "",
+      isExisting: true,
+      vacant: t.tenancyStatus === "vacant",
+      assigning: false,
+    }))
+    .sort((a, b) => {
+      const aNum = roomNumberFromLabel(a.room);
+      const bNum = roomNumberFromLabel(b.room);
+      if (aNum && bNum) return aNum - bNum;
+      if (aNum) return -1;
+      if (bNum) return 1;
+      return a.tenantName.localeCompare(b.tenantName);
+    })
+    .map((room, i) => ({
+      ...room,
+      room: room.room || `Room ${i + 1}`,
+    }));
+}
+
+function roomsForExistingProperty(address: string, tenants: any[]): RoomTenant[] {
+  const existing = buildExistingRoomsForProperty(address, tenants);
+  return [...existing, newRoom(nextRoomIndex(existing))];
 }
 
 export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
@@ -70,22 +160,38 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
   const { data: existingAddresses = [] } = useTenantAddresses();
   const { data: tenantsRes } = useTenants();
   const allTenants = tenantsRes?.data ?? [];
+  const qc = useQueryClient();
+  const authUser = useAuthUser();
+  const userId = authUser?.id || authUser?._id || authUser?.userId;
+  const [removingRoomId, setRemovingRoomId] = useState<string | null>(null);
+  const [assigningRoomId, setAssigningRoomId] = useState<string | null>(null);
 
   const propertyMeta = useMemo(() => {
     const map = new Map<
       string,
-      { propertyName?: string; postcode?: string; tenancyType: TenancyType; roomCount: number }
+      {
+        propertyName?: string;
+        postcode?: string;
+        tenancyType: TenancyType;
+        roomCount: number;
+        vacantCount: number;
+        occupiedCount: number;
+      }
     >();
     for (const t of allTenants) {
+      if (t.tenancyStatus === "ended") continue;
       const key = String(t.property || "").trim().toLowerCase();
       if (!key) continue;
       const prev = map.get(key);
       const isHmo = t.tenancyType === "hmo" || Boolean(t.room);
+      const isVacant = t.tenancyStatus === "vacant";
       map.set(key, {
         propertyName: t.propertyName || prev?.propertyName,
         postcode: t.postcode || prev?.postcode,
         tenancyType: isHmo || prev?.tenancyType === "hmo" ? "hmo" : "single",
         roomCount: (prev?.roomCount || 0) + 1,
+        vacantCount: (prev?.vacantCount || 0) + (isVacant ? 1 : 0),
+        occupiedCount: (prev?.occupiedCount || 0) + (isVacant ? 0 : 1),
       });
     }
     return map;
@@ -143,12 +249,9 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     if (meta) {
       setPropertyName(meta.propertyName || "");
       setPostcode(meta.postcode || "");
-      setTenancyType("hmo");
-      setRooms([newRoom(meta.roomCount + 1)]);
-    } else {
-      setTenancyType("hmo");
-      setRooms([newRoom(1)]);
     }
+    setTenancyType("hmo");
+    setRooms(roomsForExistingProperty(address, allTenants));
   };
 
   const filteredSuggestions = useMemo(() => payerSuggestions.slice(0, 30), [payerSuggestions]);
@@ -161,23 +264,149 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
 
   const canContinueStep2 = tenancyType === "single" || tenancyType === "hmo";
 
+  const newRooms = useMemo(() => rooms.filter((r) => !r.isExisting), [rooms]);
+
   const validateStep3 = () => {
     if (tenancyType === "single" && !addingToExisting) {
       return singleTenant.tenantName.trim().length > 0 && Number(singleTenant.rent) > 0;
     }
-    return rooms.every(
-      (r) => r.tenantName.trim().length > 0 && Number(r.rent) > 0 && r.room.trim().length > 0
+    const editable = addingToExisting ? newRooms : rooms;
+    return (
+      editable.length > 0 &&
+      editable.every((r) => {
+        if (!r.room.trim()) return false;
+        if (r.vacant) {
+          const rentVal = r.rent.trim();
+          return rentVal === "" || Number(rentVal) >= 0;
+        }
+        return r.tenantName.trim().length > 0 && Number(r.rent) > 0;
+      })
     );
   };
 
-  const addRoom = () => setRooms((prev) => [...prev, newRoom(prev.length + 1)]);
+  const addRoom = () => setRooms((prev) => [...prev, newRoom(nextRoomIndex(prev))]);
 
   const removeRoom = (id: string) => {
-    setRooms((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.id !== id)));
+    setRooms((prev) => {
+      const target = prev.find((r) => r.id === id);
+      if (!target || target.isExisting) return prev;
+      const next = prev.filter((r) => r.id !== id);
+      if (next.filter((r) => !r.isExisting).length === 0) return prev;
+      return next;
+    });
+  };
+
+  const removeExistingVacantRoom = async (room: RoomTenant) => {
+    if (!room.isExisting || !room.vacant || !room.tenantId || removingRoomId) return;
+    setRemovingRoomId(room.id);
+    try {
+      await endTenancy(room.tenantId);
+      setRooms((prev) => prev.filter((r) => r.id !== room.id));
+      qc.invalidateQueries({ queryKey: ["tenants", userId] });
+      qc.invalidateQueries({ queryKey: ["tenantAddresses"] });
+      toast.success(`${room.room || "Room"} removed`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to remove room");
+    } finally {
+      setRemovingRoomId(null);
+    }
+  };
+
+  const startAssignExistingVacant = (room: RoomTenant) => {
+    if (!room.isExisting || !room.vacant || !room.tenantId) return;
+    setRooms((prev) =>
+      prev.map((r) =>
+        r.id === room.id
+          ? {
+              ...r,
+              assigning: true,
+              tenantName: "",
+              moveInDate: new Date().toISOString().slice(0, 10),
+              rent: r.rent && Number(r.rent) > 0 ? r.rent : "",
+            }
+          : { ...r, assigning: false }
+      )
+    );
+  };
+
+  const cancelAssignExistingVacant = (roomId: string) => {
+    setRooms((prev) =>
+      prev.map((r) =>
+        r.id === roomId
+          ? {
+              ...r,
+              assigning: false,
+              tenantName: "",
+              moveInDate: "",
+            }
+          : r
+      )
+    );
+  };
+
+  const saveAssignExistingVacant = async (room: RoomTenant) => {
+    if (!room.tenantId || assigningRoomId) return;
+    const name = sanitizeTenantNameInput(room.tenantName).trim().replace(/\s+/g, " ");
+    if (!name || !/^[\p{L}]+(?:[\s'-][\p{L}]+)*$/u.test(name)) {
+      toast.error("Enter a valid tenant name (letters only).");
+      return;
+    }
+    const rentNum = Number(room.rent);
+    if (!Number.isFinite(rentNum) || rentNum <= 0) {
+      toast.error("Enter a positive monthly rent.");
+      return;
+    }
+    if (!room.moveInDate) {
+      toast.error("Select a move-in date.");
+      return;
+    }
+
+    setAssigningRoomId(room.id);
+    try {
+      await assignTenantToRoom(room.tenantId, {
+        tenantName: [name],
+        rent: rentNum,
+        dueOn: clampDueOn(room.dueOn, room.moveInDate),
+        moveInDate: room.moveInDate,
+      });
+      setRooms((prev) =>
+        prev.map((r) =>
+          r.id === room.id
+            ? {
+                ...r,
+                vacant: false,
+                assigning: false,
+                tenantName: name,
+                rent: String(rentNum),
+              }
+            : r
+        )
+      );
+      qc.invalidateQueries({ queryKey: ["tenants", userId] });
+      toast.success("Tenant assigned");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to assign tenant");
+    } finally {
+      setAssigningRoomId(null);
+    }
   };
 
   const updateRoom = (id: string, patch: Partial<RoomTenant>) => {
-    setRooms((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    setRooms((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        // Existing occupied rooms stay read-only; vacant can edit while assigning
+        if (r.isExisting && !r.assigning) return r;
+        const next = { ...r, ...patch };
+        if (Object.prototype.hasOwnProperty.call(patch, "moveInDate")) {
+          next.dueOn = clampDueOn(next.dueOn, next.moveInDate);
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, "dueOn")) {
+          next.dueOn = clampDueOn(next.dueOn, next.moveInDate);
+        }
+        return next;
+      })
+    );
   };
 
   const goFromStep1 = () => {
@@ -185,8 +414,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     if (propertyMode === "existing") {
       setAddingToExisting(true);
       setTenancyType("hmo");
-      const meta = propertyMeta.get(property.trim().toLowerCase());
-      setRooms([newRoom((meta?.roomCount || 0) + 1)]);
+      setRooms(roomsForExistingProperty(property, allTenants));
       setStep(3);
       return;
     }
@@ -209,12 +437,13 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
               moveInDate: singleTenant.moveInDate || undefined,
             },
           ]
-        : rooms.map((r) => ({
-            tenantName: r.tenantName.trim(),
-            rent: Number(r.rent),
-            dueOn: Number(r.dueOn) || 1,
-            moveInDate: r.moveInDate || undefined,
+        : (addingToExisting ? newRooms : rooms).map((r) => ({
+            tenantName: r.vacant ? [] : r.tenantName.trim(),
+            rent: r.vacant ? (r.rent.trim() === "" ? 0 : Number(r.rent)) : Number(r.rent),
+            dueOn: r.vacant ? undefined : Number(r.dueOn) || 1,
+            moveInDate: r.vacant ? undefined : r.moveInDate || undefined,
             room: r.room.trim(),
+            vacant: Boolean(r.vacant),
           }));
 
     createMutation.mutate(
@@ -252,7 +481,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.98 }}
             transition={{ duration: 0.2 }}
-            className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[#1f1f1f] bg-[#0c0c0c] text-white shadow-2xl"
+            className="flex max-h-[92vh] min-h-0 w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[#1f1f1f] bg-[#0c0c0c] text-white shadow-2xl"
           >
             <div className="flex items-start justify-between border-b border-[#1a1a1a] px-5 py-5 sm:px-8">
               <div>
@@ -269,8 +498,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
               </button>
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-5 sm:flex-row sm:p-8">
-              <aside className="w-full shrink-0 sm:w-56">
+            <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden p-5 sm:flex-row sm:p-8 sm:pt-6 sm:pb-0">
+              <aside className="hidden w-56 shrink-0 sm:block">
                 <ol className="relative space-y-0">
                   {steps.map((s, idx) => {
                     const active = step === s.id;
@@ -307,7 +536,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                 </ol>
               </aside>
 
-              <div className="min-w-0 flex-1 space-y-5">
+              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pb-4" style={{ scrollbarWidth: "thin" }}>
+                <div className="space-y-5">
                 {step === 1 && (
                   <section className="rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] p-5">
                     <div className="mb-4 flex items-center gap-2">
@@ -362,26 +592,51 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                         </p>
                         <div>
                           <label className={labelClass}>Property</label>
-                          <select
-                            value={property}
-                            onChange={(e) => selectExistingProperty(e.target.value)}
-                            className={inputClass}
-                          >
-                            <option value="">Select a property…</option>
-                            {existingAddresses.map((addr) => {
-                              const meta = propertyMeta.get(addr.trim().toLowerCase());
-                              const tag =
-                                meta?.tenancyType === "hmo"
-                                  ? ` (${meta.roomCount} room${meta.roomCount === 1 ? "" : "s"})`
-                                  : " (single let)";
-                              return (
-                                <option key={addr} value={addr}>
-                                  {addr}
-                                  {tag}
-                                </option>
-                              );
-                            })}
-                          </select>
+                          {existingAddresses.length === 0 ? (
+                            <p className="rounded-lg border border-[#222] bg-[#0c0c0c] px-3 py-3 text-sm text-gray-500">
+                              No existing properties yet.
+                            </p>
+                          ) : (
+                            <div className="max-h-64 space-y-2 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
+                              {existingAddresses.map((addr) => {
+                                const meta = propertyMeta.get(addr.trim().toLowerCase());
+                                const selected =
+                                  property.trim().toLowerCase() === addr.trim().toLowerCase();
+                                const isHmo = meta?.tenancyType === "hmo";
+                                const vacant = meta?.vacantCount || 0;
+                                const occupied = meta?.occupiedCount || 0;
+
+                                const occupancyLabel = !isHmo
+                                  ? occupied > 0
+                                    ? "Single let · occupied"
+                                    : vacant > 0
+                                      ? "Single let · vacant"
+                                      : "Single let"
+                                  : `${occupied} occupied · ${vacant} vacant`;
+
+                                return (
+                                  <button
+                                    key={addr}
+                                    type="button"
+                                    onClick={() => selectExistingProperty(addr)}
+                                    className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
+                                      selected
+                                        ? "border-emerald-700 bg-emerald-950/30"
+                                        : "border-[#2a2a2a] bg-[#0a0a0a] hover:border-[#3a3a3a]"
+                                    }`}
+                                  >
+                                    <p className="min-w-0 truncate text-sm text-gray-200">
+                                      {addr}
+                                      <span className="text-gray-500"> · {occupancyLabel}</span>
+                                    </p>
+                                    {selected && (
+                                      <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                         {property && (
                           <div className="rounded-lg border border-[#222] bg-[#0c0c0c] px-3 py-2 text-xs text-gray-400">
@@ -434,18 +689,6 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                         </div>
                       </div>
                     )}
-
-                    <div className="mt-6 flex justify-end">
-                      <button
-                        type="button"
-                        disabled={!canContinueStep1}
-                        onClick={goFromStep1}
-                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {propertyMode === "existing" ? "Add room" : "Continue"}{" "}
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
                   </section>
                 )}
 
@@ -516,27 +759,6 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                         <p className="mt-1 text-xs text-gray-400">Multiple rooms with different tenants.</p>
                   </button>
                 </div>
-
-                    <div className="mt-6 flex items-center justify-between">
-                      <button
-                        type="button"
-                        onClick={() => setStep(1)}
-                        className="rounded-lg border border-[#2a2a2a] px-4 py-2.5 text-sm text-gray-300 transition hover:bg-white/5"
-                      >
-                        Back
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!canContinueStep2}
-                        onClick={() => {
-                          if (tenancyType === "hmo") setRooms([newRoom(1)]);
-                          setStep(3);
-                        }}
-                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
-                      >
-                        Continue <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
                   </section>
                 )}
 
@@ -576,6 +798,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                     {addingToExisting && (
                       <p className="mb-4 rounded-lg border border-[#222] bg-[#0c0c0c] px-3 py-2 text-sm text-gray-400">
                         Adding to <span className="text-white">{property}</span>
+                        {" — "}existing rooms are shown below (vacant ones can be assigned or removed). New rooms only are saved with Add room.
                       </p>
                     )}
 
@@ -587,7 +810,10 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                             list="payer-suggestions"
                             value={singleTenant.tenantName}
                             onChange={(e) =>
-                              setSingleTenant((s) => ({ ...s, tenantName: e.target.value }))
+                              setSingleTenant((s) => ({
+                                ...s,
+                                tenantName: sanitizeTenantNameInput(e.target.value),
+                              }))
                             }
                             placeholder="e.g. John Smith"
                             className={inputClass}
@@ -608,72 +834,178 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                 />
               </div>
                 <div>
-                          <label className={labelClass}>Due day of month</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={31}
-                            value={singleTenant.dueOn}
-                            onChange={(e) =>
-                              setSingleTenant((s) => ({
-                                ...s,
-                                dueOn: Math.min(31, Math.max(1, Number(e.target.value) || 1)),
-                              }))
-                            }
-                            className={inputClass}
-                  />
-                </div>
-                <div>
                           <label className={labelClass}>Move-in date</label>
                   <input
                     type="date"
                             value={singleTenant.moveInDate}
-                            onChange={(e) =>
-                              setSingleTenant((s) => ({ ...s, moveInDate: e.target.value }))
-                            }
+                            onChange={(e) => {
+                              const moveInDate = e.target.value;
+                              setSingleTenant((s) => ({
+                                ...s,
+                                moveInDate,
+                                dueOn: clampDueOn(s.dueOn, moveInDate),
+                              }));
+                            }}
                             className={`${inputClass} [color-scheme:dark]`}
                           />
                         </div>
+                <div>
+                          <label className={labelClass}>Due day of month</label>
+                  <select
+                            value={clampDueOn(singleTenant.dueOn, singleTenant.moveInDate)}
+                            onChange={(e) =>
+                              setSingleTenant((s) => ({
+                                ...s,
+                                dueOn: clampDueOn(Number(e.target.value) || 1, s.moveInDate),
+                              }))
+                            }
+                            className={`${inputClass} [color-scheme:dark]`}
+                          >
+                            {dueDayOptions(singleTenant.moveInDate).map((day) => (
+                              <option key={day} value={day} className="bg-[#0a0a0a] text-white">
+                                {day}
+                              </option>
+                            ))}
+                  </select>
+                          {!singleTenant.moveInDate && (
+                            <p className="mt-1 text-[11px] text-gray-500">
+                              Select a move-in date to limit days for that month.
+                            </p>
+                          )}
+                </div>
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {rooms.map((room, index) => (
+                        {rooms.map((room, index) => {
+                          const isExisting = Boolean(room.isExisting);
+                          const isVacant = Boolean(room.vacant);
+                          const isAssigning = Boolean(room.assigning);
+                          const canRemoveNew =
+                            !isExisting && newRooms.length > 1;
+                          const canRemoveVacant =
+                            isExisting && isVacant && Boolean(room.tenantId);
+                          const fieldsLocked =
+                            (isExisting && !isAssigning) || (!isExisting && isVacant);
+                          const showVacantBadge = isVacant && !isAssigning;
+
+                          return (
                           <div
                             key={room.id}
-                            className="rounded-xl border border-[#222] bg-[#0c0c0c] p-4"
+                            className={`rounded-xl border p-4 ${
+                              isExisting && !isAssigning
+                                ? "border-[#2a2a2a] bg-[#111] opacity-90"
+                                : isVacant || isAssigning
+                                  ? "border-amber-900/50 bg-[#0c0c0c]"
+                                  : "border-[#222] bg-[#0c0c0c]"
+                            }`}
                           >
-                            <div className="mb-3 flex items-center justify-between">
-                              <input
-                                value={room.room}
-                                onChange={(e) => updateRoom(room.id, { room: e.target.value })}
-                                className="w-32 rounded-md border border-[#2a2a2a] bg-transparent px-2 py-1 text-sm font-medium text-white outline-none focus:border-emerald-600"
-                              />
-                              {rooms.length > 1 && (
-                            <button
-                              type="button"
-                                  onClick={() => removeRoom(room.id)}
-                                  className="rounded-md p-1.5 text-rose-400 transition hover:bg-rose-950/40"
-                                  aria-label={`Remove ${room.room || `room ${index + 1}`}`}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                            </button>
-                              )}
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <input
+                                  value={room.room}
+                                  onChange={(e) => updateRoom(room.id, { room: e.target.value })}
+                                  disabled={isExisting}
+                                  className="w-32 rounded-md border border-[#2a2a2a] bg-transparent px-2 py-1 text-sm font-medium text-white outline-none focus:border-emerald-600 disabled:cursor-not-allowed disabled:text-gray-400"
+                                />
+                                {isExisting && (
+                                  <span className="rounded-full border border-[#333] px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
+                                    Existing
+                                  </span>
+                                )}
+                                {showVacantBadge && (
+                                  <span className="rounded-full border border-amber-800/60 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-400">
+                                    Vacant
+                                  </span>
+                                )}
+                                {!isExisting && (
+                                  <label className="ml-1 inline-flex cursor-pointer items-center gap-2 text-xs text-gray-400">
+                                    <input
+                                      type="checkbox"
+                                      checked={isVacant}
+                                      onChange={(e) =>
+                                        updateRoom(room.id, {
+                                          vacant: e.target.checked,
+                                          tenantName: e.target.checked ? "" : room.tenantName,
+                                          moveInDate: e.target.checked ? "" : room.moveInDate,
+                                        })
+                                      }
+                                      className="h-3.5 w-3.5 rounded border-gray-600 bg-transparent text-emerald-600 focus:ring-emerald-600"
+                                    />
+                                    Keep vacant
+                                  </label>
+                                )}
+                                {canRemoveVacant && !isAssigning && (
+                                  <button
+                                    type="button"
+                                    onClick={() => startAssignExistingVacant(room)}
+                                    className="rounded-full border border-emerald-800 px-2.5 py-0.5 text-[11px] text-emerald-300 hover:bg-emerald-950/40"
+                                  >
+                                    Assign tenant
+                                  </button>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {isAssigning && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => cancelAssignExistingVacant(room.id)}
+                                      className="rounded-full border border-[#333] px-2.5 py-1 text-[11px] text-gray-400 hover:bg-white/5"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => saveAssignExistingVacant(room)}
+                                      disabled={assigningRoomId === room.id}
+                                      className="rounded-full border border-emerald-700 px-2.5 py-1 text-[11px] text-emerald-300 hover:bg-emerald-950/40 disabled:opacity-50"
+                                    >
+                                      {assigningRoomId === room.id ? "Saving..." : "Save"}
+                                    </button>
+                                  </>
+                                )}
+                                {(canRemoveNew || canRemoveVacant) && !isAssigning && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      canRemoveVacant
+                                        ? removeExistingVacantRoom(room)
+                                        : removeRoom(room.id)
+                                    }
+                                    disabled={removingRoomId === room.id}
+                                    className="rounded-md p-1.5 text-rose-400 transition hover:bg-rose-950/40 disabled:opacity-50"
+                                    aria-label={`Remove ${room.room || `room ${index + 1}`}`}
+                                    title={canRemoveVacant ? "Remove vacant room" : "Remove room"}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </div>
                             </div>
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                               <div>
                                 <label className={labelClass}>Tenant name</label>
                                 <input
-                                  list="payer-suggestions"
-                                  value={room.tenantName}
+                                  list={fieldsLocked ? undefined : "payer-suggestions"}
+                                  value={isVacant && !isAssigning ? "" : room.tenantName}
                                   onChange={(e) =>
-                                    updateRoom(room.id, { tenantName: e.target.value })
+                                    updateRoom(room.id, {
+                                      tenantName: sanitizeTenantNameInput(e.target.value),
+                                    })
                                   }
-                                  placeholder="e.g. John Smith"
-                                  className={inputClass}
+                                  disabled={fieldsLocked}
+                                  placeholder={
+                                    isVacant && !isAssigning ? "No tenant yet" : "e.g. John Smith"
+                                  }
+                                  className={`${inputClass} disabled:cursor-not-allowed disabled:text-gray-400`}
                                 />
                               </div>
                               <div>
-                                <label className={labelClass}>Monthly rent (£)</label>
+                                <label className={labelClass}>
+                                  {isVacant && !isAssigning
+                                    ? "Expected rent (£)"
+                                    : "Monthly rent (£)"}
+                                </label>
                                 <input
                                   value={room.rent}
                                   onChange={(e) =>
@@ -681,42 +1013,55 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                       rent: sanitizeRentInput(e.target.value),
                                     })
                                   }
-                                  placeholder="e.g. 650"
-                                  className={inputClass}
-                                />
-                              </div>
-                              <div>
-                                <label className={labelClass}>Due day</label>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={31}
-                                  value={room.dueOn}
-                                  onChange={(e) =>
-                                    updateRoom(room.id, {
-                                      dueOn: Math.min(
-                                        31,
-                                        Math.max(1, Number(e.target.value) || 1)
-                                      ),
-                                    })
+                                  disabled={isExisting && !isAssigning}
+                                  placeholder={
+                                    isVacant && !isAssigning ? "Optional" : "e.g. 650"
                                   }
-                                  className={inputClass}
+                                  className={`${inputClass} disabled:cursor-not-allowed disabled:text-gray-400`}
                                 />
                               </div>
                               <div>
                                 <label className={labelClass}>Move-in date</label>
                                 <input
                                   type="date"
-                                  value={room.moveInDate}
+                                  value={
+                                    isVacant && !isAssigning ? "" : room.moveInDate
+                                  }
                                   onChange={(e) =>
                                     updateRoom(room.id, { moveInDate: e.target.value })
                                   }
-                                  className={`${inputClass} [color-scheme:dark]`}
+                                  disabled={fieldsLocked}
+                                  className={`${inputClass} [color-scheme:dark] disabled:cursor-not-allowed disabled:text-gray-400`}
                                 />
+                              </div>
+                              <div>
+                                <label className={labelClass}>Due day</label>
+                                <select
+                                  value={clampDueOn(room.dueOn, room.moveInDate)}
+                                  onChange={(e) =>
+                                    updateRoom(room.id, {
+                                      dueOn: Number(e.target.value) || 1,
+                                    })
+                                  }
+                                  disabled={fieldsLocked}
+                                  className={`${inputClass} [color-scheme:dark] disabled:cursor-not-allowed disabled:text-gray-400`}
+                                >
+                                  {dueDayOptions(room.moveInDate).map((day) => (
+                                    <option key={day} value={day} className="bg-[#0a0a0a] text-white">
+                                      {day}
+                                    </option>
+                                  ))}
+                                </select>
+                                {!fieldsLocked && !room.moveInDate && (
+                                  <p className="mt-1 text-[11px] text-gray-500">
+                                    Select a move-in date to limit days for that month.
+                                  </p>
+                                )}
                               </div>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
 
@@ -725,31 +1070,70 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                         <option key={s} value={s} />
                       ))}
                     </datalist>
-
-                    <div className="mt-6 flex items-center justify-between">
-                <button
-                  type="button"
-                        onClick={() => setStep(addingToExisting ? 1 : 2)}
-                        className="rounded-lg border border-[#2a2a2a] px-4 py-2.5 text-sm text-gray-300 transition hover:bg-white/5"
-                >
-                        Back
-                </button>
-                <button
-                        type="button"
-                        disabled={!validateStep3() || createMutation.isPending}
-                        onClick={handleSubmit}
-                        className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {createMutation.isPending
-                          ? "Adding..."
-                          : addingToExisting
-                            ? "Add room"
-                            : "Add property"}
-                </button>
-                    </div>
                   </section>
                 )}
+                </div>
               </div>
+            </div>
+
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[#1a1a1a] bg-[#0c0c0c] px-5 py-4 sm:px-8">
+              {step === 1 ? (
+                <>
+                  <span />
+                  <button
+                    type="button"
+                    disabled={!canContinueStep1}
+                    onClick={goFromStep1}
+                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {propertyMode === "existing" ? "Add room" : "Continue"}{" "}
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </>
+              ) : step === 2 ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="rounded-lg border border-[#2a2a2a] px-4 py-2.5 text-sm text-gray-300 transition hover:bg-white/5"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canContinueStep2}
+                    onClick={() => {
+                      if (tenancyType === "hmo") setRooms([newRoom(1)]);
+                      setStep(3);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
+                  >
+                    Continue <ChevronRight className="h-4 w-4" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setStep(addingToExisting ? 1 : 2)}
+                    className="rounded-lg border border-[#2a2a2a] px-4 py-2.5 text-sm text-gray-300 transition hover:bg-white/5"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!validateStep3() || createMutation.isPending}
+                    onClick={handleSubmit}
+                    className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {createMutation.isPending
+                      ? "Adding..."
+                      : addingToExisting
+                        ? "Add room"
+                        : "Add property"}
+                  </button>
+                </>
+              )}
             </div>
           </motion.div>
         </motion.div>

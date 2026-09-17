@@ -1,8 +1,23 @@
 import apiClient from "./api-client";
 
-export async function getUnreconciledTransactions() {
-  const res = await apiClient.get(`/transactions/unreconciled`);
-  console.log("Unreconciled Transactions:", res.data);
+export async function getUnreconciledTransactions(
+  params: { page?: number; limit?: number; search?: string } = {}
+) {
+  const res = await apiClient.get(`/transactions/unreconciled`, {
+    params: {
+      page: params.page ?? 1,
+      limit: params.limit ?? 20,
+      ...(params.search?.trim() ? { search: params.search.trim() } : {}),
+    },
+  });
+  return res.data;
+}
+
+/** Unreconciled bank txs scored for a tenant (same match reasons as Transactions page). */
+export async function getTransactionsMatchingTenant(tenantId: string, limit = 200) {
+  const res = await apiClient.get(`/transactions/match-tenant`, {
+    params: { tenantId, limit },
+  });
   return res.data;
 }
 

@@ -1,11 +1,32 @@
 "use client";
 
-import { Search, Plus, X, DollarSign, Pencil, Trash2 } from "lucide-react";
+import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info } from "lucide-react";
 import { useState } from "react";
 import NewTenantModal from "@/components/user/new-tenant-modal";
-import usePayByCash, { useEndTenancy, useTenants, useUpdateTenant } from "@/hooks/usetenants";
+import usePayByCash, {
+  useAssignTenant,
+  useEndTenancy,
+  useTenants,
+  useUnreconcileRent,
+  useUpdateTenant,
+} from "@/hooks/usetenants";
+import { useReconcileTransaction } from "@/hooks/useTransactions";
+import { getRentEntryPayment } from "@/lib/api/tenantsApi";
+import { getTransactionsMatchingTenant } from "@/lib/api/transactionApi";
+import toast from "react-hot-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuthUser } from "@/redux/useAuthUser";
 
 export default function TenantsPage() {
+  /** Letters, spaces, hyphens, apostrophes only — no digits or other symbols. */
+  const sanitizeTenantNameInput = (value: string) =>
+    value.replace(/[^\p{L}\s'-]/gu, "");
+
+  const isValidTenantName = (value: string) => {
+    const trimmed = value.trim();
+    return trimmed.length > 0 && /^[\p{L}]+(?:[\s'-][\p{L}]+)*$/u.test(trimmed);
+  };
+
   const normalizeTenantNames = (value: any): string[] => {
     if (Array.isArray(value)) {
       return value
@@ -22,6 +43,10 @@ export default function TenantsPage() {
   };
 
   const getTenantDisplayName = (tenant: any) => {
+    if (tenant?.tenancyStatus === "vacant") {
+      const room = tenant?.room ? String(tenant.room).trim() : "Room";
+      return `${room} (Vacant)`;
+    }
     const names = normalizeTenantNames(tenant?.tenantName ?? tenant?.name);
     return names.length > 0 ? names.join(", ") : "Tenant";
   };
@@ -41,6 +66,13 @@ export default function TenantsPage() {
 
   /** Positive = overpaid credit; negative = underpaid / owes. */
   const getBalanceSummary = (tenant: any) => {
+    if (tenant?.tenancyStatus === "vacant") {
+      return {
+        label: "Vacant",
+        amount: formatMoney(0),
+        className: "border-amber-800/60 bg-amber-950/30 text-amber-300",
+      };
+    }
     const balance = Number(tenant?.currentBalance) || 0;
 
     if (balance > 0) {
@@ -68,6 +100,7 @@ export default function TenantsPage() {
 
   /** Remaining unpaid amount across rentHistory entries. */
   const getRemainingAmount = (tenant: any) => {
+    if (tenant?.tenancyStatus === "vacant") return 0;
     const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
     const fromHistory = history.reduce((sum: number, entry: any) => {
       const due = Number(entry?.amountDue) || 0;
@@ -86,10 +119,17 @@ export default function TenantsPage() {
 
   /**
    * Derive display status from rentHistory:
+   * - Vacant when room has no occupant
    * - Paid when nothing is owed
    * - Unpaid / Partial only when at least one month still has remaining due
    */
-  const getEffectiveStatus = (tenant: any): { key: "Paid" | "Unpaid" | "Partial"; label: string } => {
+  const getEffectiveStatus = (
+    tenant: any
+  ): { key: "Paid" | "Unpaid" | "Partial" | "Vacant"; label: string } => {
+    if (tenant?.tenancyStatus === "vacant") {
+      return { key: "Vacant", label: "Vacant" };
+    }
+
     const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
     const remaining = getRemainingAmount(tenant);
 
@@ -126,17 +166,47 @@ export default function TenantsPage() {
   const [newTenantOpen, setNewTenantOpen] = useState(false);
   const [transactionModalOpen, setTransactionModalOpen] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
-  const [pendingCash, setPendingCash] = useState<any | null>(null);
+  const [pendingCash, setPendingCash] = useState<{
+    index: number;
+    entry: any;
+    cashAmount: string;
+  } | null>(null);
   const [editTenantOpen, setEditTenantOpen] = useState(false);
   const [editTenantNames, setEditTenantNames] = useState<string[]>([]);
   const [currentEditName, setCurrentEditName] = useState("");
+  const [editRoom, setEditRoom] = useState("");
+  const [editMoveIn, setEditMoveIn] = useState("");
+  const [editDueOn, setEditDueOn] = useState(1);
   const [editConfirmationOpen, setEditConfirmationOpen] = useState(false);
   const [endTenancyOpen, setEndTenancyOpen] = useState(false);
+  const [paymentReview, setPaymentReview] = useState<{
+    index: number;
+    entry: any;
+    loading: boolean;
+    linkedTransactions: any[];
+    paymentMethod: string;
+  } | null>(null);
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [reconcileLoading, setReconcileLoading] = useState(false);
+  const [matchingTxs, setMatchingTxs] = useState<any[]>([]);
+  const [reconcileSearch, setReconcileSearch] = useState("");
+  const [pendingBankReconcile, setPendingBankReconcile] = useState<any | null>(null);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignName, setAssignName] = useState("");
+  const [assignRent, setAssignRent] = useState("");
+  const [assignDueOn, setAssignDueOn] = useState(1);
+  const [assignMoveIn, setAssignMoveIn] = useState("");
 
   const { data, isLoading, isError } = useTenants();
   const payByCashMutation = usePayByCash();
   const updateTenantMutation = useUpdateTenant();
+  const assignTenantMutation = useAssignTenant();
   const endTenancyMutation = useEndTenancy();
+  const unreconcileMutation = useUnreconcileRent();
+  const reconcileMutation = useReconcileTransaction();
+  const qc = useQueryClient();
+  const authUser = useAuthUser();
+  const userId = authUser?.id || authUser?._id || authUser?.userId;
 
   const tenantsFromApi = data?.data ?? [];
 
@@ -144,19 +214,28 @@ export default function TenantsPage() {
     Paid: "bg-green-900/40 text-green-400 border-green-700/60",
     Unpaid: "bg-red-900/40 text-red-400 border-red-700/60",
     Partial: "bg-yellow-900/40 text-yellow-400 border-yellow-700/60",
+    Vacant: "bg-amber-900/40 text-amber-300 border-amber-700/60",
   };
 
-  const filtered = tenantsFromApi.filter((t: any) =>
-    getTenantDisplayName(t).toLowerCase().includes(search.toLowerCase()) ||
-    (t.property || "").toLowerCase().includes(search.toLowerCase()) ||
-    (t.room || "").toLowerCase().includes(search.toLowerCase()) ||
-    (t.propertyName || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = tenantsFromApi
+    .filter((t: any) => t.tenancyStatus !== "vacant")
+    .filter(
+      (t: any) =>
+        getTenantDisplayName(t).toLowerCase().includes(search.toLowerCase()) ||
+        (t.property || "").toLowerCase().includes(search.toLowerCase()) ||
+        (t.room || "").toLowerCase().includes(search.toLowerCase()) ||
+        (t.propertyName || "").toLowerCase().includes(search.toLowerCase())
+    );
 
   const closeTransactionModal = () => {
     setTransactionModalOpen(false);
     setPendingCash(null);
     setSelectedTenant(null);
+    setReconcileOpen(false);
+    setMatchingTxs([]);
+    setReconcileSearch("");
+    setPendingBankReconcile(null);
+    setPaymentReview(null);
   };
 
   const openTenantDetails = (tenant: any) => {
@@ -174,13 +253,107 @@ export default function TenantsPage() {
     new Set(draftEditNames.map((name) => name.trim()).filter(Boolean))
   );
 
+  const tenantHasPayments = (tenant: any) =>
+    (Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : []).some((h: any) => {
+      if (!h) return false;
+      if ((Number(h.amountPaid) || 0) > 0) return true;
+      if ((h.linkedTransactionIds || []).length > 0) return true;
+      if ((h.linkedPayments || []).length > 0) return true;
+      if (h.paymentMethod && h.paymentMethod !== "none") return true;
+      return false;
+    });
+
+  const canEditScheduleFields = (tenant: any) =>
+    Boolean(tenant) && tenant.tenancyStatus !== "vacant" && !tenantHasPayments(tenant);
+
+  const showRoomEditField = (tenant: any) =>
+    Boolean(tenant) &&
+    (tenant.tenancyStatus === "vacant" ||
+      Boolean(String(tenant.room || "").trim()) ||
+      String(tenant.tenancyType || "").toLowerCase() === "hmo");
+
   const openEditTenantModal = () => {
     if (!selectedTenant) return;
-    setEditTenantNames(normalizeTenantNames(selectedTenant.tenantName));
+    const isVacant = selectedTenant.tenancyStatus === "vacant";
+    setEditTenantNames(isVacant ? [] : normalizeTenantNames(selectedTenant.tenantName));
     setCurrentEditName("");
+    setEditRoom(String(selectedTenant.room || "").trim());
+    setEditMoveIn(
+      selectedTenant.moveInDate
+        ? new Date(selectedTenant.moveInDate).toISOString().slice(0, 10)
+        : ""
+    );
+    setEditDueOn(Number(selectedTenant.dueOn) || 1);
     setEditConfirmationOpen(false);
     setEditTenantOpen(true);
     setTransactionModalOpen(false);
+  };
+
+  const openAssignModal = () => {
+    if (!selectedTenant || selectedTenant.tenancyStatus !== "vacant") return;
+    setAssignName("");
+    setAssignRent(
+      selectedTenant.rent != null && Number(selectedTenant.rent) > 0
+        ? String(selectedTenant.rent)
+        : ""
+    );
+    setAssignDueOn(Number(selectedTenant.dueOn) || 1);
+    setAssignMoveIn(new Date().toISOString().slice(0, 10));
+    setAssignOpen(true);
+    setTransactionModalOpen(false);
+  };
+
+  const closeAssignModal = ({ reopenDetails = true }: { reopenDetails?: boolean } = {}) => {
+    setAssignOpen(false);
+    setAssignName("");
+    setAssignRent("");
+    setAssignDueOn(1);
+    setAssignMoveIn("");
+    if (reopenDetails && selectedTenant) {
+      setTransactionModalOpen(true);
+    }
+  };
+
+  const confirmAssignTenant = () => {
+    if (!selectedTenant) return;
+    const name = sanitizeTenantNameInput(assignName).trim().replace(/\s+/g, " ");
+    if (!isValidTenantName(name)) {
+      toast.error("Enter a valid tenant name (letters only).");
+      return;
+    }
+    const rentNum = Number(assignRent);
+    if (!Number.isFinite(rentNum) || rentNum <= 0) {
+      toast.error("Enter a positive monthly rent.");
+      return;
+    }
+    if (!assignMoveIn) {
+      toast.error("Select a move-in date.");
+      return;
+    }
+
+    assignTenantMutation.mutate(
+      {
+        tenantId: selectedTenant._id,
+        payload: {
+          tenantName: [name],
+          rent: rentNum,
+          dueOn: assignDueOn,
+          moveInDate: assignMoveIn,
+        },
+      },
+      {
+        onSuccess: (res) => {
+          const updated = res?.data || null;
+          setAssignOpen(false);
+          if (updated) {
+            setSelectedTenant(updated);
+            setTransactionModalOpen(true);
+          } else {
+            setSelectedTenant(null);
+          }
+        },
+      }
+    );
   };
 
   const closeEditTenantModal = ({ reopenDetails = true }: { reopenDetails?: boolean } = {}) => {
@@ -188,6 +361,9 @@ export default function TenantsPage() {
     setEditConfirmationOpen(false);
     setEditTenantNames([]);
     setCurrentEditName("");
+    setEditRoom("");
+    setEditMoveIn("");
+    setEditDueOn(1);
 
     if (reopenDetails && selectedTenant) {
       setTransactionModalOpen(true);
@@ -195,25 +371,70 @@ export default function TenantsPage() {
   };
 
   const addEditName = () => {
-    const trimmedName = currentEditName.trim();
+    const trimmedName = currentEditName.trim().replace(/\s+/g, " ");
     if (!trimmedName) return;
+    if (!isValidTenantName(trimmedName)) {
+      toast.error("Tenant names can only contain letters, spaces, hyphens, and apostrophes.");
+      return;
+    }
     setEditTenantNames((prev) => [...prev, trimmedName]);
     setCurrentEditName("");
   };
 
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (finalEditNames.length === 0) return;
+    if (!selectedTenant) return;
+    const isVacant = selectedTenant.tenancyStatus === "vacant";
+
+    if (!isVacant) {
+      if (finalEditNames.length === 0) {
+        toast.error("Add at least one tenant name.");
+        return;
+      }
+      if (finalEditNames.some((name) => !isValidTenantName(name))) {
+        toast.error("Tenant names can only contain letters, spaces, hyphens, and apostrophes.");
+        return;
+      }
+    }
+
+    if (showRoomEditField(selectedTenant) && !editRoom.trim()) {
+      toast.error("Room label is required.");
+      return;
+    }
+
     setEditConfirmationOpen(true);
   };
 
   const confirmTenantEdit = () => {
-    if (!selectedTenant || finalEditNames.length === 0) return;
+    if (!selectedTenant) return;
+    const isVacant = selectedTenant.tenancyStatus === "vacant";
+    if (!isVacant && finalEditNames.length === 0) return;
+
+    const payload: {
+      tenantName?: string[];
+      room?: string;
+      moveInDate?: string | null;
+      dueOn?: number;
+    } = {};
+    if (!isVacant) payload.tenantName = finalEditNames;
+    if (showRoomEditField(selectedTenant)) payload.room = editRoom.trim();
+    if (canEditScheduleFields(selectedTenant)) {
+      const prevMoveIn = selectedTenant.moveInDate
+        ? new Date(selectedTenant.moveInDate).toISOString().slice(0, 10)
+        : "";
+      if ((editMoveIn || "") !== prevMoveIn) {
+        payload.moveInDate = editMoveIn || null;
+      }
+      const prevDueOn = Number(selectedTenant.dueOn) || 1;
+      if (editDueOn !== prevDueOn) {
+        payload.dueOn = editDueOn;
+      }
+    }
 
     updateTenantMutation.mutate(
       {
         tenantId: selectedTenant._id,
-        payload: { tenantName: finalEditNames },
+        payload,
       },
       {
         onSuccess: (res) => {
@@ -242,6 +463,122 @@ export default function TenantsPage() {
         onSuccess: () => {
           setEndTenancyOpen(false);
           closeTransactionModal();
+        },
+      }
+    );
+  };
+
+  const hasRecordedPayment = (entry: any) => {
+    const paid = Number(entry?.amountPaid) || 0;
+    const method = String(entry?.paymentMethod || "none").toLowerCase();
+    return paid > 0 || method === "bank" || method === "cash";
+  };
+
+  const openPaymentReview = async (index: number, entry: any) => {
+    if (!selectedTenant || !hasRecordedPayment(entry)) return;
+    setPaymentReview({
+      index,
+      entry,
+      loading: true,
+      linkedTransactions: [],
+      paymentMethod: entry.paymentMethod || "none",
+    });
+    try {
+      const res = await getRentEntryPayment(selectedTenant._id, { index });
+      const data = res?.data || {};
+      setPaymentReview({
+        index: data.index ?? index,
+        entry: data.entry || entry,
+        loading: false,
+        linkedTransactions: Array.isArray(data.linkedTransactions) ? data.linkedTransactions : [],
+        paymentMethod: data.paymentMethod || entry.paymentMethod || "none",
+      });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Could not load payment details");
+      setPaymentReview(null);
+    }
+  };
+
+  const confirmReversePayment = () => {
+    if (!selectedTenant || !paymentReview) return;
+    unreconcileMutation.mutate(
+      {
+        tenantId: selectedTenant._id,
+        payload: { index: paymentReview.index },
+      },
+      {
+        onSuccess: (res) => {
+          const updatedTenant = res?.data?.tenant || null;
+          if (updatedTenant) setSelectedTenant(updatedTenant);
+          setPaymentReview(null);
+        },
+      }
+    );
+  };
+
+  const openReconcilePanel = async () => {
+    if (!selectedTenant) return;
+
+    setReconcileOpen(true);
+    setReconcileLoading(true);
+    setMatchingTxs([]);
+    setReconcileSearch("");
+    try {
+      const res = await getTransactionsMatchingTenant(selectedTenant._id);
+      const docs = res?.data?.docs ?? [];
+      setMatchingTxs(Array.isArray(docs) ? docs : []);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Could not load matching transactions");
+      setReconcileOpen(false);
+    } finally {
+      setReconcileLoading(false);
+    }
+  };
+
+  const formatMatchReason = (reason: string | null | undefined) => {
+    if (!reason) return "Needs review";
+    const map: Record<string, string> = {
+      amount_exact_and_name: "Name + exact amount",
+      amount_exact_total_arrears_and_name: "Name + clears all arrears",
+      amount_gte_and_name: "Name + amount covers due",
+      amount_partial_and_name: "Name + partial amount",
+      name_only: "Name match only",
+      ambiguous_name_match: "Ambiguous tenant name",
+      amount_exact_no_name: "Exact amount (no name match)",
+      amount_exact_total_no_name: "Exact total arrears (no name)",
+      amount_equals_rent_no_name: "Equals rent (no name match)",
+      amount_gte_no_name: "Amount covers due (no name)",
+      amount_gte_rent_no_name: "Amount ≥ rent (no name)",
+    };
+    return map[reason] || reason.replace(/_/g, " ");
+  };
+
+  const confirmBankReconcile = () => {
+    if (!selectedTenant || !pendingBankReconcile) return;
+    const transactionId = pendingBankReconcile.transaction?.transactionId || pendingBankReconcile.transactionId;
+    if (!transactionId) {
+      toast.error("Missing transaction id");
+      return;
+    }
+
+    reconcileMutation.mutate(
+      { tenantId: selectedTenant._id, transactionId },
+      {
+        onSuccess: (res: any) => {
+          const updatedTenant = res?.data?.tenant || res?.tenant || null;
+          if (updatedTenant) setSelectedTenant(updatedTenant);
+          setPendingBankReconcile(null);
+          setMatchingTxs((prev) =>
+            prev.filter(
+              (row) =>
+                (row.transaction?.transactionId || row.transactionId) !== transactionId
+            )
+          );
+          qc.invalidateQueries({ queryKey: ["tenants", userId] });
+          toast.success("Transaction reconciled");
+        },
+        onError: (err: any) => {
+          toast.error(err?.response?.data?.message || "Failed to reconcile");
         },
       }
     );
@@ -332,7 +669,11 @@ export default function TenantsPage() {
           }} className="my-4 max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-semibold">{getTenantDisplayName(selectedTenant)} — Transaction History</h3>
+                <h3 className="text-lg font-semibold">
+                  {selectedTenant.tenancyStatus === "vacant"
+                    ? `${selectedTenant.room || "Room"} — Vacant`
+                    : `${getTenantDisplayName(selectedTenant)} — Transaction History`}
+                </h3>
                 <p className="text-sm text-gray-400">{getPropertyDisplay(selectedTenant)}</p>
               </div>
               <button onClick={closeTransactionModal} className="shrink-0 text-gray-400 hover:text-white">
@@ -340,6 +681,17 @@ export default function TenantsPage() {
               </button>
             </div>
 
+            {selectedTenant.tenancyStatus === "vacant" ? (
+              <div className="mb-4 rounded-xl border border-amber-800/50 bg-amber-950/20 px-4 py-4 text-sm text-amber-100/90">
+                This room is vacant — no rent schedule yet. Assign a tenant when someone moves in.
+                {Number(selectedTenant.rent) > 0 && (
+                  <p className="mt-2 text-amber-200/80">
+                    Expected rent: {formatMoney(Number(selectedTenant.rent))}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
             {(() => {
               const balance = getBalanceSummary(selectedTenant);
               return (
@@ -352,6 +704,24 @@ export default function TenantsPage() {
                 </div>
               );
             })()}
+
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-gray-400">
+                Monthly rent <span className="font-medium text-gray-200">{formatMoney(Number(selectedTenant.rent) || 0)}</span>
+              </p>
+              {getRemainingAmount(selectedTenant) > 0 && (
+                <button
+                  type="button"
+                  onClick={openReconcilePanel}
+                  className="inline-flex items-center gap-2 rounded-full border border-sky-800 px-4 py-2 text-sm text-sky-300 hover:bg-sky-950/40"
+                >
+                  <Link2 className="h-4 w-4" />
+                  Reconcile
+                </button>
+              )}
+            </div>
+              </>
+            )}
 
             <div className="w-full overflow-x-auto rounded-lg border border-[#1a1a1a] bg-[#0B0B0B]">
               <table className="min-w-full text-sm">
@@ -368,11 +738,21 @@ export default function TenantsPage() {
                 </thead>
                 <tbody>
                   {selectedTenant.rentHistory?.length ? (
-                    selectedTenant.rentHistory.map((entry: any, index: number) => (
-                      <tr key={entry._id || index} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
+                    selectedTenant.rentHistory.map((entry: any, index: number) => {
+                      const remaining =
+                        (Number(entry.amountDue) || 0) - (Number(entry.amountPaid) || 0);
+                      const recorded = hasRecordedPayment(entry);
+                      return (
+                      <tr
+                        key={entry._id || index}
+                        className={`border-t border-[#151515] hover:bg-[#0e0e0e] ${recorded ? "cursor-pointer" : ""}`}
+                        onClick={() => {
+                          if (recorded) openPaymentReview(index, entry);
+                        }}
+                      >
                         <td className="px-4 py-3 text-gray-300">{formatDate(entry.month)}</td>
                         <td className="px-4 py-3 text-gray-300">{formatMoney(Number(entry.amountDue) || 0)}</td>
-                        <td className={`px-4 py-3 ${(Number(entry.amountDue) || 0) - (Number(entry.amountPaid) || 0) > 0 ? "text-rose-400" : "text-gray-300"}`}>
+                        <td className={`px-4 py-3 ${remaining > 0 ? "text-rose-400" : "text-gray-300"}`}>
                           {formatMoney(Number(entry.amountPaid) || 0)}
                         </td>
                         <td className="px-4 py-3 text-gray-300">{formatDate(entry.paidOn)}</td>
@@ -383,15 +763,32 @@ export default function TenantsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          {((Number(entry.amountDue) || 0) - (Number(entry.amountPaid) || 0)) > 0 ? (
+                          {remaining > 0 ? (
                             <div className="flex flex-col items-start gap-1">
                               {entry.paymentMethod && entry.paymentMethod !== "none" && (
-                                <span className="text-xs text-gray-500">{entry.paymentMethod}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openPaymentReview(index, entry);
+                                  }}
+                                  className="text-xs text-sky-400 underline-offset-2 hover:underline"
+                                >
+                                  {entry.paymentMethod} · view
+                                </button>
                               )}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setPendingCash({ index, entry });
+                                  const rem = Math.max(
+                                    0,
+                                    (Number(entry.amountDue) || 0) - (Number(entry.amountPaid) || 0)
+                                  );
+                                  setPendingCash({
+                                    index,
+                                    entry,
+                                    cashAmount: String(rem),
+                                  });
                                 }}
                                 className="flex items-center gap-2 rounded-full border border-amber-700 px-3 py-1 text-xs text-amber-400 hover:bg-amber-900/5"
                               >
@@ -399,12 +796,24 @@ export default function TenantsPage() {
                                 Pay By Cash
                               </button>
                             </div>
+                          ) : recorded && entry.paymentMethod && entry.paymentMethod !== "none" ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openPaymentReview(index, entry);
+                              }}
+                              className="rounded-full border border-[#2A2A2A] px-3 py-1 text-xs text-gray-300 hover:bg-white/5"
+                            >
+                              {entry.paymentMethod}
+                            </button>
                           ) : (
-                            <span className="text-xs text-gray-400">{entry.paymentMethod ? (entry.paymentMethod === "none" ? "—" : entry.paymentMethod) : "—"}</span>
+                            <span className="text-xs text-gray-400">—</span>
                           )}
                         </td>
                       </tr>
-                    ))
+                      );
+                    })
                   ) : (
                     <tr>
                       <td colSpan={7} className="py-8 text-center text-gray-400">No rent history found for this tenant.</td>
@@ -417,19 +826,38 @@ export default function TenantsPage() {
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <button
-                  onClick={openEditTenantModal}
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510]"
-                >
-                  <Pencil className="h-4 w-4" />
-                  Edit tenant names
-                </button>
+                {selectedTenant.tenancyStatus === "vacant" ? (
+                  <>
+                    <button
+                      onClick={openAssignModal}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510]"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Assign tenant
+                    </button>
+                    <button
+                      onClick={openEditTenantModal}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510]"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Edit room
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={openEditTenantModal}
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510]"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit tenant
+                  </button>
+                )}
                 <button
                   onClick={openEndTenancyModal}
                   className="inline-flex items-center justify-center gap-2 rounded-full border border-rose-800 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/40"
                 >
                   <Trash2 className="h-4 w-4" />
-                  Remove tenant
+                  {selectedTenant.tenancyStatus === "vacant" ? "Remove room" : "Remove tenant"}
                 </button>
               </div>
 
@@ -441,14 +869,349 @@ export default function TenantsPage() {
         </div>
       )}
 
+      {reconcileOpen && selectedTenant && (
+        <div className="fixed inset-0 z-[9998] flex items-start justify-center overflow-y-auto bg-black/60 p-4 md:items-center md:p-6">
+          <div
+            style={{ scrollbarWidth: "none" }}
+            className="my-4 max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl"
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold">
+                  {getTenantDisplayName(selectedTenant)} — Reconcile
+                </h3>
+                <p className="text-sm text-gray-400">
+                  {getPropertyDisplay(selectedTenant)} · name matches (incl. ambiguous) first, then amount-only
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setReconcileOpen(false);
+                  setReconcileSearch("");
+                }}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative w-full sm:max-w-md">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={reconcileSearch}
+                  onChange={(e) => setReconcileSearch(e.target.value)}
+                  placeholder="Search payer, description, amount..."
+                  className="w-full rounded-lg border border-gray-800 bg-[#0c0c0c] py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                />
+              </div>
+            </div>
+
+            <div className="w-full overflow-x-auto rounded-lg border border-[#1a1a1a] bg-[#0B0B0B]">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
+                    <th className="px-4 py-3 text-xs">Date</th>
+                    <th className="px-4 py-3 text-xs">Payer</th>
+                    <th className="px-4 py-3 text-xs">Amount</th>
+                    <th className="px-4 py-3 text-xs">Match</th>
+                    <th className="px-4 py-3 text-right text-xs">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reconcileLoading ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-gray-400">
+                        Loading matching transactions…
+                      </td>
+                    </tr>
+                  ) : (() => {
+                    const q = reconcileSearch.trim().toLowerCase();
+                    const filteredRows = !q
+                      ? matchingTxs
+                      : matchingTxs.filter((row) => {
+                          const tx = row.transaction || row;
+                          const payer = String(tx.payerName || "").toLowerCase();
+                          const desc = String(tx.description || tx.reference || "").toLowerCase();
+                          const amount = String(tx.amount ?? "");
+                          const reason = String(row.matchReason || "").toLowerCase();
+                          const reasonLabel = formatMatchReason(row.matchReason).toLowerCase();
+                          return (
+                            payer.includes(q) ||
+                            desc.includes(q) ||
+                            amount.includes(q) ||
+                            reason.includes(q) ||
+                            reasonLabel.includes(q)
+                          );
+                        });
+
+                    if (matchingTxs.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-gray-400">
+                            No suggested bank transactions for this tenant.
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    if (filteredRows.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-gray-400">
+                            No transactions match your search.
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return filteredRows.map((row) => {
+                      const tx = row.transaction || row;
+                      const isMatched = row.matchStatus === "matched";
+                      const matchLabel = isMatched ? "Matched" : "Needs Review";
+                      const matchColors: Record<string, string> = {
+                        Matched: "bg-emerald-900/20 text-emerald-400 border-emerald-700",
+                        "Needs Review": "bg-amber-900/20 text-amber-400 border-amber-700",
+                      };
+                      return (
+                        <tr key={tx._id || tx.transactionId} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
+                          <td className="px-4 py-3 text-gray-300">{formatDate(tx.date)}</td>
+                          <td className="px-4 py-3 text-gray-300">
+                            <div className="max-w-[220px] truncate" title={tx.payerName || tx.description || ""}>
+                              {tx.payerName || tx.description || "—"}
+                            </div>
+                            {row.nameMatch ? (
+                              <div className="mt-0.5 text-[10px] text-sky-400/80">Name match</div>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3 text-gray-300">{formatMoney(Number(tx.amount) || 0)}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className={`rounded-full border px-2 py-1 text-xs ${matchColors[matchLabel]}`}>
+                                {matchLabel}
+                              </span>
+                              <div className="group relative inline-block">
+                                <Info className="h-3 w-3 text-gray-400 group-hover:text-gray-200" />
+                                <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-[240px] -translate-x-1/2 whitespace-normal rounded bg-gray-800 px-2 py-1 text-xs text-gray-200 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                                  {formatMatchReason(row.matchReason)}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-1 text-[10px] text-gray-500">
+                              {formatMatchReason(row.matchReason)}
+                              {row.nameMatch ? " · name" : ""}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setPendingBankReconcile(row)}
+                              disabled={reconcileMutation.isPending}
+                              className="inline-flex items-center gap-2 rounded-full border border-emerald-700 bg-transparent px-3 py-1 text-xs text-emerald-400 transition hover:bg-emerald-900/5 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Check className="h-3 w-3" />
+                              <span>Accept</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setReconcileOpen(false);
+                  setReconcileSearch("");
+                }}
+                className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingBankReconcile && selectedTenant && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+            <h3 className="mb-2 text-lg font-semibold">Confirm reconciliation</h3>
+            <p className="mb-3 text-sm text-gray-400">
+              Apply{" "}
+              <span className="text-gray-200">
+                {formatMoney(Number(pendingBankReconcile.transaction?.amount ?? pendingBankReconcile.amount) || 0)}
+              </span>{" "}
+              from{" "}
+              <span className="text-gray-200">
+                {pendingBankReconcile.transaction?.payerName ||
+                  pendingBankReconcile.payerName ||
+                  pendingBankReconcile.transaction?.description ||
+                  "this transaction"}
+              </span>{" "}
+              to <span className="text-gray-200">{getTenantDisplayName(selectedTenant)}</span>?
+            </p>
+            <p className="mb-4 text-xs text-gray-500">
+              {formatMatchReason(pendingBankReconcile.matchReason)}. Clears oldest unpaid / partial months first;
+              leftover rolls to the next month.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setPendingBankReconcile(null)}
+                className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+                disabled={reconcileMutation.isPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmBankReconcile}
+                disabled={reconcileMutation.isPending}
+                className="inline-flex items-center gap-2 rounded-full border border-emerald-700 bg-emerald-900/40 px-4 py-2 text-sm text-emerald-200 hover:bg-emerald-900/60 disabled:opacity-60"
+              >
+                <Check className="h-3.5 w-3.5" />
+                {reconcileMutation.isPending ? "Applying..." : "Accept"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {paymentReview && selectedTenant && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold">Payment details</h3>
+                <p className="text-sm text-gray-400">
+                  {formatDate(paymentReview.entry?.month)} · {String(paymentReview.paymentMethod || "none")}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaymentReview(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 space-y-2 rounded-lg border border-[#111] bg-[#050505] p-3 text-sm">
+              <div className="flex justify-between text-gray-300">
+                <span>Amount due</span>
+                <span>{formatMoney(Number(paymentReview.entry?.amountDue) || 0)}</span>
+              </div>
+              <div className="flex justify-between text-gray-300">
+                <span>Amount paid</span>
+                <span>{formatMoney(Number(paymentReview.entry?.amountPaid) || 0)}</span>
+              </div>
+              <div className="flex justify-between text-gray-300">
+                <span>Paid on</span>
+                <span>{formatDate(paymentReview.entry?.paidOn)}</span>
+              </div>
+              <div className="flex justify-between text-gray-300">
+                <span>Method</span>
+                <span className="capitalize">{paymentReview.paymentMethod || "—"}</span>
+              </div>
+            </div>
+
+            {paymentReview.loading ? (
+              <p className="mb-4 text-sm text-gray-500">Loading linked bank transaction…</p>
+            ) : paymentReview.paymentMethod === "bank" ? (
+              <div className="mb-4">
+                <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
+                  Linked bank transaction
+                  {paymentReview.linkedTransactions.length > 1 ? "s" : ""}
+                </p>
+                {paymentReview.linkedTransactions.length === 0 ? (
+                  <p className="rounded-lg border border-[#1a1a1a] px-3 py-3 text-sm text-gray-500">
+                    No linked bank transaction found for this month (it may have been cleared already).
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {paymentReview.linkedTransactions.map((tx: any) => {
+                      const bankAmount = Math.abs(Number(tx.bankAmount ?? tx.amount) || 0);
+                      const allocated =
+                        tx.allocatedAmount != null && Number.isFinite(Number(tx.allocatedAmount))
+                          ? Number(tx.allocatedAmount)
+                          : null;
+                      return (
+                        <div
+                          key={tx._id || tx.transactionId}
+                          className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3 text-sm"
+                        >
+                          <div className="flex justify-between gap-3 text-gray-200">
+                            <span className="font-medium">
+                              {tx.payerName || tx.description || "Bank payment"}
+                            </span>
+                            <span>{formatMoney(allocated != null ? allocated : bankAmount)}</span>
+                          </div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            {formatDate(tx.date)}
+                            {allocated != null && allocated < bankAmount - 0.001
+                              ? ` · applied to this month of ${formatMoney(bankAmount)} bank payment`
+                              : bankAmount
+                                ? ` · bank ${formatMoney(bankAmount)}`
+                                : ""}
+                            {tx.description ? ` · ${tx.description}` : ""}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="mt-2 text-[11px] text-gray-500">
+                  Bank payments are split across unpaid months oldest-first. Leftover from a payment rolls to the next
+                  month — only the amount used for this month is shown above.
+                </p>
+              </div>
+            ) : (
+              <p className="mb-4 text-sm text-gray-400">
+                This month was marked paid in <strong className="text-gray-200">cash</strong>. Reversing will set it
+                back to unpaid so you can re-enter cash (full or leave it for bank match).
+              </p>
+            )}
+
+            <p className="mb-4 text-xs text-gray-500">
+              Reverse undoes this month&apos;s bank payment(s). Linked bank transactions are fully released back to
+              the Transactions list (including any split used on other months), and the balance is recalculated.
+            </p>
+
+            <div className="flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setPaymentReview(null)}
+                className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+                disabled={unreconcileMutation.isPending}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={confirmReversePayment}
+                disabled={unreconcileMutation.isPending}
+                className="rounded-full border border-rose-700 bg-rose-900/40 px-4 py-2 text-sm text-rose-200 hover:bg-rose-900/60 disabled:opacity-60"
+              >
+                {unreconcileMutation.isPending ? "Reversing..." : "Reverse payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {pendingCash && selectedTenant && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
           <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <h3 className="mb-2 text-lg font-semibold">Confirm Cash Payment</h3>
             <p className="mb-4 text-sm text-gray-400">
-              {((Number(pendingCash.entry.amountDue) || 0) - (Number(pendingCash.entry.amountPaid) || 0)) < (Number(pendingCash.entry.amountDue) || 0)
-                ? <>Mark the <strong>remaining</strong> balance as paid in <strong>cash</strong>?</>
-                : <>Mark this rent as paid in <strong>cash</strong>?</>}
+              Enter how much was paid in <strong>cash</strong> (full remaining or a partial amount).
             </p>
 
             <div className="mb-4 rounded-lg border border-[#111] bg-[#050505] p-3">
@@ -477,11 +1240,37 @@ export default function TenantsPage() {
               </div>
             </div>
 
+            <label className="mb-1 block text-sm text-gray-300">Cash amount</label>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={pendingCash.cashAmount}
+              onChange={(e) =>
+                setPendingCash((prev) => (prev ? { ...prev, cashAmount: e.target.value } : prev))
+              }
+              className="mb-4 w-full rounded-lg border border-gray-800 bg-[#050505] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-700"
+            />
+
             <div className="flex justify-end gap-3">
               <button onClick={() => setPendingCash(null)} className="rounded-full border px-4 py-2 text-sm text-gray-300 hover:bg-white/5">Cancel</button>
               <button
                 onClick={() => {
-                  const payload: any = { index: pendingCash.index };
+                  const remaining = Math.max(
+                    0,
+                    (Number(pendingCash.entry.amountDue) || 0) - (Number(pendingCash.entry.amountPaid) || 0)
+                  );
+                  const amount = Number(pendingCash.cashAmount);
+                  if (!Number.isFinite(amount) || amount <= 0) {
+                    toast.error("Enter a valid cash amount");
+                    return;
+                  }
+                  if (amount > remaining + 0.001) {
+                    toast.error("Amount cannot exceed remaining due");
+                    return;
+                  }
+
+                  const payload: any = { index: pendingCash.index, amount };
                   if (pendingCash.entry.month) {
                     payload.month = new Date(pendingCash.entry.month).toISOString();
                   }
@@ -509,13 +1298,17 @@ export default function TenantsPage() {
       {endTenancyOpen && selectedTenant && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
-            <h3 className="mb-2 text-lg font-semibold">Remove tenant?</h3>
+            <h3 className="mb-2 text-lg font-semibold">
+              {selectedTenant.tenancyStatus === "vacant" ? "Remove vacant room?" : "Remove tenant?"}
+            </h3>
             <p className="mb-3 text-sm text-gray-400">
               <span className="text-gray-200">{getTenantDisplayName(selectedTenant)}</span> will be removed from your
               active tenants list for <span className="text-gray-200">{getPropertyDisplay(selectedTenant)}</span>.
             </p>
             <p className="mb-5 text-sm text-gray-500">
-              Payment and occupancy history are kept so you can later see who lived at this property.
+              {selectedTenant.tenancyStatus === "vacant"
+                ? "This vacant placeholder will be closed."
+                : "Payment and occupancy history are kept so you can later see who lived at this property."}
             </p>
             <div className="flex justify-end gap-3">
               <button
@@ -539,12 +1332,107 @@ export default function TenantsPage() {
         </div>
       )}
 
+      {assignOpen && selectedTenant && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
+          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Assign tenant</h3>
+                <p className="text-sm text-gray-400">{getPropertyDisplay(selectedTenant)}</p>
+              </div>
+              <button onClick={() => closeAssignModal()} className="text-gray-400 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm text-gray-200">Tenant name</label>
+                <input
+                  value={assignName}
+                  onChange={(e) => setAssignName(sanitizeTenantNameInput(e.target.value))}
+                  placeholder="e.g. John Smith"
+                  className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-gray-200">Monthly rent (£)</label>
+                <input
+                  value={assignRent}
+                  onChange={(e) => setAssignRent(e.target.value.replace(/[^0-9.]/g, ""))}
+                  placeholder="e.g. 650"
+                  className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-gray-200">Move-in date</label>
+                <input
+                  type="date"
+                  value={assignMoveIn}
+                  onChange={(e) => {
+                    const moveIn = e.target.value;
+                    setAssignMoveIn(moveIn);
+                    if (moveIn && /^\d{4}-\d{2}-\d{2}$/.test(moveIn)) {
+                      const [y, m] = moveIn.split("-").map(Number);
+                      const maxDay = new Date(y, m, 0).getDate();
+                      setAssignDueOn((d) => Math.min(d, maxDay));
+                    }
+                  }}
+                  className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-gray-200">Due day</label>
+                <select
+                  value={assignDueOn}
+                  onChange={(e) => setAssignDueOn(Number(e.target.value) || 1)}
+                  className="w-full rounded-lg border border-[#2A2A2A] bg-[#111] px-3 py-2 text-sm text-gray-100 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700"
+                >
+                  {(() => {
+                    let max = 31;
+                    if (assignMoveIn && /^\d{4}-\d{2}-\d{2}$/.test(assignMoveIn)) {
+                      const [y, m] = assignMoveIn.split("-").map(Number);
+                      max = new Date(y, m, 0).getDate();
+                    }
+                    return Array.from({ length: max }, (_, i) => i + 1).map((day) => (
+                      <option key={day} value={day} className="bg-[#111] text-gray-100">
+                        {day}
+                      </option>
+                    ));
+                  })()}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => closeAssignModal()}
+                className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmAssignTenant}
+                disabled={assignTenantMutation.isPending}
+                className="rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510] disabled:opacity-50"
+              >
+                {assignTenantMutation.isPending ? "Assigning..." : "Assign tenant"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editTenantOpen && selectedTenant && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
           <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <div className="mb-4 flex items-start justify-between">
               <div>
-                <h3 className="text-lg font-semibold">Edit tenant names</h3>
+                <h3 className="text-lg font-semibold">
+                  {selectedTenant.tenancyStatus === "vacant" ? "Edit room" : "Edit tenant"}
+                </h3>
                 <p className="text-sm text-gray-400">{getPropertyDisplay(selectedTenant)}</p>
               </div>
               <button onClick={() => closeEditTenantModal()} className="text-gray-400 hover:text-white">
@@ -553,50 +1441,120 @@ export default function TenantsPage() {
             </div>
 
             <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm text-gray-200">Tenant name(s)</label>
-                <div className="mb-2 flex gap-2">
+              {selectedTenant.tenancyStatus !== "vacant" && (
+                <div>
+                  <label className="mb-1 block text-sm text-gray-200">Tenant name(s)</label>
+                  <div className="mb-2 flex gap-2">
+                    <input
+                      value={currentEditName}
+                      onChange={(e) => setCurrentEditName(sanitizeTenantNameInput(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addEditName();
+                        }
+                      }}
+                      className="flex-1 rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                      placeholder="Type a name and press Enter or click Add"
+                    />
+                    <button
+                      type="button"
+                      onClick={addEditName}
+                      className="rounded-full border border-emerald-700 px-3 py-2 text-sm text-emerald-300 hover:bg-[#0b1510]"
+                    >
+                      Add
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {editTenantNames.map((name, index) => (
+                      <div key={`${name}-${index}`} className="flex items-center gap-2 rounded-full border border-[#222] bg-[#0b0b0b] px-3 py-1 text-sm">
+                        <span className="text-gray-200">{name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setEditTenantNames((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+                          className="text-gray-400 hover:text-white"
+                          aria-label={`Remove ${name}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {editTenantNames.length === 0 && !currentEditName.trim() && (
+                    <p className="mt-2 text-xs text-amber-400">Add at least one tenant name before saving.</p>
+                  )}
+                  <p className="mt-2 text-xs text-gray-500">Letters only — numbers and special characters are not allowed.</p>
+                </div>
+              )}
+
+              {showRoomEditField(selectedTenant) && (
+                <div>
+                  <label className="mb-1 block text-sm text-gray-200">Room</label>
                   <input
-                    value={currentEditName}
-                    onChange={(e) => setCurrentEditName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addEditName();
-                      }
-                    }}
-                    className="flex-1 rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                    placeholder="Type a name and press Enter or click Add"
+                    value={editRoom}
+                    onChange={(e) => setEditRoom(e.target.value)}
+                    className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                    placeholder="e.g. Room 3"
                   />
-                  <button
-                    type="button"
-                    onClick={addEditName}
-                    className="rounded-full border border-emerald-700 px-3 py-2 text-sm text-emerald-300 hover:bg-[#0b1510]"
-                  >
-                    Add
-                  </button>
+                  <p className="mt-1 text-xs text-gray-500">Must be unique on this property among active and vacant units.</p>
                 </div>
+              )}
 
-                <div className="flex flex-wrap gap-2">
-                  {editTenantNames.map((name, index) => (
-                    <div key={`${name}-${index}`} className="flex items-center gap-2 rounded-full border border-[#222] bg-[#0b0b0b] px-3 py-1 text-sm">
-                      <span className="text-gray-200">{name}</span>
-                      <button
-                        type="button"
-                        onClick={() => setEditTenantNames((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
-                        className="text-gray-400 hover:text-white"
-                        aria-label={`Remove ${name}`}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
+              {selectedTenant.tenancyStatus !== "vacant" && (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm text-gray-200">Move-in date</label>
+                    <input
+                      type="date"
+                      value={editMoveIn}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setEditMoveIn(next);
+                        if (next && /^\d{4}-\d{2}-\d{2}$/.test(next)) {
+                          const [y, m] = next.split("-").map(Number);
+                          const maxDay = new Date(y, m, 0).getDate();
+                          setEditDueOn((d) => Math.min(d, maxDay));
+                        }
+                      }}
+                      disabled={!canEditScheduleFields(selectedTenant)}
+                      className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-gray-200">Due day</label>
+                    <select
+                      value={editDueOn}
+                      onChange={(e) => setEditDueOn(Number(e.target.value) || 1)}
+                      disabled={!canEditScheduleFields(selectedTenant)}
+                      className="w-full rounded-lg border border-[#2A2A2A] bg-[#111] px-3 py-2 text-sm text-gray-100 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {(() => {
+                        let max = 31;
+                        if (editMoveIn && /^\d{4}-\d{2}-\d{2}$/.test(editMoveIn)) {
+                          const [y, m] = editMoveIn.split("-").map(Number);
+                          max = new Date(y, m, 0).getDate();
+                        }
+                        return Array.from({ length: max }, (_, i) => i + 1).map((day) => (
+                          <option key={day} value={day} className="bg-[#111] text-gray-100">
+                            {day}
+                          </option>
+                        ));
+                      })()}
+                    </select>
+                  </div>
+                  {!canEditScheduleFields(selectedTenant) ? (
+                    <p className="text-xs text-amber-400 sm:col-span-2">
+                      Move-in and due day are locked after payments are recorded.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500 sm:col-span-2">
+                      Changing either rebuilds the unpaid rent schedule (including first-month pro-rata).
+                    </p>
+                  )}
                 </div>
-
-                {editTenantNames.length === 0 && !currentEditName.trim() && (
-                  <p className="mt-2 text-xs text-amber-400">Add at least one tenant name before saving.</p>
-                )}
-              </div>
+              )}
 
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
@@ -608,7 +1566,11 @@ export default function TenantsPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={finalEditNames.length === 0}
+                  disabled={
+                    selectedTenant.tenancyStatus !== "vacant"
+                      ? finalEditNames.length === 0
+                      : !editRoom.trim()
+                  }
                   className="rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Continue
@@ -624,18 +1586,40 @@ export default function TenantsPage() {
           <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <h3 className="mb-2 text-lg font-semibold">Confirm tenant update</h3>
             <p className="mb-4 text-sm text-gray-400">
-              Save these tenant names for <span className="text-white">{getPropertyDisplay(selectedTenant)}</span>?
+              Save these changes for <span className="text-white">{getPropertyDisplay(selectedTenant)}</span>?
             </p>
 
-            <div className="mb-4 rounded-lg border border-[#111] bg-[#050505] p-3">
-              <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">Updated names</p>
-              <div className="flex flex-wrap gap-2">
-                {finalEditNames.map((name) => (
-                  <span key={name} className="rounded-full border border-[#222] bg-[#0b0b0b] px-3 py-1 text-sm text-gray-200">
-                    {name}
-                  </span>
-                ))}
-              </div>
+            <div className="mb-4 space-y-3 rounded-lg border border-[#111] bg-[#050505] p-3">
+              {selectedTenant.tenancyStatus !== "vacant" && (
+                <div>
+                  <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">Updated names</p>
+                  <div className="flex flex-wrap gap-2">
+                    {finalEditNames.map((name) => (
+                      <span key={name} className="rounded-full border border-[#222] bg-[#0b0b0b] px-3 py-1 text-sm text-gray-200">
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {showRoomEditField(selectedTenant) && (
+                <div>
+                  <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Room</p>
+                  <p className="text-sm text-gray-200">{editRoom.trim()}</p>
+                </div>
+              )}
+              {canEditScheduleFields(selectedTenant) && (
+                <>
+                  <div>
+                    <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Move-in</p>
+                    <p className="text-sm text-gray-200">{editMoveIn || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Due day</p>
+                    <p className="text-sm text-gray-200">{editDueOn}</p>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex justify-end gap-3">

@@ -74,13 +74,6 @@ export default function DashboardPage() {
 
   const { data: collectedRes, isLoading: collectedLoading } = useCollectedSeries(collectedOptions as any);
   let collectedSeries = collectedRes?.data?.series ?? [];
-  // debug: log collected API response and errors to browser console
-  useEffect(() => {
-    try {
-      // eslint-disable-next-line no-console
-      console.log("collectedRes:", collectedRes, "collectedLoading:", collectedLoading);
-    } catch (e) {}
-  }, [collectedRes, collectedLoading]);
   // fallback: if collected series is empty (API may fail), use collected values from expected series
   if ((!collectedSeries || collectedSeries.length === 0) && expectedSeries && expectedSeries.length > 0) {
     collectedSeries = expectedSeries.map((p: any) => ({ name: p.name, collected: Number(p.collected || 0) }));
