@@ -140,7 +140,6 @@ apiClient.interceptors.request.use(async (config) => {
       }
 
       const user = auth.currentUser;
-      console.log("user in interceptor:", user);
 
       if (user) {
         // 3. Get the token (forceRefresh = false)

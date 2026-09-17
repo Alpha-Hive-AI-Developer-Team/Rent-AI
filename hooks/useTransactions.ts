@@ -3,13 +3,16 @@ import { getUnreconciledTransactions, getConnectedBank, getConnectedAccounts } f
 import { markRentPaidWithTransaction } from "@/lib/api/tenantsApi";
 import { useAuthUser } from "@/redux/useAuthUser";
 
-export function useUnreconciledTransactions() {
-	const authUser = useAuthUser();
+export function useUnreconciledTransactions(params: { page?: number; limit?: number; search?: string } = {}) {
+	const page = params.page ?? 1;
+	const limit = params.limit ?? 20;
+	const search = params.search?.trim() || "";
 
 	return useQuery<any, Error, any>({
-		queryKey: ["unreconciledTransactions"],
-		queryFn: () => getUnreconciledTransactions(),
+		queryKey: ["unreconciledTransactions", page, limit, search],
+		queryFn: () => getUnreconciledTransactions({ page, limit, search: search || undefined }),
 		staleTime: 0,
+		placeholderData: (prev: any) => prev,
 	});
 }
 

@@ -60,8 +60,7 @@ function SignIn() {
 
             if(user && firebaseCustomToken)
             {
-              const resp = await signInWithCustomToken(auth, firebaseCustomToken);
-              console.debug("Firebase sign-in successful:", resp);
+              await signInWithCustomToken(auth, firebaseCustomToken);
    // 4. Update Redux & Local State
         dispatch(setCredentials({ user, token: accessToken }));
         queryClient.setQueryData(['authUser'], user);
@@ -107,7 +106,6 @@ function SignIn() {
                // If server indicates unverified account requiring OTP verification
                   const status = err?.response?.status
           if (status === 403) {
-            console.debug("Account unverified, showing OTP modal.");
             toast.error(err?.response?.data?.message || "Account unverified. Enter OTP sent to your email.");
             setShowOtp(true);
             return;

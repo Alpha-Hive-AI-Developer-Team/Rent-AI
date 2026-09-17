@@ -181,7 +181,6 @@ export default function LandlordManagement() {
   const { data: incomeSummaryResp } = useIncomeSummary({ landlordId: selectedLandlordId || undefined, address: currentAddress || "" });
 
   const addExpense = () => {
-    console.log("Adding expense...");
     const amt = Number(String(newExpenseAmount).replace(/[^0-9.-]+/g, "")) || 0;
     const desc = String(newExpenseDesc || "").trim();
     if (!desc || amt <= 0) {

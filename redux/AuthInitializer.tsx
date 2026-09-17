@@ -146,7 +146,6 @@ export default function AuthInitializer() {
           // but your app needs 'role', 'name', etc.
           const res = await apiClient.get('/auth/me'); // Ensure you have a 'get profile' route
           const userProfile = res?.data?.data || res?.data?.user || res?.data;
-          console.log('Fetched user profile:', userProfile);
 
           if (userProfile) {
             // Persist to LocalStorage (optional, mostly for non-sensitive quick reads)

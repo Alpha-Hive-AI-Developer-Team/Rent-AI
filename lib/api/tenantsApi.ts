@@ -37,11 +37,12 @@ export async function createPropertySetup(payload: {
   postcode?: string;
   tenancyType: "single" | "hmo";
   tenants: Array<{
-    tenantName: string | string[];
-    rent: number | string;
+    tenantName?: string | string[];
+    rent?: number | string;
     dueOn?: number;
     moveInDate?: string;
     room?: string;
+    vacant?: boolean;
   }>;
 }) {
   const res = await apiClient.post(`/tenants/property-setup`, payload);
@@ -65,8 +66,30 @@ export async function getLandlordAddresses(landlordId: string) {
   };
 }
 
-export async function updateTenant(id: string, payload: { tenantName: string | string[] }) {
+export async function updateTenant(
+  id: string,
+  payload: {
+    tenantName?: string | string[];
+    room?: string;
+    moveInDate?: string | null;
+    dueOn?: number;
+  }
+) {
   const res = await apiClient.put(`/tenants/${id}`, payload);
+  return res.data;
+}
+
+/** Assign an occupant to a vacant room placeholder. */
+export async function assignTenantToRoom(
+  id: string,
+  payload: {
+    tenantName: string | string[];
+    rent?: number | string;
+    dueOn?: number;
+    moveInDate?: string;
+  }
+) {
+  const res = await apiClient.post(`/tenants/${id}/assign`, payload);
   return res.data;
 }
 
@@ -85,8 +108,27 @@ export async function getRentDetails(month?: number, year?: number) {
   return res.data;
 }
 
-export async function payRentByCash(tenantId: string, payload: { index?: number; month?: string } = {}) {
+export async function payRentByCash(
+  tenantId: string,
+  payload: { index?: number; month?: string; amount?: number } = {}
+) {
   const res = await apiClient.post(`/tenants/${tenantId}/pay/cash`, payload);
+  return res.data;
+}
+
+export async function getRentEntryPayment(
+  tenantId: string,
+  params: { index?: number; month?: string } = {}
+) {
+  const res = await apiClient.get(`/tenants/${tenantId}/rent-payment`, { params });
+  return res.data;
+}
+
+export async function unreconcileRentEntry(
+  tenantId: string,
+  payload: { index?: number; month?: string } = {}
+) {
+  const res = await apiClient.post(`/tenants/${tenantId}/unreconcile`, payload);
   return res.data;
 }
 
@@ -110,7 +152,6 @@ export async function getCollectedSeries(options: { granularity?: 'month' | 'day
   const params: any = { granularity };
   if (granularity === 'month') params.months = months;
   if (granularity === 'day' && typeof days === 'number') params.days = days;
-  console.log("Fetching collected series with params:", params);
   const res = await apiClient.get(`/tenants/rent-collected`, { params });
   return res.data;
 }

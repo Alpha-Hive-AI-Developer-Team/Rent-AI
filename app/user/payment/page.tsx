@@ -40,8 +40,7 @@ export default function PaymentPage() {
     const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
     const status = params.get('status');
     if (status) {
-      // You can show a toast or banner here
-      console.log('Checkout status:', status);
+      // optionally react to status from success/cancel redirect
     }
   }, []);
 
@@ -59,7 +58,6 @@ export default function PaymentPage() {
       if (profileResp.data.currentPeriodEnd) {
         setTimeout(() => {}, 0); // noop to hint re-render if needed
       }
-      console.log("User profile data:", profileResp.data);
     }
   }, [profileResp]);
   const { walletQuery, connectBankAsync, withdraw, manageBankAsync } = usePayout();
