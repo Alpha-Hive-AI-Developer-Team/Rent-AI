@@ -26,6 +26,7 @@ export async function createTenant(payload: {
   propertyName?: string;
   postcode?: string;
   tenancyType?: "single" | "hmo";
+  depositAmount?: number | string;
 }) {
   const res = await apiClient.post(`/tenants`, payload);
   return res.data;
@@ -36,13 +37,15 @@ export async function createPropertySetup(payload: {
   propertyName?: string;
   postcode?: string;
   tenancyType: "single" | "hmo";
-  tenants: Array<{
+    tenants: Array<{
     tenantName?: string | string[];
     rent?: number | string;
     dueOn?: number;
     moveInDate?: string;
     room?: string;
     vacant?: boolean;
+    depositAmount?: number | string;
+    rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
   }>;
 }) {
   const res = await apiClient.post(`/tenants/property-setup`, payload);
@@ -73,6 +76,9 @@ export async function updateTenant(
     room?: string;
     moveInDate?: string | null;
     dueOn?: number;
+    depositAmount?: number | string;
+    rent?: number | string;
+    rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
   }
 ) {
   const res = await apiClient.put(`/tenants/${id}`, payload);
@@ -87,6 +93,8 @@ export async function assignTenantToRoom(
     rent?: number | string;
     dueOn?: number;
     moveInDate?: string;
+    depositAmount?: number | string;
+    rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
   }
 ) {
   const res = await apiClient.post(`/tenants/${id}/assign`, payload);
@@ -129,6 +137,12 @@ export async function unreconcileRentEntry(
   payload: { index?: number; month?: string } = {}
 ) {
   const res = await apiClient.post(`/tenants/${tenantId}/unreconcile`, payload);
+  return res.data;
+}
+
+/** Remove a saved bank payer so future inflows no longer auto-link to this tenant. */
+export async function unlinkLinkedPayer(tenantId: string, payerId: string) {
+  const res = await apiClient.delete(`/tenants/${tenantId}/linked-payers/${payerId}`);
   return res.data;
 }
 
