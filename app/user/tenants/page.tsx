@@ -927,10 +927,8 @@ export default function TenantsPage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
-                    <th className="px-4 py-3 text-xs">Month</th>
                     <th className="px-4 py-3 text-xs">Amount Due</th>
                     <th className="px-4 py-3 text-xs">Amount Paid</th>
-                    <th className="px-4 py-3 text-xs">Paid On</th>
                     <th className="px-4 py-3 text-xs">Due Date</th>
                     <th className="px-4 py-3 text-xs">Status</th>
                     <th className="px-4 py-3 text-xs">Actions</th>
@@ -951,7 +949,7 @@ export default function TenantsPage() {
                     if (!visibleHistory.length) {
                       return (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-gray-400">
+                          <td colSpan={5} className="py-8 text-center text-gray-400">
                             No rent history found for this tenant.
                           </td>
                         </tr>
@@ -970,12 +968,10 @@ export default function TenantsPage() {
                           if (recorded) openPaymentReview(index, entry);
                         }}
                       >
-                        <td className="px-4 py-3 text-gray-300">{formatDate(entry.month)}</td>
                         <td className="px-4 py-3 text-gray-300">{formatMoney(Number(entry.amountDue) || 0)}</td>
                         <td className={`px-4 py-3 ${remaining > 0 ? "text-rose-400" : "text-gray-300"}`}>
                           {formatMoney(Number(entry.amountPaid) || 0)}
                         </td>
-                        <td className="px-4 py-3 text-gray-300">{formatDate(entry.paidOn)}</td>
                         <td className="px-4 py-3 text-gray-300">{formatDate(entry.dueDate)}</td>
                         <td className="px-4 py-3">
                           <span className={`rounded-full border px-2 py-1 text-xs ${statusColors[(entry.status || "").charAt(0).toUpperCase() + (entry.status || "").slice(1) as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
