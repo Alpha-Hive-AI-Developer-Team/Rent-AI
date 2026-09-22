@@ -942,7 +942,7 @@ export default function TenantsPage() {
                         const due = Number(entry?.amountDue) || 0;
                         const paid = Number(entry?.amountPaid) || 0;
                         // Hide empty prorated rows (e.g. move-in on due day → £0 due)
-                        if (due === 0 && paid === 0 && !hasRecordedPayment(entry)) return false;
+                        if (due === 0 && paid === 0) return false;
                         return true;
                       });
 
