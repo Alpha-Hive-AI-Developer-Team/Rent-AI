@@ -4,6 +4,7 @@ import {
   getTenants,
   payRentByCash,
   unreconcileRentEntry,
+  unlinkLinkedPayer,
   updateTenant,
   assignTenantToRoom,
 } from "@/lib/api/tenantsApi";
@@ -58,6 +59,8 @@ export function useUpdateTenant() {
         moveInDate?: string | null;
         dueOn?: number;
         depositAmount?: number | string;
+        rent?: number | string;
+        rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
       };
     }) => updateTenant(tenantId, payload),
     onSuccess: (res) => {
@@ -88,6 +91,7 @@ export function useAssignTenant() {
         dueOn?: number;
         moveInDate?: string;
         depositAmount?: number | string;
+        rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
       };
     }) => assignTenantToRoom(tenantId, payload),
     onSuccess: (res) => {
@@ -140,6 +144,27 @@ export function useUnreconcileRent() {
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.message || err?.message || "Failed to reverse payment";
+      toast.error(msg);
+    },
+  });
+}
+
+export function useUnlinkLinkedPayer() {
+  const qc = useQueryClient();
+  const authUser = useAuthUser();
+  const userId = authUser?.id || authUser?._id || authUser?.userId;
+
+  return useMutation({
+    mutationFn: ({ tenantId, payerId }: { tenantId: string; payerId: string }) =>
+      unlinkLinkedPayer(tenantId, payerId),
+    onSuccess: (res, vars) => {
+      qc.invalidateQueries({ queryKey: ["tenants", userId] });
+      qc.invalidateQueries({ queryKey: ["unreconciledTransactions"] });
+      toast.success(res?.message || "Bank payer unlinked");
+      return vars;
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || err?.message || "Failed to unlink payer";
       toast.error(msg);
     },
   });

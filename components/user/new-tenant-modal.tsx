@@ -10,6 +10,10 @@ import { useTenants } from "@/hooks/usetenants";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthUser } from "@/redux/useAuthUser";
 import toast from "react-hot-toast";
+import RentScheduleFields, {
+  buildRentSchedulePayload,
+  type RentAdjustmentRow,
+} from "@/components/user/rent-schedule-fields";
 
 interface NewTenantModalProps {
   open: boolean;
@@ -37,6 +41,7 @@ type RoomTenant = {
   /** Optional: record deposit taken (info only — not rent) */
   hasDeposit?: boolean;
   depositAmount?: string;
+  rentAdjustments?: RentAdjustmentRow[];
 };
 
 const RENT_NUMERIC = /[^0-9.]/g;
@@ -102,6 +107,7 @@ function newRoom(index: number): RoomTenant {
     vacant: false,
     hasDeposit: false,
     depositAmount: "",
+    rentAdjustments: [],
   };
 }
 
@@ -159,6 +165,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     moveInDate: "",
     hasDeposit: false,
     depositAmount: "",
+    rentAdjustments: [] as RentAdjustmentRow[],
   });
   const [rooms, setRooms] = useState<RoomTenant[]>([newRoom(1)]);
   const [payerSuggestions, setPayerSuggestions] = useState<string[]>([]);
@@ -251,6 +258,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
       moveInDate: "",
       hasDeposit: false,
       depositAmount: "",
+      rentAdjustments: [],
     });
     setRooms([newRoom(1)]);
   };
@@ -401,6 +409,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
         rent: rentNum,
         dueOn: clampDueOn(room.dueOn, room.moveInDate),
         moveInDate: room.moveInDate,
+        rentSchedule: buildRentSchedulePayload(room.rentAdjustments || []),
         ...(room.hasDeposit && Number(room.depositAmount) > 0
           ? { depositAmount: Number(room.depositAmount) }
           : { depositAmount: 0 }),
@@ -475,6 +484,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                 singleTenant.hasDeposit && Number(singleTenant.depositAmount) > 0
                   ? Number(singleTenant.depositAmount)
                   : 0,
+              rentSchedule: buildRentSchedulePayload(singleTenant.rentAdjustments || []),
             },
           ]
         : (addingToExisting ? newRooms : rooms).map((r) => ({
@@ -488,6 +498,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
               r.vacant || !r.hasDeposit || !(Number(r.depositAmount) > 0)
                 ? 0
                 : Number(r.depositAmount),
+            rentSchedule: r.vacant ? [] : buildRentSchedulePayload(r.rentAdjustments || []),
           }));
 
     createMutation.mutate(
@@ -918,6 +929,19 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                           )}
                 </div>
                         <div className="md:col-span-2 xl:col-span-4">
+                          <RentScheduleFields
+                            baseRent={singleTenant.rent}
+                            onBaseRentChange={(rent) => setSingleTenant((s) => ({ ...s, rent }))}
+                            adjustments={singleTenant.rentAdjustments || []}
+                            onAdjustmentsChange={(rentAdjustments) =>
+                              setSingleTenant((s) => ({ ...s, rentAdjustments }))
+                            }
+                            hideBaseRent
+                            labelClass={labelClass}
+                            inputClass={inputClass}
+                          />
+                        </div>
+                        <div className="md:col-span-2 xl:col-span-4">
                           <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-300">
                             <input
                               type="checkbox"
@@ -1140,6 +1164,37 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                   </p>
                                 )}
                               </div>
+                              {!(isExisting && !isAssigning) && !isVacant && (
+                                <div className="md:col-span-2 xl:col-span-4">
+                                  <RentScheduleFields
+                                    baseRent={room.rent}
+                                    onBaseRentChange={(rent) => updateRoom(room.id, { rent })}
+                                    adjustments={room.rentAdjustments || []}
+                                    onAdjustmentsChange={(rentAdjustments) =>
+                                      updateRoom(room.id, { rentAdjustments })
+                                    }
+                                    hideBaseRent
+                                    disabled={fieldsLocked}
+                                    labelClass={labelClass}
+                                    inputClass={inputClass}
+                                  />
+                                </div>
+                              )}
+                              {isVacant && isAssigning && (
+                                <div className="md:col-span-2 xl:col-span-4">
+                                  <RentScheduleFields
+                                    baseRent={room.rent}
+                                    onBaseRentChange={(rent) => updateRoom(room.id, { rent })}
+                                    adjustments={room.rentAdjustments || []}
+                                    onAdjustmentsChange={(rentAdjustments) =>
+                                      updateRoom(room.id, { rentAdjustments })
+                                    }
+                                    hideBaseRent
+                                    labelClass={labelClass}
+                                    inputClass={inputClass}
+                                  />
+                                </div>
+                              )}
                               {!fieldsLocked && (
                                 <div className="md:col-span-2 xl:col-span-4">
                                   <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-300">

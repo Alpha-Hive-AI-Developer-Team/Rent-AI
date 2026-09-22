@@ -3,10 +3,16 @@
 import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info } from "lucide-react";
 import { useState } from "react";
 import NewTenantModal from "@/components/user/new-tenant-modal";
+import RentScheduleFields, {
+  buildRentSchedulePayload,
+  scheduleFromTenant,
+  type RentAdjustmentRow,
+} from "@/components/user/rent-schedule-fields";
 import usePayByCash, {
   useAssignTenant,
   useEndTenancy,
   useTenants,
+  useUnlinkLinkedPayer,
   useUnreconcileRent,
   useUpdateTenant,
 } from "@/hooks/usetenants";
@@ -199,6 +205,8 @@ export default function TenantsPage() {
   const [editDueOn, setEditDueOn] = useState(1);
   const [editHasDeposit, setEditHasDeposit] = useState(false);
   const [editDeposit, setEditDeposit] = useState("");
+  const [editRent, setEditRent] = useState("");
+  const [editRentAdjustments, setEditRentAdjustments] = useState<RentAdjustmentRow[]>([]);
   const [editConfirmationOpen, setEditConfirmationOpen] = useState(false);
   const [endTenancyOpen, setEndTenancyOpen] = useState(false);
   const [paymentReview, setPaymentReview] = useState<{
@@ -220,6 +228,7 @@ export default function TenantsPage() {
   const [assignMoveIn, setAssignMoveIn] = useState("");
   const [assignHasDeposit, setAssignHasDeposit] = useState(false);
   const [assignDeposit, setAssignDeposit] = useState("");
+  const [assignRentAdjustments, setAssignRentAdjustments] = useState<RentAdjustmentRow[]>([]);
 
   const { data, isLoading, isError } = useTenants();
   const payByCashMutation = usePayByCash();
@@ -227,6 +236,7 @@ export default function TenantsPage() {
   const assignTenantMutation = useAssignTenant();
   const endTenancyMutation = useEndTenancy();
   const unreconcileMutation = useUnreconcileRent();
+  const unlinkPayerMutation = useUnlinkLinkedPayer();
   const reconcileMutation = useReconcileTransaction();
   const qc = useQueryClient();
   const authUser = useAuthUser();
@@ -311,6 +321,9 @@ export default function TenantsPage() {
     const existingDeposit = Number(selectedTenant.depositAmount) || 0;
     setEditHasDeposit(existingDeposit > 0);
     setEditDeposit(existingDeposit > 0 ? String(existingDeposit) : "");
+    const scheduleUi = scheduleFromTenant(selectedTenant);
+    setEditRent(scheduleUi.baseRent);
+    setEditRentAdjustments(scheduleUi.adjustments);
     setEditConfirmationOpen(false);
     setEditTenantOpen(true);
     setTransactionModalOpen(false);
@@ -328,6 +341,7 @@ export default function TenantsPage() {
     setAssignMoveIn(new Date().toISOString().slice(0, 10));
     setAssignHasDeposit(false);
     setAssignDeposit("");
+    setAssignRentAdjustments([]);
     setAssignOpen(true);
     setTransactionModalOpen(false);
   };
@@ -340,6 +354,7 @@ export default function TenantsPage() {
     setAssignMoveIn("");
     setAssignHasDeposit(false);
     setAssignDeposit("");
+    setAssignRentAdjustments([]);
     if (reopenDetails && selectedTenant) {
       setTransactionModalOpen(true);
     }
@@ -378,6 +393,7 @@ export default function TenantsPage() {
           dueOn: assignDueOn,
           moveInDate: assignMoveIn,
           depositAmount: assignHasDeposit && Number(assignDeposit) > 0 ? Number(assignDeposit) : 0,
+          rentSchedule: buildRentSchedulePayload(assignRentAdjustments),
         },
       },
       {
@@ -405,6 +421,8 @@ export default function TenantsPage() {
     setEditDueOn(1);
     setEditHasDeposit(false);
     setEditDeposit("");
+    setEditRent("");
+    setEditRentAdjustments([]);
 
     if (reopenDetails && selectedTenant) {
       setTransactionModalOpen(true);
@@ -451,6 +469,25 @@ export default function TenantsPage() {
       }
     }
 
+    if (!isVacant) {
+      const rentNum = Number(editRent);
+      if (!Number.isFinite(rentNum) || rentNum <= 0) {
+        toast.error("Enter a positive monthly rent.");
+        return;
+      }
+      for (const adj of editRentAdjustments) {
+        if (!adj.startMonth) {
+          toast.error("Each rent change needs a start month.");
+          return;
+        }
+        const amt = Number(adj.amount);
+        if (!Number.isFinite(amt) || amt < 0) {
+          toast.error("Each rent change needs a valid amount.");
+          return;
+        }
+      }
+    }
+
     setEditConfirmationOpen(true);
   };
 
@@ -465,6 +502,8 @@ export default function TenantsPage() {
       moveInDate?: string | null;
       dueOn?: number;
       depositAmount?: number;
+      rent?: number;
+      rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
     } = {};
     if (!isVacant) payload.tenantName = finalEditNames;
     if (showRoomEditField(selectedTenant)) payload.room = editRoom.trim();
@@ -485,6 +524,17 @@ export default function TenantsPage() {
       const prevDeposit = Number(selectedTenant.depositAmount) || 0;
       if (nextDeposit !== prevDeposit) {
         payload.depositAmount = nextDeposit;
+      }
+      const nextRent = Number(editRent);
+      const prevRent = Number(selectedTenant.rent) || 0;
+      const nextSchedule = buildRentSchedulePayload(editRentAdjustments);
+      const prevSchedule = buildRentSchedulePayload(scheduleFromTenant(selectedTenant).adjustments);
+      if (Math.abs(nextRent - prevRent) > 0.0001) {
+        payload.rent = nextRent;
+      }
+      if (JSON.stringify(nextSchedule) !== JSON.stringify(prevSchedule)) {
+        payload.rentSchedule = nextSchedule;
+        if (payload.rent === undefined) payload.rent = nextRent;
       }
     }
 
@@ -795,6 +845,81 @@ export default function TenantsPage() {
                 </button>
               )}
             </div>
+
+            {Array.isArray(selectedTenant.linkedPayers) && selectedTenant.linkedPayers.length > 0 && (
+              <div className="mb-4 rounded-xl border border-[#1a1a1a] bg-[#0B0B0B] px-4 py-3">
+                <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Linked bank payers</p>
+                <p className="mb-3 text-xs text-gray-500">
+                  Future payments from these bank identities auto-match this tenant. Unlink to stop that.
+                </p>
+                <div className="space-y-2">
+                  {selectedTenant.linkedPayers.map((payer: any) => {
+                    const payerId = String(payer._id || payer.id || "");
+                    const label =
+                      payer.displayName ||
+                      payer.normalizedName ||
+                      payer.iban ||
+                      (payer.bacsAccount
+                        ? `BACS ${payer.bacsAccount}${payer.bacsSortCode ? ` / ${payer.bacsSortCode}` : ""}`
+                        : "Linked payer");
+                    const metaParts = [
+                      payer.counterpartyEntityId ? `ID ${String(payer.counterpartyEntityId).slice(0, 10)}…` : null,
+                      payer.iban ? `IBAN ${payer.iban}` : null,
+                      payer.bacsAccount
+                        ? `Acc ${payer.bacsAccount}${payer.bacsSortCode ? ` · ${payer.bacsSortCode}` : ""}`
+                        : null,
+                      payer.lastSeenAt ? `Seen ${formatDate(payer.lastSeenAt)}` : null,
+                    ].filter(Boolean);
+                    return (
+                      <div
+                        key={payerId || label}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#1a1a1a] bg-[#050505] px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm text-gray-200" title={label}>
+                            {label}
+                          </p>
+                          {metaParts.length > 0 && (
+                            <p className="truncate text-[11px] text-gray-500">{metaParts.join(" · ")}</p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!payerId || unlinkPayerMutation.isPending}
+                          onClick={() => {
+                            if (!payerId || !selectedTenant?._id) return;
+                            unlinkPayerMutation.mutate(
+                              { tenantId: selectedTenant._id, payerId },
+                              {
+                                onSuccess: (res) => {
+                                  const updated = res?.data;
+                                  if (updated) setSelectedTenant(updated);
+                                  else {
+                                    setSelectedTenant((prev: any) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            linkedPayers: (prev.linkedPayers || []).filter(
+                                              (p: any) => String(p._id || p.id) !== payerId
+                                            ),
+                                          }
+                                        : prev
+                                    );
+                                  }
+                                },
+                              }
+                            );
+                          }}
+                          className="shrink-0 rounded-full border border-rose-800/70 px-3 py-1 text-xs text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
+                        >
+                          Unlink
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
               </>
             )}
 
@@ -1177,7 +1302,10 @@ export default function TenantsPage() {
 
       {paymentReview && selectedTenant && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+          <div
+            style={{ scrollbarWidth: "none" }}
+            className="max-h-[95vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          >
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold">Payment details</h3>
@@ -1496,6 +1624,16 @@ export default function TenantsPage() {
             </div>
 
             <div className="mt-4">
+              <RentScheduleFields
+                baseRent={assignRent}
+                onBaseRentChange={setAssignRent}
+                adjustments={assignRentAdjustments}
+                onAdjustmentsChange={setAssignRentAdjustments}
+                hideBaseRent
+              />
+            </div>
+
+            <div className="mt-4">
               <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-300">
                 <input
                   type="checkbox"
@@ -1547,7 +1685,7 @@ export default function TenantsPage() {
 
       {editTenantOpen && selectedTenant && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
-          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+          <div className="max-h-[95vh] w-full max-w-md overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="mb-4 flex items-start justify-between">
               <div>
                 <h3 className="text-lg font-semibold">
@@ -1677,6 +1815,15 @@ export default function TenantsPage() {
               )}
 
               {selectedTenant.tenancyStatus !== "vacant" && (
+                <RentScheduleFields
+                  baseRent={editRent}
+                  onBaseRentChange={setEditRent}
+                  adjustments={editRentAdjustments}
+                  onAdjustmentsChange={setEditRentAdjustments}
+                />
+              )}
+
+              {selectedTenant.tenancyStatus !== "vacant" && (
                 <div>
                   <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-300">
                     <input
@@ -1770,6 +1917,26 @@ export default function TenantsPage() {
                     <p className="text-sm text-gray-200">{editDueOn}</p>
                   </div>
                 </>
+              )}
+              {selectedTenant.tenancyStatus !== "vacant" && (
+                <div>
+                  <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Monthly rent</p>
+                  <p className="text-sm text-gray-200">
+                    £{Number(editRent || 0).toFixed(2)}
+                    {editRentAdjustments.length > 0
+                      ? ` · ${editRentAdjustments.length} change${editRentAdjustments.length === 1 ? "" : "s"}`
+                      : ""}
+                  </p>
+                  {editRentAdjustments.length > 0 && (
+                    <ul className="mt-1 space-y-0.5 text-xs text-gray-500">
+                      {editRentAdjustments.map((a) => (
+                        <li key={a.id}>
+                          From {a.startMonth}: £{Number(a.amount || 0).toFixed(2)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
               {selectedTenant.tenancyStatus !== "vacant" && (
                 <div>
