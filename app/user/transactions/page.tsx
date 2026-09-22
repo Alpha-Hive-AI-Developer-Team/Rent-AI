@@ -298,6 +298,13 @@ export default function TransactionsPage() {
         const room = c.room ? String(c.room).trim() : "";
         const propertyLabel = room && c.property ? `${c.property} · ${room}` : c.property || c.propertyAddress || "";
 
+        const visibleHistory = history.filter((rh: any) => {
+          const due = Number(rh?.amountDue ?? rh?.amount ?? 0) || 0;
+          const paid = Number(rh?.amountPaid ?? 0) || 0;
+          // Hide empty prorated rows (e.g. move-in on due day → £0 due)
+          return !(due === 0 && paid === 0);
+        });
+
         return {
           id: i + 1,
           tenantId: c._id ? String(c._id) : undefined,
@@ -307,7 +314,7 @@ export default function TransactionsPage() {
           property: propertyLabel,
           rent: typeof c.rent === "number" ? formatMoney(c.rent) : String(c.rent || ""),
           status: "Unpaid" as const,
-          transactions: history.map((rh: any) => ({
+          transactions: visibleHistory.map((rh: any) => ({
             month: formatDate(rh.month),
             rent: formatMoney(rh.amountDue ?? rh.amount ?? 0),
             amountPaid: formatMoney(rh.amountPaid ?? 0),
