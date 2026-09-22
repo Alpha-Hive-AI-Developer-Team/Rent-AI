@@ -34,6 +34,9 @@ type RoomTenant = {
   tenantId?: string;
   /** Editing an existing vacant room to assign an occupant */
   assigning?: boolean;
+  /** Optional: record deposit taken (info only — not rent) */
+  hasDeposit?: boolean;
+  depositAmount?: string;
 };
 
 const RENT_NUMERIC = /[^0-9.]/g;
@@ -97,6 +100,8 @@ function newRoom(index: number): RoomTenant {
     room: `Room ${index}`,
     isExisting: false,
     vacant: false,
+    hasDeposit: false,
+    depositAmount: "",
   };
 }
 
@@ -118,6 +123,8 @@ function buildExistingRoomsForProperty(address: string, tenants: any[]): RoomTen
       isExisting: true,
       vacant: t.tenancyStatus === "vacant",
       assigning: false,
+      hasDeposit: Number(t.depositAmount) > 0,
+      depositAmount: Number(t.depositAmount) > 0 ? String(t.depositAmount) : "",
     }))
     .sort((a, b) => {
       const aNum = roomNumberFromLabel(a.room);
@@ -150,6 +157,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     rent: "",
     dueOn: 1,
     moveInDate: "",
+    hasDeposit: false,
+    depositAmount: "",
   });
   const [rooms, setRooms] = useState<RoomTenant[]>([newRoom(1)]);
   const [payerSuggestions, setPayerSuggestions] = useState<string[]>([]);
@@ -235,7 +244,14 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     setPropertyName("");
     setPostcode("");
     setTenancyType("single");
-    setSingleTenant({ tenantName: "", rent: "", dueOn: 1, moveInDate: "" });
+    setSingleTenant({
+      tenantName: "",
+      rent: "",
+      dueOn: 1,
+      moveInDate: "",
+      hasDeposit: false,
+      depositAmount: "",
+    });
     setRooms([newRoom(1)]);
   };
 
@@ -268,7 +284,12 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
 
   const validateStep3 = () => {
     if (tenancyType === "single" && !addingToExisting) {
-      return singleTenant.tenantName.trim().length > 0 && Number(singleTenant.rent) > 0;
+      if (!(singleTenant.tenantName.trim().length > 0 && Number(singleTenant.rent) > 0)) return false;
+      if (singleTenant.hasDeposit) {
+        const d = Number(singleTenant.depositAmount);
+        if (!Number.isFinite(d) || d <= 0) return false;
+      }
+      return true;
     }
     const editable = addingToExisting ? newRooms : rooms;
     return (
@@ -279,7 +300,12 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
           const rentVal = r.rent.trim();
           return rentVal === "" || Number(rentVal) >= 0;
         }
-        return r.tenantName.trim().length > 0 && Number(r.rent) > 0;
+        if (!(r.tenantName.trim().length > 0 && Number(r.rent) > 0)) return false;
+        if (r.hasDeposit) {
+          const d = Number(r.depositAmount);
+          if (!Number.isFinite(d) || d <= 0) return false;
+        }
+        return true;
       })
     );
   };
@@ -360,6 +386,13 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
       toast.error("Select a move-in date.");
       return;
     }
+    if (room.hasDeposit) {
+      const dep = Number(room.depositAmount);
+      if (!Number.isFinite(dep) || dep <= 0) {
+        toast.error("Enter the deposit amount, or uncheck Record deposit.");
+        return;
+      }
+    }
 
     setAssigningRoomId(room.id);
     try {
@@ -368,6 +401,9 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
         rent: rentNum,
         dueOn: clampDueOn(room.dueOn, room.moveInDate),
         moveInDate: room.moveInDate,
+        ...(room.hasDeposit && Number(room.depositAmount) > 0
+          ? { depositAmount: Number(room.depositAmount) }
+          : { depositAmount: 0 }),
       });
       setRooms((prev) =>
         prev.map((r) =>
@@ -435,6 +471,10 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
               rent: Number(singleTenant.rent),
               dueOn: Number(singleTenant.dueOn) || 1,
               moveInDate: singleTenant.moveInDate || undefined,
+              depositAmount:
+                singleTenant.hasDeposit && Number(singleTenant.depositAmount) > 0
+                  ? Number(singleTenant.depositAmount)
+                  : 0,
             },
           ]
         : (addingToExisting ? newRooms : rooms).map((r) => ({
@@ -444,6 +484,10 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
             moveInDate: r.vacant ? undefined : r.moveInDate || undefined,
             room: r.room.trim(),
             vacant: Boolean(r.vacant),
+            depositAmount:
+              r.vacant || !r.hasDeposit || !(Number(r.depositAmount) > 0)
+                ? 0
+                : Number(r.depositAmount),
           }));
 
     createMutation.mutate(
@@ -873,6 +917,42 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                             </p>
                           )}
                 </div>
+                        <div className="md:col-span-2 xl:col-span-4">
+                          <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-300">
+                            <input
+                              type="checkbox"
+                              checked={singleTenant.hasDeposit}
+                              onChange={(e) =>
+                                setSingleTenant((s) => ({
+                                  ...s,
+                                  hasDeposit: e.target.checked,
+                                  depositAmount: e.target.checked ? s.depositAmount : "",
+                                }))
+                              }
+                              className="h-4 w-4 rounded border-gray-600 bg-transparent text-emerald-600 focus:ring-emerald-600"
+                            />
+                            Record deposit
+                          </label>
+                          <p className="mt-1 text-[11px] text-gray-500">
+                            Optional — saved for records only. Does not affect rent history or balances.
+                          </p>
+                          {singleTenant.hasDeposit && (
+                            <div className="mt-2 max-w-xs">
+                              <label className={labelClass}>Deposit amount (£)</label>
+                              <input
+                                value={singleTenant.depositAmount}
+                                onChange={(e) =>
+                                  setSingleTenant((s) => ({
+                                    ...s,
+                                    depositAmount: sanitizeRentInput(e.target.value),
+                                  }))
+                                }
+                                placeholder="e.g. 780"
+                                className={inputClass}
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-3">
@@ -927,6 +1007,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                           vacant: e.target.checked,
                                           tenantName: e.target.checked ? "" : room.tenantName,
                                           moveInDate: e.target.checked ? "" : room.moveInDate,
+                                          hasDeposit: e.target.checked ? false : room.hasDeposit,
+                                          depositAmount: e.target.checked ? "" : room.depositAmount,
                                         })
                                       }
                                       className="h-3.5 w-3.5 rounded border-gray-600 bg-transparent text-emerald-600 focus:ring-emerald-600"
@@ -1058,6 +1140,50 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                   </p>
                                 )}
                               </div>
+                              {!fieldsLocked && (
+                                <div className="md:col-span-2 xl:col-span-4">
+                                  <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-300">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(room.hasDeposit)}
+                                      onChange={(e) =>
+                                        updateRoom(room.id, {
+                                          hasDeposit: e.target.checked,
+                                          depositAmount: e.target.checked ? room.depositAmount : "",
+                                        })
+                                      }
+                                      className="h-4 w-4 rounded border-gray-600 bg-transparent text-emerald-600 focus:ring-emerald-600"
+                                    />
+                                    Record deposit
+                                  </label>
+                                  <p className="mt-1 text-[11px] text-gray-500">
+                                    Optional — records only; does not change rent due or balance.
+                                  </p>
+                                  {room.hasDeposit && (
+                                    <div className="mt-2 max-w-xs">
+                                      <label className={labelClass}>Deposit amount (£)</label>
+                                      <input
+                                        value={room.depositAmount || ""}
+                                        onChange={(e) =>
+                                          updateRoom(room.id, {
+                                            depositAmount: sanitizeRentInput(e.target.value),
+                                          })
+                                        }
+                                        placeholder="e.g. 650"
+                                        className={inputClass}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {fieldsLocked && Number(room.depositAmount) > 0 && (
+                                <div className="md:col-span-2 xl:col-span-4">
+                                  <p className="text-xs text-gray-500">
+                                    Deposit on record:{" "}
+                                    <span className="text-gray-300">£{Number(room.depositAmount).toFixed(2)}</span>
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </div>
                           );

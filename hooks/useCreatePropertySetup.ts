@@ -15,6 +15,7 @@ export type PropertySetupPayload = {
     moveInDate?: string;
     room?: string;
     vacant?: boolean;
+    depositAmount?: number | string;
   }>;
 };
 

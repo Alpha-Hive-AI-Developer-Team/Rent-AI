@@ -26,6 +26,7 @@ export async function createTenant(payload: {
   propertyName?: string;
   postcode?: string;
   tenancyType?: "single" | "hmo";
+  depositAmount?: number | string;
 }) {
   const res = await apiClient.post(`/tenants`, payload);
   return res.data;
@@ -43,6 +44,7 @@ export async function createPropertySetup(payload: {
     moveInDate?: string;
     room?: string;
     vacant?: boolean;
+    depositAmount?: number | string;
   }>;
 }) {
   const res = await apiClient.post(`/tenants/property-setup`, payload);
@@ -73,6 +75,7 @@ export async function updateTenant(
     room?: string;
     moveInDate?: string | null;
     dueOn?: number;
+    depositAmount?: number | string;
   }
 ) {
   const res = await apiClient.put(`/tenants/${id}`, payload);
@@ -87,6 +90,7 @@ export async function assignTenantToRoom(
     rent?: number | string;
     dueOn?: number;
     moveInDate?: string;
+    depositAmount?: number | string;
   }
 ) {
   const res = await apiClient.post(`/tenants/${id}/assign`, payload);

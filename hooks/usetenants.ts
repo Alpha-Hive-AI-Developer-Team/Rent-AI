@@ -57,6 +57,7 @@ export function useUpdateTenant() {
         room?: string;
         moveInDate?: string | null;
         dueOn?: number;
+        depositAmount?: number | string;
       };
     }) => updateTenant(tenantId, payload),
     onSuccess: (res) => {
@@ -86,6 +87,7 @@ export function useAssignTenant() {
         rent?: number | string;
         dueOn?: number;
         moveInDate?: string;
+        depositAmount?: number | string;
       };
     }) => assignTenantToRoom(tenantId, payload),
     onSuccess: (res) => {
