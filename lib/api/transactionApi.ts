@@ -1,13 +1,21 @@
 import apiClient from "./api-client";
 
 export async function getUnreconciledTransactions(
-  params: { page?: number; limit?: number; search?: string } = {}
+  params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    sortBy?: "date" | "amount" | "payer" | "status";
+    sortDir?: "asc" | "desc";
+  } = {}
 ) {
   const res = await apiClient.get(`/transactions/unreconciled`, {
     params: {
       page: params.page ?? 1,
       limit: params.limit ?? 20,
       ...(params.search?.trim() ? { search: params.search.trim() } : {}),
+      ...(params.sortBy ? { sortBy: params.sortBy } : {}),
+      ...(params.sortDir ? { sortDir: params.sortDir } : {}),
     },
   });
   return res.data;

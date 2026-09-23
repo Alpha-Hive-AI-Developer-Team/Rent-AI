@@ -1,7 +1,7 @@
 "use client";
 
-import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info } from "lucide-react";
-import { useState } from "react";
+import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown } from "lucide-react";
+import { useState, useMemo } from "react";
 import NewTenantModal from "@/components/user/new-tenant-modal";
 import RentScheduleFields, {
   buildRentSchedulePayload,
@@ -196,7 +196,10 @@ export default function TenantsPage() {
     return address || "—";
   };
 
+  type TenantSortKey = "name" | "property" | "rent" | "status" | "lastPayment";
   const [search, setSearch] = useState("");
+  const [tenantSortBy, setTenantSortBy] = useState<TenantSortKey>("name");
+  const [tenantSortDir, setTenantSortDir] = useState<"asc" | "desc">("asc");
   const [newTenantOpen, setNewTenantOpen] = useState(false);
   const [transactionModalOpen, setTransactionModalOpen] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
@@ -261,15 +264,73 @@ export default function TenantsPage() {
     Vacant: "bg-amber-900/40 text-amber-300 border-amber-700/60",
   };
 
-  const filtered = tenantsFromApi
-    .filter((t: any) => t.tenancyStatus !== "vacant")
-    .filter(
-      (t: any) =>
-        getTenantDisplayName(t).toLowerCase().includes(search.toLowerCase()) ||
-        (t.property || "").toLowerCase().includes(search.toLowerCase()) ||
-        (t.room || "").toLowerCase().includes(search.toLowerCase()) ||
-        (t.propertyName || "").toLowerCase().includes(search.toLowerCase())
-    );
+  const toggleTenantSort = (key: TenantSortKey) => {
+    if (tenantSortBy === key) {
+      setTenantSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setTenantSortBy(key);
+      setTenantSortDir(key === "status" || key === "rent" ? "desc" : "asc");
+    }
+  };
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    const rows = tenantsFromApi
+      .filter((t: any) => t.tenancyStatus !== "vacant")
+      .filter(
+        (t: any) =>
+          getTenantDisplayName(t).toLowerCase().includes(q) ||
+          (t.property || "").toLowerCase().includes(q) ||
+          (t.room || "").toLowerCase().includes(q) ||
+          (t.propertyName || "").toLowerCase().includes(q)
+      );
+
+    const statusRank: Record<string, number> = {
+      Unpaid: 0,
+      Partial: 1,
+      Paid: 2,
+      Vacant: 3,
+    };
+    const dir = tenantSortDir === "asc" ? 1 : -1;
+
+    return [...rows].sort((a: any, b: any) => {
+      if (tenantSortBy === "name") {
+        return (
+          getTenantDisplayName(a).localeCompare(getTenantDisplayName(b), undefined, {
+            sensitivity: "base",
+          }) * dir
+        );
+      }
+      if (tenantSortBy === "property") {
+        return (
+          getPropertyDisplay(a).localeCompare(getPropertyDisplay(b), undefined, {
+            sensitivity: "base",
+          }) * dir
+        );
+      }
+      if (tenantSortBy === "rent") {
+        const ar = Number(a.rent) || 0;
+        const br = Number(b.rent) || 0;
+        return (ar - br) * dir;
+      }
+      if (tenantSortBy === "status") {
+        const rem = getRemainingAmount(a) - getRemainingAmount(b);
+        if (rem !== 0) return rem * dir;
+        const sa = statusRank[getEffectiveStatus(a).key] ?? 9;
+        const sb = statusRank[getEffectiveStatus(b).key] ?? 9;
+        return (sa - sb) * dir;
+      }
+      // lastPayment — missing dates sort last when asc, first when desc
+      const da = a.lastPayment ? new Date(a.lastPayment).getTime() : NaN;
+      const db = b.lastPayment ? new Date(b.lastPayment).getTime() : NaN;
+      const aMissing = Number.isNaN(da);
+      const bMissing = Number.isNaN(db);
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      return (da - db) * dir;
+    });
+  }, [tenantsFromApi, search, tenantSortBy, tenantSortDir]);
 
   const closeTransactionModal = () => {
     setTransactionModalOpen(false);
@@ -750,11 +811,46 @@ export default function TenantsPage() {
         <table className="min-w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
-              <th className="rounded-tl-2xl px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm">Tenant Name</th>
-              <th className="px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm">Property</th>
-              <th className="px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm">Rent</th>
-              <th className="px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm">Status</th>
-              <th className="rounded-tr-2xl px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm">Last Payment</th>
+              {(
+                [
+                  { key: "name" as TenantSortKey, label: "Tenant Name", className: "rounded-tl-2xl" },
+                  { key: "property" as TenantSortKey, label: "Property", className: "" },
+                  { key: "rent" as TenantSortKey, label: "Rent", className: "" },
+                  { key: "status" as TenantSortKey, label: "Status", className: "" },
+                  { key: "lastPayment" as TenantSortKey, label: "Last Payment", className: "rounded-tr-2xl" },
+                ] as const
+              ).map((col) => {
+                const active = tenantSortBy === col.key;
+                return (
+                  <th
+                    key={col.key}
+                    className={`px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm ${col.className}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleTenantSort(col.key)}
+                      className={`inline-flex items-center gap-1.5 transition hover:text-gray-200 ${
+                        active ? "text-gray-100" : "text-gray-400"
+                      }`}
+                      aria-label={`Sort by ${col.label}`}
+                    >
+                      {col.label}
+                      {active ? (
+                        tenantSortDir === "asc" ? (
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        )
+                      ) : (
+                        <span className="inline-flex flex-col leading-none opacity-40">
+                          <ArrowUp className="h-2.5 w-2.5" />
+                          <ArrowDown className="-mt-0.5 h-2.5 w-2.5" />
+                        </span>
+                      )}
+                    </button>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>

@@ -8,14 +8,31 @@ import {
 import { markRentPaidWithTransaction } from "@/lib/api/tenantsApi";
 import { useAuthUser } from "@/redux/useAuthUser";
 
-export function useUnreconciledTransactions(params: { page?: number; limit?: number; search?: string } = {}) {
+export function useUnreconciledTransactions(
+	params: {
+		page?: number;
+		limit?: number;
+		search?: string;
+		sortBy?: "date" | "amount" | "payer" | "status";
+		sortDir?: "asc" | "desc";
+	} = {}
+) {
 	const page = params.page ?? 1;
 	const limit = params.limit ?? 20;
 	const search = params.search?.trim() || "";
+	const sortBy = params.sortBy ?? "date";
+	const sortDir = params.sortDir ?? "desc";
 
 	return useQuery<any, Error, any>({
-		queryKey: ["unreconciledTransactions", page, limit, search],
-		queryFn: () => getUnreconciledTransactions({ page, limit, search: search || undefined }),
+		queryKey: ["unreconciledTransactions", page, limit, search, sortBy, sortDir],
+		queryFn: () =>
+			getUnreconciledTransactions({
+				page,
+				limit,
+				search: search || undefined,
+				sortBy,
+				sortDir,
+			}),
 		staleTime: 60_000,
 		placeholderData: (prev: any) => prev,
 	});

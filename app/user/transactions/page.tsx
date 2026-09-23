@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Plus, Search, Check, X, Bell, ChevronDown, Info, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, Check, X, Bell, ChevronDown, Info, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { useConnectedAccounts, useUnreconciledTransactions, useConnectedInstitution, useReconcileTransaction, useAutoMatchTransactions } from "@/hooks/useTransactions";
@@ -36,10 +36,14 @@ interface TenantTxn {
   status: "Paid" | "Unpaid" | "Partial";
 }
 
+type TxSortKey = "date" | "amount" | "payer" | "status";
+
 export default function TransactionsPage() {
   const [search, setSearch] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [txSortBy, setTxSortBy] = useState<TxSortKey>("date");
+  const [txSortDir, setTxSortDir] = useState<"asc" | "desc">("desc");
   const pageSize = 20;
 
   useEffect(() => {
@@ -49,6 +53,16 @@ export default function TransactionsPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
+
+  const toggleSort = (key: TxSortKey) => {
+    if (txSortBy === key) {
+      setTxSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setTxSortBy(key);
+      setTxSortDir(key === "date" || key === "status" ? "desc" : "asc");
+    }
+    setPage(1);
+  };
 
   const transactions: Transaction[] = [
     {
@@ -88,6 +102,8 @@ export default function TransactionsPage() {
     page,
     limit: pageSize,
     search: searchQuery || undefined,
+    sortBy: txSortBy,
+    sortDir: txSortDir,
   });
   const unreconciledRes = unreconciledQuery.data;
   const txLoading = unreconciledQuery.isLoading;
@@ -967,10 +983,45 @@ export default function TransactionsPage() {
         <table className="min-w-full text-sm border-collapse">
           <thead>
             <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
-              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tl-2xl">Date</th>
-              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Payer</th>
-              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Amount</th>
-              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tr-2xl">Status</th>
+              {(
+                [
+                  { key: "date" as TxSortKey, label: "Date", className: "rounded-tl-2xl" },
+                  { key: "payer" as TxSortKey, label: "Payer", className: "" },
+                  { key: "amount" as TxSortKey, label: "Amount", className: "" },
+                  { key: "status" as TxSortKey, label: "Status", className: "rounded-tr-2xl" },
+                ] as const
+              ).map((col) => {
+                const active = txSortBy === col.key;
+                return (
+                  <th
+                    key={col.key}
+                    className={`py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm ${col.className}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(col.key)}
+                      className={`inline-flex items-center gap-1.5 hover:text-gray-200 transition ${
+                        active ? "text-gray-100" : "text-gray-400"
+                      }`}
+                      aria-label={`Sort by ${col.label}`}
+                    >
+                      {col.label}
+                      {active ? (
+                        txSortDir === "asc" ? (
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        ) : (
+                          <ArrowDown className="w-3.5 h-3.5" />
+                        )
+                      ) : (
+                        <span className="inline-flex flex-col leading-none opacity-40">
+                          <ArrowUp className="w-2.5 h-2.5" />
+                          <ArrowDown className="w-2.5 h-2.5 -mt-0.5" />
+                        </span>
+                      )}
+                    </button>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
 
