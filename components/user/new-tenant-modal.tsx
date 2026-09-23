@@ -173,7 +173,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
   const [addingToExisting, setAddingToExisting] = useState(false);
 
   const createMutation = useCreatePropertySetup();
-  const { data: existingAddresses = [] } = useTenantAddresses();
+  const { data: existingAddresses = [] } = useTenantAddresses(open);
   const { data: tenantsRes } = useTenants();
   const allTenants = tenantsRes?.data ?? [];
   const qc = useQueryClient();

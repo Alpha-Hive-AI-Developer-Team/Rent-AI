@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Plus, Search, Check, X, Bell, ChevronDown, Info, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { usePlaidLink } from "react-plaid-link";
-import { useConnectedAccounts, useUnreconciledTransactions, useConnectedInstitution, useReconcileTransaction } from "@/hooks/useTransactions";
+import { useConnectedAccounts, useUnreconciledTransactions, useConnectedInstitution, useReconcileTransaction, useAutoMatchTransactions } from "@/hooks/useTransactions";
 import { createPlaidLinkToken, exchangePlaidPublicToken, getPlaidTransactions, simulatePlaidIncoming } from "@/lib/api/transactionApi";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
@@ -138,6 +138,7 @@ export default function TransactionsPage() {
   } | null>(null);
 
   const reconcileMutation = useReconcileTransaction();
+  const autoMatchMutation = useAutoMatchTransactions();
 
   const connectedAccountsQuery = useConnectedAccounts(false);
   const [showAccountsModal, setShowAccountsModal] = useState(false);
@@ -314,13 +315,23 @@ export default function TransactionsPage() {
           property: propertyLabel,
           rent: typeof c.rent === "number" ? formatMoney(c.rent) : String(c.rent || ""),
           status: "Unpaid" as const,
-          transactions: visibleHistory.map((rh: any) => ({
-            month: formatDate(rh.month),
-            rent: formatMoney(rh.amountDue ?? rh.amount ?? 0),
-            amountPaid: formatMoney(rh.amountPaid ?? 0),
-            paidDate: rh.paidOn ?? null,
-            status: normalizeStatus(rh.status),
-          })),
+          transactions: visibleHistory.map((rh: any) => {
+            const pieces = Array.isArray(rh.linkedPayments)
+              ? rh.linkedPayments.filter((p: any) => (Number(p?.amount) || 0) > 0)
+              : [];
+            return {
+              month: formatDate(rh.month),
+              rent: formatMoney(rh.amountDue ?? rh.amount ?? 0),
+              amountPaid: formatMoney(rh.amountPaid ?? 0),
+              paidDate: rh.paidOn ?? null,
+              paymentPieces: pieces.map((p: any) => ({
+                paidOn: p.paidOn ?? null,
+                amount: Number(p.amount) || 0,
+                method: p.method || (p.transactionId ? "bank" : "cash"),
+              })),
+              status: normalizeStatus(rh.status),
+            };
+          }),
         };
       });
     }
@@ -594,7 +605,7 @@ export default function TransactionsPage() {
                                         <th className="py-2 px-3 text-xs">Month</th>
                                         <th className="py-2 px-3 text-xs">Rent</th>
                                         <th className="py-2 px-3 text-xs">Amount Paid</th>
-                                        <th className="py-2 px-3 text-xs">Paid Date</th>
+                                        <th className="py-2 px-3 text-xs">Payment history</th>
                                         <th className="py-2 px-3 text-xs">Status</th>
                                       </tr>
                                     </thead>
@@ -613,7 +624,33 @@ export default function TransactionsPage() {
                                             <td className={`py-2 px-3 ${tr.status === "Unpaid" ? "text-rose-400" : "text-gray-300"}`}>
                                               {tr.amountPaid}
                                             </td>
-                                            <td className="py-2 px-3 text-gray-300">{tr.paidDate ? formatDate(tr.paidDate) : "—"}</td>
+                                            <td className="py-2 px-3 align-top">
+                                              {Array.isArray(tr.paymentPieces) && tr.paymentPieces.length > 0 ? (
+                                                <ul className="min-w-[8.5rem] space-y-1.5">
+                                                  {tr.paymentPieces.map((p: any, pi: number) => (
+                                                    <li
+                                                      key={pi}
+                                                      className="flex items-baseline justify-between gap-3 text-sm"
+                                                    >
+                                                      <span className="shrink-0 text-gray-200">
+                                                        {p.paidOn ? formatDate(p.paidOn) : "—"}
+                                                      </span>
+                                                      <span className="tabular-nums text-gray-400">
+                                                        £
+                                                        {Number(p.amount || 0).toLocaleString(undefined, {
+                                                          minimumFractionDigits: 2,
+                                                          maximumFractionDigits: 2,
+                                                        })}
+                                                      </span>
+                                                    </li>
+                                                  ))}
+                                                </ul>
+                                              ) : (
+                                                <span className="text-sm text-gray-500">
+                                                  {tr.paidDate ? formatDate(tr.paidDate) : "—"}
+                                                </span>
+                                              )}
+                                            </td>
                                             <td className="py-2 px-3">
                                               <span
                                                 className={`px-2 py-1 text-xs rounded-full border ${
@@ -798,6 +835,39 @@ export default function TransactionsPage() {
       className="bg-transparent text-emerald-400 text-sm border border-emerald-600 rounded-full px-4 py-2 hover:bg-emerald-900/5 transition"
     >
       Sync Bank Feed
+    </button>
+
+    <button
+      onClick={async () => {
+        try {
+          const res = await autoMatchMutation.mutateAsync();
+          const data = res?.data ?? res;
+          const scanned = Number(data?.scanned) || 0;
+          const appliedCount = Number(data?.applied) || 0;
+          setSyncFeedback({
+            type: "success",
+            title: "Auto-Reconcile finished",
+            message:
+              appliedCount > 0
+                ? `Applied ${appliedCount} linked-payer payment${appliedCount === 1 ? "" : "s"} (${scanned} matched candidates checked).`
+                : scanned > 0
+                  ? `Found ${scanned} linked-payer candidate${scanned === 1 ? "" : "s"} but none could be applied (ambiguous link or already paid up). Open a Matched row to confirm manually.`
+                  : data?.reason === "no_linked_payers"
+                    ? "No linked bank payers yet. Reconcile one payment manually first — that saves the fingerprint — then Auto-Reconcile can apply the rest."
+                    : "No linked-payer matches to apply.",
+          });
+        } catch (err: any) {
+          setSyncFeedback({
+            type: "error",
+            title: "Auto-Reconcile Transactions failed",
+            message: err?.response?.data?.message || err?.message || "Could not auto-reconcile transactions.",
+          });
+        }
+      }}
+      disabled={autoMatchMutation.isPending || total === 0}
+      className="bg-transparent text-sky-400 text-sm border border-sky-600 rounded-full px-4 py-2 hover:bg-sky-900/5 transition disabled:opacity-50"
+    >
+      {autoMatchMutation.isPending ? "Matching…" : "Auto-Reconcile"}
     </button>
 
     {connectedInstitutionQuery.data?.sandbox && connectedInstitution && (

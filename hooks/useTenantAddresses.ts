@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getLandlordAddresses } from "@/lib/api/tenantsApi";
 import { useAuthUser } from "@/redux/useAuthUser";
 
-export function useTenantAddresses() {
+export function useTenantAddresses(enabled = true) {
   const authUser = useAuthUser();
   const userId = authUser?.id || authUser?._id || authUser?.userId;
 
@@ -12,7 +12,7 @@ export function useTenantAddresses() {
       const response = await getLandlordAddresses(userId);
       return Array.isArray(response?.data) ? response.data : [];
     },
-    enabled: !!userId,
+    enabled: !!userId && enabled,
     staleTime: 1000 * 60 * 5,
   });
 }

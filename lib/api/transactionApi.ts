@@ -13,6 +13,12 @@ export async function getUnreconciledTransactions(
   return res.data;
 }
 
+/** Apply clear matches for existing unreconciled bank txs (explicit action). */
+export async function autoMatchUnreconciledTransactions() {
+  const res = await apiClient.post(`/transactions/auto-match`);
+  return res.data;
+}
+
 /** Unreconciled bank txs scored for a tenant (same match reasons as Transactions page). */
 export async function getTransactionsMatchingTenant(tenantId: string, limit = 200) {
   const res = await apiClient.get(`/transactions/match-tenant`, {
