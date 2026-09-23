@@ -19,7 +19,7 @@ export function useTenants() {
     queryKey: ["tenants", userId],
     queryFn: () => getTenants(),
     enabled: !!userId,
-    staleTime: 0,
+    staleTime: 60_000,
   });
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info } from "lucide-react";
-import { useState } from "react";
+import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown } from "lucide-react";
+import { useState, useMemo } from "react";
 import NewTenantModal from "@/components/user/new-tenant-modal";
 import RentScheduleFields, {
   buildRentSchedulePayload,
@@ -17,7 +17,7 @@ import usePayByCash, {
   useUpdateTenant,
 } from "@/hooks/usetenants";
 import { useReconcileTransaction } from "@/hooks/useTransactions";
-import { getRentEntryPayment } from "@/lib/api/tenantsApi";
+import { getRentEntryPayment, getTenantById } from "@/lib/api/tenantsApi";
 import { getTransactionsMatchingTenant } from "@/lib/api/transactionApi";
 import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -124,17 +124,17 @@ export default function TenantsPage() {
     };
   };
 
-  /** Remaining unpaid amount across rentHistory entries. */
+  /** Remaining unpaid amount across rentHistory entries (or currentBalance on list DTO). */
   const getRemainingAmount = (tenant: any) => {
     if (tenant?.tenancyStatus === "vacant") return 0;
     const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
-    const fromHistory = history.reduce((sum: number, entry: any) => {
-      const due = Number(entry?.amountDue) || 0;
-      const paid = Number(entry?.amountPaid) || 0;
-      return sum + Math.max(0, due - paid);
-    }, 0);
-
-    if (fromHistory > 0) return fromHistory;
+    if (history.length > 0) {
+      return history.reduce((sum: number, entry: any) => {
+        const due = Number(entry?.amountDue) || 0;
+        const paid = Number(entry?.amountPaid) || 0;
+        return sum + Math.max(0, due - paid);
+      }, 0);
+    }
 
     if (typeof tenant?.currentBalance === "number" && tenant.currentBalance < 0) {
       return Math.abs(tenant.currentBalance);
@@ -144,7 +144,7 @@ export default function TenantsPage() {
   };
 
   /**
-   * Derive display status from rentHistory:
+   * Derive display status from rentHistory (detail) or status/currentBalance (list DTO):
    * - Vacant when room has no occupant
    * - Paid when nothing is owed
    * - Unpaid / Partial only when at least one month still has remaining due
@@ -161,6 +161,14 @@ export default function TenantsPage() {
 
     if (remaining <= 0) {
       return { key: "Paid", label: "Paid" };
+    }
+
+    if (history.length === 0) {
+      const s = String(tenant?.status || "").toLowerCase();
+      if (s === "partial") {
+        return { key: "Partial", label: formatMoney(remaining) };
+      }
+      return { key: "Unpaid", label: formatMoney(remaining) };
     }
 
     const hasPartial = history.some((entry: any) => {
@@ -188,10 +196,14 @@ export default function TenantsPage() {
     return address || "—";
   };
 
+  type TenantSortKey = "name" | "property" | "rent" | "status" | "lastPayment";
   const [search, setSearch] = useState("");
+  const [tenantSortBy, setTenantSortBy] = useState<TenantSortKey>("name");
+  const [tenantSortDir, setTenantSortDir] = useState<"asc" | "desc">("asc");
   const [newTenantOpen, setNewTenantOpen] = useState(false);
   const [transactionModalOpen, setTransactionModalOpen] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [pendingCash, setPendingCash] = useState<{
     index: number;
     entry: any;
@@ -214,6 +226,7 @@ export default function TenantsPage() {
     entry: any;
     loading: boolean;
     linkedTransactions: any[];
+    paymentHistory: any[];
     paymentMethod: string;
   } | null>(null);
   const [reconcileOpen, setReconcileOpen] = useState(false);
@@ -251,20 +264,79 @@ export default function TenantsPage() {
     Vacant: "bg-amber-900/40 text-amber-300 border-amber-700/60",
   };
 
-  const filtered = tenantsFromApi
-    .filter((t: any) => t.tenancyStatus !== "vacant")
-    .filter(
-      (t: any) =>
-        getTenantDisplayName(t).toLowerCase().includes(search.toLowerCase()) ||
-        (t.property || "").toLowerCase().includes(search.toLowerCase()) ||
-        (t.room || "").toLowerCase().includes(search.toLowerCase()) ||
-        (t.propertyName || "").toLowerCase().includes(search.toLowerCase())
-    );
+  const toggleTenantSort = (key: TenantSortKey) => {
+    if (tenantSortBy === key) {
+      setTenantSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setTenantSortBy(key);
+      setTenantSortDir(key === "status" || key === "rent" ? "desc" : "asc");
+    }
+  };
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    const rows = tenantsFromApi
+      .filter((t: any) => t.tenancyStatus !== "vacant")
+      .filter(
+        (t: any) =>
+          getTenantDisplayName(t).toLowerCase().includes(q) ||
+          (t.property || "").toLowerCase().includes(q) ||
+          (t.room || "").toLowerCase().includes(q) ||
+          (t.propertyName || "").toLowerCase().includes(q)
+      );
+
+    const statusRank: Record<string, number> = {
+      Unpaid: 0,
+      Partial: 1,
+      Paid: 2,
+      Vacant: 3,
+    };
+    const dir = tenantSortDir === "asc" ? 1 : -1;
+
+    return [...rows].sort((a: any, b: any) => {
+      if (tenantSortBy === "name") {
+        return (
+          getTenantDisplayName(a).localeCompare(getTenantDisplayName(b), undefined, {
+            sensitivity: "base",
+          }) * dir
+        );
+      }
+      if (tenantSortBy === "property") {
+        return (
+          getPropertyDisplay(a).localeCompare(getPropertyDisplay(b), undefined, {
+            sensitivity: "base",
+          }) * dir
+        );
+      }
+      if (tenantSortBy === "rent") {
+        const ar = Number(a.rent) || 0;
+        const br = Number(b.rent) || 0;
+        return (ar - br) * dir;
+      }
+      if (tenantSortBy === "status") {
+        const rem = getRemainingAmount(a) - getRemainingAmount(b);
+        if (rem !== 0) return rem * dir;
+        const sa = statusRank[getEffectiveStatus(a).key] ?? 9;
+        const sb = statusRank[getEffectiveStatus(b).key] ?? 9;
+        return (sa - sb) * dir;
+      }
+      // lastPayment — missing dates sort last when asc, first when desc
+      const da = a.lastPayment ? new Date(a.lastPayment).getTime() : NaN;
+      const db = b.lastPayment ? new Date(b.lastPayment).getTime() : NaN;
+      const aMissing = Number.isNaN(da);
+      const bMissing = Number.isNaN(db);
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      return (da - db) * dir;
+    });
+  }, [tenantsFromApi, search, tenantSortBy, tenantSortDir]);
 
   const closeTransactionModal = () => {
     setTransactionModalOpen(false);
     setPendingCash(null);
     setSelectedTenant(null);
+    setDetailLoading(false);
     setReconcileOpen(false);
     setMatchingTxs([]);
     setReconcileSearch("");
@@ -272,10 +344,23 @@ export default function TenantsPage() {
     setPaymentReview(null);
   };
 
-  const openTenantDetails = (tenant: any) => {
+  const openTenantDetails = async (tenant: any) => {
+    const id = tenant?._id || tenant?.id;
     setSelectedTenant(tenant);
     setPendingCash(null);
     setTransactionModalOpen(true);
+    if (!id || tenant?.tenancyStatus === "vacant") return;
+    // List payload omits rentHistory — load full tenant for the history modal
+    setDetailLoading(true);
+    try {
+      const res = await getTenantById(String(id));
+      const full = res?.data ?? res;
+      if (full) setSelectedTenant(full);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || "Failed to load tenant details");
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   const draftEditNames = [
@@ -508,16 +593,9 @@ export default function TenantsPage() {
     if (!isVacant) payload.tenantName = finalEditNames;
     if (showRoomEditField(selectedTenant)) payload.room = editRoom.trim();
     if (canEditScheduleFields(selectedTenant)) {
-      const prevMoveIn = selectedTenant.moveInDate
-        ? new Date(selectedTenant.moveInDate).toISOString().slice(0, 10)
-        : "";
-      if ((editMoveIn || "") !== prevMoveIn) {
-        payload.moveInDate = editMoveIn || null;
-      }
-      const prevDueOn = Number(selectedTenant.dueOn) || 1;
-      if (editDueOn !== prevDueOn) {
-        payload.dueOn = editDueOn;
-      }
+      // Always send so backend can rebuild prorated unpaid schedule (stale history from older rules)
+      payload.moveInDate = editMoveIn || null;
+      payload.dueOn = editDueOn;
     }
     if (!isVacant) {
       const nextDeposit = editHasDeposit && Number(editDeposit) > 0 ? Number(editDeposit) : 0;
@@ -578,7 +656,14 @@ export default function TenantsPage() {
   const hasRecordedPayment = (entry: any) => {
     const paid = Number(entry?.amountPaid) || 0;
     const method = String(entry?.paymentMethod || "none").toLowerCase();
-    return paid > 0 || method === "bank" || method === "cash";
+    const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
+    return paid > 0 || method === "bank" || method === "cash" || pieces.length > 0;
+  };
+
+  /** Per-payment pieces (full or partial) with their own paidOn dates. */
+  const getPaymentPieces = (entry: any) => {
+    const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
+    return pieces.filter((p: any) => (Number(p?.amount) || 0) > 0);
   };
 
   const openPaymentReview = async (index: number, entry: any) => {
@@ -588,6 +673,7 @@ export default function TenantsPage() {
       entry,
       loading: true,
       linkedTransactions: [],
+      paymentHistory: getPaymentPieces(entry),
       paymentMethod: entry.paymentMethod || "none",
     });
     try {
@@ -598,6 +684,9 @@ export default function TenantsPage() {
         entry: data.entry || entry,
         loading: false,
         linkedTransactions: Array.isArray(data.linkedTransactions) ? data.linkedTransactions : [],
+        paymentHistory: Array.isArray(data.paymentHistory)
+          ? data.paymentHistory
+          : getPaymentPieces(data.entry || entry),
         paymentMethod: data.paymentMethod || entry.paymentMethod || "none",
       });
     } catch (err: any) {
@@ -722,11 +811,46 @@ export default function TenantsPage() {
         <table className="min-w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
-              <th className="rounded-tl-2xl px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm">Tenant Name</th>
-              <th className="px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm">Property</th>
-              <th className="px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm">Rent</th>
-              <th className="px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm">Status</th>
-              <th className="rounded-tr-2xl px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm">Last Payment</th>
+              {(
+                [
+                  { key: "name" as TenantSortKey, label: "Tenant Name", className: "rounded-tl-2xl" },
+                  { key: "property" as TenantSortKey, label: "Property", className: "" },
+                  { key: "rent" as TenantSortKey, label: "Rent", className: "" },
+                  { key: "status" as TenantSortKey, label: "Status", className: "" },
+                  { key: "lastPayment" as TenantSortKey, label: "Last Payment", className: "rounded-tr-2xl" },
+                ] as const
+              ).map((col) => {
+                const active = tenantSortBy === col.key;
+                return (
+                  <th
+                    key={col.key}
+                    className={`px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm ${col.className}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleTenantSort(col.key)}
+                      className={`inline-flex items-center gap-1.5 transition hover:text-gray-200 ${
+                        active ? "text-gray-100" : "text-gray-400"
+                      }`}
+                      aria-label={`Sort by ${col.label}`}
+                    >
+                      {col.label}
+                      {active ? (
+                        tenantSortDir === "asc" ? (
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        )
+                      ) : (
+                        <span className="inline-flex flex-col leading-none opacity-40">
+                          <ArrowUp className="h-2.5 w-2.5" />
+                          <ArrowDown className="-mt-0.5 h-2.5 w-2.5" />
+                        </span>
+                      )}
+                    </button>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -850,7 +974,7 @@ export default function TenantsPage() {
               <div className="mb-4 rounded-xl border border-[#1a1a1a] bg-[#0B0B0B] px-4 py-3">
                 <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Linked bank payers</p>
                 <p className="mb-3 text-xs text-gray-500">
-                  Future payments from these bank identities auto-match this tenant. Unlink to stop that.
+                  Future payments from these bank identities auto-reconcile with this tenant. Unlink to stop that.
                 </p>
                 <div className="space-y-2">
                   {selectedTenant.linkedPayers.map((payer: any) => {
@@ -929,6 +1053,7 @@ export default function TenantsPage() {
                   <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
                     <th className="px-4 py-3 text-xs">Amount Due</th>
                     <th className="px-4 py-3 text-xs">Amount Paid</th>
+                    <th className="px-4 py-3 text-xs">Payment history</th>
                     <th className="px-4 py-3 text-xs">Due Date</th>
                     <th className="px-4 py-3 text-xs">Status</th>
                     <th className="px-4 py-3 text-xs">Actions</th>
@@ -936,6 +1061,16 @@ export default function TenantsPage() {
                 </thead>
                 <tbody>
                   {(() => {
+                    if (detailLoading) {
+                      return (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-gray-400">
+                            Loading rent history…
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     const visibleHistory = (selectedTenant.rentHistory || [])
                       .map((entry: any, index: number) => ({ entry, index }))
                       .filter(({ entry }: { entry: any }) => {
@@ -949,7 +1084,7 @@ export default function TenantsPage() {
                     if (!visibleHistory.length) {
                       return (
                         <tr>
-                          <td colSpan={5} className="py-8 text-center text-gray-400">
+                          <td colSpan={6} className="py-8 text-center text-gray-400">
                             No rent history found for this tenant.
                           </td>
                         </tr>
@@ -971,6 +1106,35 @@ export default function TenantsPage() {
                         <td className="px-4 py-3 text-gray-300">{formatMoney(Number(entry.amountDue) || 0)}</td>
                         <td className={`px-4 py-3 ${remaining > 0 ? "text-rose-400" : "text-gray-300"}`}>
                           {formatMoney(Number(entry.amountPaid) || 0)}
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          {(() => {
+                            const pieces = getPaymentPieces(entry);
+                            if (pieces.length === 0) {
+                              return (
+                                <span className="text-sm text-gray-500">
+                                  {entry.paidOn ? formatDate(entry.paidOn) : "—"}
+                                </span>
+                              );
+                            }
+                            return (
+                              <ul className="min-w-[8.5rem] space-y-1.5">
+                                {pieces.map((p: any, pi: number) => (
+                                  <li
+                                    key={pi}
+                                    className="flex items-baseline justify-between gap-3 text-sm"
+                                  >
+                                    <span className="shrink-0 text-gray-200">
+                                      {formatDate(p.paidOn)}
+                                    </span>
+                                    <span className="tabular-nums text-gray-400">
+                                      {formatMoney(Number(p.amount) || 0)}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3 text-gray-300">{formatDate(entry.dueDate)}</td>
                         <td className="px-4 py-3">
@@ -1328,7 +1492,7 @@ export default function TenantsPage() {
                 <span>{formatMoney(Number(paymentReview.entry?.amountPaid) || 0)}</span>
               </div>
               <div className="flex justify-between text-gray-300">
-                <span>Paid on</span>
+                <span>Latest paid on</span>
                 <span>{formatDate(paymentReview.entry?.paidOn)}</span>
               </div>
               <div className="flex justify-between text-gray-300">
@@ -1339,7 +1503,8 @@ export default function TenantsPage() {
 
             {paymentReview.loading ? (
               <p className="mb-4 text-sm text-gray-500">Loading linked bank transaction…</p>
-            ) : paymentReview.paymentMethod === "bank" ? (
+            ) : paymentReview.paymentMethod === "bank" ||
+              (paymentReview.linkedTransactions?.length ?? 0) > 0 ? (
               <div className="mb-4">
                 <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
                   Linked bank transaction
@@ -1383,14 +1548,14 @@ export default function TenantsPage() {
                   </div>
                 )}
                 <p className="mt-2 text-[11px] text-gray-500">
-                  Bank payments are split across unpaid months oldest-first. Leftover from a payment rolls to the next
-                  month — only the amount used for this month is shown above.
+                  Each payment piece keeps its own bank date. Leftover from a payment rolls to the next unpaid month
+                  (oldest first) — only the amount used for this month is shown above.
                 </p>
               </div>
             ) : (
               <p className="mb-4 text-sm text-gray-400">
-                This month was marked paid in <strong className="text-gray-200">cash</strong>. Reversing will set it
-                back to unpaid so you can re-enter cash (full or leave it for bank match).
+                This month includes <strong className="text-gray-200">cash</strong> payment(s). Reversing clears this
+                month so you can re-enter cash or leave it for bank match.
               </p>
             )}
 

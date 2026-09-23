@@ -1,10 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { Plus, Search, Check, X, Bell, ChevronDown, Info, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, Check, X, Bell, ChevronDown, Info, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { usePlaidLink } from "react-plaid-link";
-import { useConnectedAccounts, useUnreconciledTransactions, useConnectedInstitution, useReconcileTransaction } from "@/hooks/useTransactions";
+import { useConnectedAccounts, useUnreconciledTransactions, useConnectedInstitution, useReconcileTransaction, useAutoMatchTransactions } from "@/hooks/useTransactions";
 import { createPlaidLinkToken, exchangePlaidPublicToken, getPlaidTransactions, simulatePlaidIncoming } from "@/lib/api/transactionApi";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
@@ -36,10 +36,14 @@ interface TenantTxn {
   status: "Paid" | "Unpaid" | "Partial";
 }
 
+type TxSortKey = "date" | "amount" | "payer" | "status";
+
 export default function TransactionsPage() {
   const [search, setSearch] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [txSortBy, setTxSortBy] = useState<TxSortKey>("date");
+  const [txSortDir, setTxSortDir] = useState<"asc" | "desc">("desc");
   const pageSize = 20;
 
   useEffect(() => {
@@ -49,6 +53,16 @@ export default function TransactionsPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
+
+  const toggleSort = (key: TxSortKey) => {
+    if (txSortBy === key) {
+      setTxSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setTxSortBy(key);
+      setTxSortDir(key === "date" || key === "status" ? "desc" : "asc");
+    }
+    setPage(1);
+  };
 
   const transactions: Transaction[] = [
     {
@@ -88,6 +102,8 @@ export default function TransactionsPage() {
     page,
     limit: pageSize,
     search: searchQuery || undefined,
+    sortBy: txSortBy,
+    sortDir: txSortDir,
   });
   const unreconciledRes = unreconciledQuery.data;
   const txLoading = unreconciledQuery.isLoading;
@@ -138,6 +154,7 @@ export default function TransactionsPage() {
   } | null>(null);
 
   const reconcileMutation = useReconcileTransaction();
+  const autoMatchMutation = useAutoMatchTransactions();
 
   const connectedAccountsQuery = useConnectedAccounts(false);
   const [showAccountsModal, setShowAccountsModal] = useState(false);
@@ -314,13 +331,23 @@ export default function TransactionsPage() {
           property: propertyLabel,
           rent: typeof c.rent === "number" ? formatMoney(c.rent) : String(c.rent || ""),
           status: "Unpaid" as const,
-          transactions: visibleHistory.map((rh: any) => ({
-            month: formatDate(rh.month),
-            rent: formatMoney(rh.amountDue ?? rh.amount ?? 0),
-            amountPaid: formatMoney(rh.amountPaid ?? 0),
-            paidDate: rh.paidOn ?? null,
-            status: normalizeStatus(rh.status),
-          })),
+          transactions: visibleHistory.map((rh: any) => {
+            const pieces = Array.isArray(rh.linkedPayments)
+              ? rh.linkedPayments.filter((p: any) => (Number(p?.amount) || 0) > 0)
+              : [];
+            return {
+              month: formatDate(rh.month),
+              rent: formatMoney(rh.amountDue ?? rh.amount ?? 0),
+              amountPaid: formatMoney(rh.amountPaid ?? 0),
+              paidDate: rh.paidOn ?? null,
+              paymentPieces: pieces.map((p: any) => ({
+                paidOn: p.paidOn ?? null,
+                amount: Number(p.amount) || 0,
+                method: p.method || (p.transactionId ? "bank" : "cash"),
+              })),
+              status: normalizeStatus(rh.status),
+            };
+          }),
         };
       });
     }
@@ -594,7 +621,7 @@ export default function TransactionsPage() {
                                         <th className="py-2 px-3 text-xs">Month</th>
                                         <th className="py-2 px-3 text-xs">Rent</th>
                                         <th className="py-2 px-3 text-xs">Amount Paid</th>
-                                        <th className="py-2 px-3 text-xs">Paid Date</th>
+                                        <th className="py-2 px-3 text-xs">Payment history</th>
                                         <th className="py-2 px-3 text-xs">Status</th>
                                       </tr>
                                     </thead>
@@ -613,7 +640,33 @@ export default function TransactionsPage() {
                                             <td className={`py-2 px-3 ${tr.status === "Unpaid" ? "text-rose-400" : "text-gray-300"}`}>
                                               {tr.amountPaid}
                                             </td>
-                                            <td className="py-2 px-3 text-gray-300">{tr.paidDate ? formatDate(tr.paidDate) : "—"}</td>
+                                            <td className="py-2 px-3 align-top">
+                                              {Array.isArray(tr.paymentPieces) && tr.paymentPieces.length > 0 ? (
+                                                <ul className="min-w-[8.5rem] space-y-1.5">
+                                                  {tr.paymentPieces.map((p: any, pi: number) => (
+                                                    <li
+                                                      key={pi}
+                                                      className="flex items-baseline justify-between gap-3 text-sm"
+                                                    >
+                                                      <span className="shrink-0 text-gray-200">
+                                                        {p.paidOn ? formatDate(p.paidOn) : "—"}
+                                                      </span>
+                                                      <span className="tabular-nums text-gray-400">
+                                                        £
+                                                        {Number(p.amount || 0).toLocaleString(undefined, {
+                                                          minimumFractionDigits: 2,
+                                                          maximumFractionDigits: 2,
+                                                        })}
+                                                      </span>
+                                                    </li>
+                                                  ))}
+                                                </ul>
+                                              ) : (
+                                                <span className="text-sm text-gray-500">
+                                                  {tr.paidDate ? formatDate(tr.paidDate) : "—"}
+                                                </span>
+                                              )}
+                                            </td>
                                             <td className="py-2 px-3">
                                               <span
                                                 className={`px-2 py-1 text-xs rounded-full border ${
@@ -800,6 +853,39 @@ export default function TransactionsPage() {
       Sync Bank Feed
     </button>
 
+    <button
+      onClick={async () => {
+        try {
+          const res = await autoMatchMutation.mutateAsync();
+          const data = res?.data ?? res;
+          const scanned = Number(data?.scanned) || 0;
+          const appliedCount = Number(data?.applied) || 0;
+          setSyncFeedback({
+            type: "success",
+            title: "Auto-Reconcile finished",
+            message:
+              appliedCount > 0
+                ? `Applied ${appliedCount} linked-payer payment${appliedCount === 1 ? "" : "s"} (${scanned} matched candidates checked).`
+                : scanned > 0
+                  ? `Found ${scanned} linked-payer candidate${scanned === 1 ? "" : "s"} but none could be applied (ambiguous link or already paid up). Open a Matched row to confirm manually.`
+                  : data?.reason === "no_linked_payers"
+                    ? "No linked bank payers yet. Reconcile one payment manually first — that saves the fingerprint — then Auto-Reconcile can apply the rest."
+                    : "No linked-payer matches to apply.",
+          });
+        } catch (err: any) {
+          setSyncFeedback({
+            type: "error",
+            title: "Auto-Reconcile Transactions failed",
+            message: err?.response?.data?.message || err?.message || "Could not auto-reconcile transactions.",
+          });
+        }
+      }}
+      disabled={autoMatchMutation.isPending || total === 0}
+      className="bg-transparent text-sky-400 text-sm border border-sky-600 rounded-full px-4 py-2 hover:bg-sky-900/5 transition disabled:opacity-50"
+    >
+      {autoMatchMutation.isPending ? "Matching…" : "Auto-Reconcile"}
+    </button>
+
     {connectedInstitutionQuery.data?.sandbox && connectedInstitution && (
       <button
         onClick={async () => {
@@ -897,10 +983,45 @@ export default function TransactionsPage() {
         <table className="min-w-full text-sm border-collapse">
           <thead>
             <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
-              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tl-2xl">Date</th>
-              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Payer</th>
-              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm">Amount</th>
-              <th className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm rounded-tr-2xl">Status</th>
+              {(
+                [
+                  { key: "date" as TxSortKey, label: "Date", className: "rounded-tl-2xl" },
+                  { key: "payer" as TxSortKey, label: "Payer", className: "" },
+                  { key: "amount" as TxSortKey, label: "Amount", className: "" },
+                  { key: "status" as TxSortKey, label: "Status", className: "rounded-tr-2xl" },
+                ] as const
+              ).map((col) => {
+                const active = txSortBy === col.key;
+                return (
+                  <th
+                    key={col.key}
+                    className={`py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm ${col.className}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(col.key)}
+                      className={`inline-flex items-center gap-1.5 hover:text-gray-200 transition ${
+                        active ? "text-gray-100" : "text-gray-400"
+                      }`}
+                      aria-label={`Sort by ${col.label}`}
+                    >
+                      {col.label}
+                      {active ? (
+                        txSortDir === "asc" ? (
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        ) : (
+                          <ArrowDown className="w-3.5 h-3.5" />
+                        )
+                      ) : (
+                        <span className="inline-flex flex-col leading-none opacity-40">
+                          <ArrowUp className="w-2.5 h-2.5" />
+                          <ArrowDown className="w-2.5 h-2.5 -mt-0.5" />
+                        </span>
+                      )}
+                    </button>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
 

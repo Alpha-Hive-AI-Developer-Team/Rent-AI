@@ -495,7 +495,7 @@ export default function LandlordManagement() {
                                 <th className="py-2 px-3 text-xs">Month</th>
                                 <th className="py-2 px-3 text-xs">Rent</th>
                                 <th className="py-2 px-3 text-xs">Amount Paid</th>
-                                <th className="py-2 px-3 text-xs">Paid Date</th>
+                                <th className="py-2 px-3 text-xs">Payment history</th>
                                 <th className="py-2 px-3 text-xs">Status</th>
                               </tr>
                             </thead>
@@ -504,12 +504,32 @@ export default function LandlordManagement() {
                                 const statusLabel = tr.status ? String(tr.status).charAt(0).toUpperCase() + String(tr.status).slice(1) : "-";
                                 const statusClass = statusLabel === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : statusLabel === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700';
                                 const fmtCurrency = (n: number) => `£${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                                const pieces = Array.isArray(tr.linkedPayments)
+                                  ? tr.linkedPayments.filter((p: any) => (Number(p?.amount) || 0) > 0)
+                                  : [];
                                 return (
                                   <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
                                     <td className="py-2 px-3 text-gray-300">{tr.month}</td>
                                     <td className="py-2 px-3 text-gray-300">{fmtCurrency(tr.rent)}</td>
                                     <td className={`py-2 px-3 ${statusLabel === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{fmtCurrency(tr.amountPaid || 0)}</td>
-                                    <td className="py-2 px-3 text-gray-300">{tr.paidOn ? new Date(tr.paidOn).toLocaleDateString() : '—'}</td>
+                                    <td className="py-2 px-3 text-gray-300">
+                                      {pieces.length > 0 ? (
+                                        <div className="flex flex-col gap-0.5 text-xs">
+                                          {pieces.map((p: any, pi: number) => (
+                                            <div key={pi}>
+                                              {p.paidOn ? new Date(p.paidOn).toLocaleDateString() : "—"}
+                                              {" · "}
+                                              {fmtCurrency(Number(p.amount) || 0)}
+                                              {p.method ? ` · ${p.method}` : ""}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : tr.paidOn ? (
+                                        new Date(tr.paidOn).toLocaleDateString()
+                                      ) : (
+                                        "—"
+                                      )}
+                                    </td>
                                     <td className="py-2 px-3">
                                       <span className={`px-2 py-1 text-xs rounded-full border ${statusClass}`}>{statusLabel}</span>
                                     </td>
