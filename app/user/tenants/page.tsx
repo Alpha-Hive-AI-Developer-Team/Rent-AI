@@ -1,7 +1,7 @@
 "use client";
 
-import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown } from "lucide-react";
-import { useState, useMemo } from "react";
+import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import NewTenantModal from "@/components/user/new-tenant-modal";
 import RentScheduleFields, {
   buildRentSchedulePayload,
@@ -217,6 +217,8 @@ export default function TenantsPage() {
   const [editDueOn, setEditDueOn] = useState(1);
   const [editHasDeposit, setEditHasDeposit] = useState(false);
   const [editDeposit, setEditDeposit] = useState("");
+  const [editDepositStart, setEditDepositStart] = useState("");
+  const [editDepositEnd, setEditDepositEnd] = useState("");
   const [editRent, setEditRent] = useState("");
   const [editRentAdjustments, setEditRentAdjustments] = useState<RentAdjustmentRow[]>([]);
   const [editConfirmationOpen, setEditConfirmationOpen] = useState(false);
@@ -233,6 +235,11 @@ export default function TenantsPage() {
   const [reconcileLoading, setReconcileLoading] = useState(false);
   const [matchingTxs, setMatchingTxs] = useState<any[]>([]);
   const [reconcileSearch, setReconcileSearch] = useState("");
+  const [reconcileSearchQuery, setReconcileSearchQuery] = useState("");
+  const [reconcilePage, setReconcilePage] = useState(1);
+  const [reconcileTotal, setReconcileTotal] = useState(0);
+  const [reconcileTotalPages, setReconcileTotalPages] = useState(1);
+  const reconcilePageSize = 20;
   const [pendingBankReconcile, setPendingBankReconcile] = useState<any | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignName, setAssignName] = useState("");
@@ -241,6 +248,8 @@ export default function TenantsPage() {
   const [assignMoveIn, setAssignMoveIn] = useState("");
   const [assignHasDeposit, setAssignHasDeposit] = useState(false);
   const [assignDeposit, setAssignDeposit] = useState("");
+  const [assignDepositStart, setAssignDepositStart] = useState("");
+  const [assignDepositEnd, setAssignDepositEnd] = useState("");
   const [assignRentAdjustments, setAssignRentAdjustments] = useState<RentAdjustmentRow[]>([]);
 
   const { data, isLoading, isError } = useTenants();
@@ -406,6 +415,16 @@ export default function TenantsPage() {
     const existingDeposit = Number(selectedTenant.depositAmount) || 0;
     setEditHasDeposit(existingDeposit > 0);
     setEditDeposit(existingDeposit > 0 ? String(existingDeposit) : "");
+    setEditDepositStart(
+      selectedTenant.depositStartDate
+        ? new Date(selectedTenant.depositStartDate).toISOString().slice(0, 10)
+        : ""
+    );
+    setEditDepositEnd(
+      selectedTenant.depositEndDate
+        ? new Date(selectedTenant.depositEndDate).toISOString().slice(0, 10)
+        : ""
+    );
     const scheduleUi = scheduleFromTenant(selectedTenant);
     setEditRent(scheduleUi.baseRent);
     setEditRentAdjustments(scheduleUi.adjustments);
@@ -426,6 +445,8 @@ export default function TenantsPage() {
     setAssignMoveIn(new Date().toISOString().slice(0, 10));
     setAssignHasDeposit(false);
     setAssignDeposit("");
+    setAssignDepositStart("");
+    setAssignDepositEnd("");
     setAssignRentAdjustments([]);
     setAssignOpen(true);
     setTransactionModalOpen(false);
@@ -439,6 +460,8 @@ export default function TenantsPage() {
     setAssignMoveIn("");
     setAssignHasDeposit(false);
     setAssignDeposit("");
+    setAssignDepositStart("");
+    setAssignDepositEnd("");
     setAssignRentAdjustments([]);
     if (reopenDetails && selectedTenant) {
       setTransactionModalOpen(true);
@@ -467,6 +490,14 @@ export default function TenantsPage() {
         toast.error("Enter the deposit amount, or uncheck Record deposit.");
         return;
       }
+      if (!assignDepositStart || !assignDepositEnd) {
+        toast.error("Enter deposit start and end dates.");
+        return;
+      }
+      if (assignDepositEnd < assignDepositStart) {
+        toast.error("Deposit end date must be on or after the start date.");
+        return;
+      }
     }
 
     assignTenantMutation.mutate(
@@ -478,6 +509,10 @@ export default function TenantsPage() {
           dueOn: assignDueOn,
           moveInDate: assignMoveIn,
           depositAmount: assignHasDeposit && Number(assignDeposit) > 0 ? Number(assignDeposit) : 0,
+          depositStartDate:
+            assignHasDeposit && Number(assignDeposit) > 0 ? assignDepositStart || null : null,
+          depositEndDate:
+            assignHasDeposit && Number(assignDeposit) > 0 ? assignDepositEnd || null : null,
           rentSchedule: buildRentSchedulePayload(assignRentAdjustments),
         },
       },
@@ -506,6 +541,8 @@ export default function TenantsPage() {
     setEditDueOn(1);
     setEditHasDeposit(false);
     setEditDeposit("");
+    setEditDepositStart("");
+    setEditDepositEnd("");
     setEditRent("");
     setEditRentAdjustments([]);
 
@@ -552,6 +589,14 @@ export default function TenantsPage() {
         toast.error("Enter the deposit amount, or uncheck Record deposit.");
         return;
       }
+      if (!editDepositStart || !editDepositEnd) {
+        toast.error("Enter deposit start and end dates.");
+        return;
+      }
+      if (editDepositEnd < editDepositStart) {
+        toast.error("Deposit end date must be on or after the start date.");
+        return;
+      }
     }
 
     if (!isVacant) {
@@ -587,6 +632,8 @@ export default function TenantsPage() {
       moveInDate?: string | null;
       dueOn?: number;
       depositAmount?: number;
+      depositStartDate?: string | null;
+      depositEndDate?: string | null;
       rent?: number;
       rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
     } = {};
@@ -600,8 +647,23 @@ export default function TenantsPage() {
     if (!isVacant) {
       const nextDeposit = editHasDeposit && Number(editDeposit) > 0 ? Number(editDeposit) : 0;
       const prevDeposit = Number(selectedTenant.depositAmount) || 0;
-      if (nextDeposit !== prevDeposit) {
+      const nextStart =
+        nextDeposit > 0 && editDepositStart ? editDepositStart : null;
+      const nextEnd = nextDeposit > 0 && editDepositEnd ? editDepositEnd : null;
+      const prevStart = selectedTenant.depositStartDate
+        ? new Date(selectedTenant.depositStartDate).toISOString().slice(0, 10)
+        : null;
+      const prevEnd = selectedTenant.depositEndDate
+        ? new Date(selectedTenant.depositEndDate).toISOString().slice(0, 10)
+        : null;
+      if (
+        nextDeposit !== prevDeposit ||
+        nextStart !== prevStart ||
+        nextEnd !== prevEnd
+      ) {
         payload.depositAmount = nextDeposit;
+        payload.depositStartDate = nextStart;
+        payload.depositEndDate = nextEnd;
       }
       const nextRent = Number(editRent);
       const prevRent = Number(selectedTenant.rent) || 0;
@@ -712,27 +774,84 @@ export default function TenantsPage() {
     );
   };
 
-  const openReconcilePanel = async () => {
-    if (!selectedTenant) return;
+  const loadReconcileTxs = useCallback(
+    async ({
+      tenantId,
+      page = 1,
+      search = "",
+      showSpinner = true,
+    }: {
+      tenantId: string;
+      page?: number;
+      search?: string;
+      showSpinner?: boolean;
+    }) => {
+      if (showSpinner) setReconcileLoading(true);
+      try {
+        const res = await getTransactionsMatchingTenant(tenantId, {
+          page,
+          limit: reconcilePageSize,
+          search: search || undefined,
+        });
+        const docs = res?.data?.docs ?? [];
+        setMatchingTxs(Array.isArray(docs) ? docs : []);
+        setReconcileTotal(Number(res?.data?.total) || 0);
+        setReconcileTotalPages(Math.max(1, Number(res?.data?.totalPages) || 1));
+        setReconcilePage(Number(res?.data?.page) || page);
+      } catch (err: any) {
+        toast.error(err?.response?.data?.message || "Could not load matching transactions");
+        throw err;
+      } finally {
+        if (showSpinner) setReconcileLoading(false);
+      }
+    },
+    [reconcilePageSize]
+  );
 
+  const openReconcilePanel = () => {
+    if (!selectedTenant) return;
     setReconcileOpen(true);
-    setReconcileLoading(true);
     setMatchingTxs([]);
     setReconcileSearch("");
-    try {
-      const res = await getTransactionsMatchingTenant(selectedTenant._id);
-      const docs = res?.data?.docs ?? [];
-      setMatchingTxs(Array.isArray(docs) ? docs : []);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Could not load matching transactions");
-      setReconcileOpen(false);
-    } finally {
-      setReconcileLoading(false);
-    }
+    setReconcileSearchQuery("");
+    setReconcilePage(1);
+    setReconcileTotal(0);
+    setReconcileTotalPages(1);
   };
 
+  const closeReconcilePanel = () => {
+    setReconcileOpen(false);
+    setReconcileSearch("");
+    setReconcileSearchQuery("");
+    setReconcilePage(1);
+    setMatchingTxs([]);
+  };
+
+  useEffect(() => {
+    if (!reconcileOpen) return;
+    const timer = setTimeout(() => {
+      const next = reconcileSearch.trim();
+      setReconcileSearchQuery((prev) => {
+        if (prev !== next) setReconcilePage(1);
+        return next;
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [reconcileSearch, reconcileOpen]);
+
+  useEffect(() => {
+    if (!reconcileOpen || !selectedTenant?._id) return;
+    loadReconcileTxs({
+      tenantId: selectedTenant._id,
+      page: reconcilePage,
+      search: reconcileSearchQuery,
+    }).catch(() => {
+      // Error toast is shown in loadReconcileTxs
+    });
+  }, [reconcileOpen, selectedTenant?._id, reconcilePage, reconcileSearchQuery, loadReconcileTxs]);
+
   const formatMatchReason = (reason: string | null | undefined) => {
-    if (!reason) return "Needs review";
+    if (!reason) return "No automatic match";
     const map: Record<string, string> = {
       amount_exact_and_name: "Name + exact amount",
       amount_exact_total_arrears_and_name: "Name + clears all arrears",
@@ -764,14 +883,14 @@ export default function TenantsPage() {
           const updatedTenant = res?.data?.tenant || res?.tenant || null;
           if (updatedTenant) setSelectedTenant(updatedTenant);
           setPendingBankReconcile(null);
-          setMatchingTxs((prev) =>
-            prev.filter(
-              (row) =>
-                (row.transaction?.transactionId || row.transactionId) !== transactionId
-            )
-          );
           qc.invalidateQueries({ queryKey: ["tenants", userId] });
           toast.success("Transaction reconciled");
+          loadReconcileTxs({
+            tenantId: selectedTenant._id,
+            page: reconcilePage,
+            search: reconcileSearchQuery,
+            showSpinner: false,
+          }).catch(() => {});
         },
         onError: (err: any) => {
           toast.error(err?.response?.data?.message || "Failed to reconcile");
@@ -955,6 +1074,13 @@ export default function TenantsPage() {
                     <span className="font-medium text-gray-200">
                       {formatMoney(Number(selectedTenant.depositAmount))}
                     </span>
+                    {(selectedTenant.depositStartDate || selectedTenant.depositEndDate) && (
+                      <span className="text-gray-500">
+                        {" "}
+                        ({formatDate(selectedTenant.depositStartDate)} –{" "}
+                        {formatDate(selectedTenant.depositEndDate)})
+                      </span>
+                    )}
                   </p>
                 )}
               </div>
@@ -1233,7 +1359,7 @@ export default function TenantsPage() {
                   className="inline-flex items-center justify-center gap-2 rounded-full border border-rose-800 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/40"
                 >
                   <Trash2 className="h-4 w-4" />
-                  {selectedTenant.tenancyStatus === "vacant" ? "Remove room" : "Remove tenant"}
+                  {selectedTenant.tenancyStatus === "vacant" ? "Remove room" : "Remove "}
                 </button>
               </div>
 
@@ -1257,15 +1383,12 @@ export default function TenantsPage() {
                   {getTenantDisplayName(selectedTenant)} — Reconcile
                 </h3>
                 <p className="text-sm text-gray-400">
-                  {getPropertyDisplay(selectedTenant)} · name matches (incl. ambiguous) first, then amount-only
+                  {getPropertyDisplay(selectedTenant)} · matched first, then other unreconciled
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setReconcileOpen(false);
-                  setReconcileSearch("");
-                }}
+                onClick={closeReconcilePanel}
                 className="text-gray-400 hover:text-white"
               >
                 <X className="h-5 w-5" />
@@ -1300,56 +1423,31 @@ export default function TenantsPage() {
                   {reconcileLoading ? (
                     <tr>
                       <td colSpan={5} className="py-8 text-center text-gray-400">
-                        Loading matching transactions…
+                        Loading transactions…
                       </td>
                     </tr>
-                  ) : (() => {
-                    const q = reconcileSearch.trim().toLowerCase();
-                    const filteredRows = !q
-                      ? matchingTxs
-                      : matchingTxs.filter((row) => {
-                          const tx = row.transaction || row;
-                          const payer = String(tx.payerName || "").toLowerCase();
-                          const desc = String(tx.description || tx.reference || "").toLowerCase();
-                          const amount = String(tx.amount ?? "");
-                          const reason = String(row.matchReason || "").toLowerCase();
-                          const reasonLabel = formatMatchReason(row.matchReason).toLowerCase();
-                          return (
-                            payer.includes(q) ||
-                            desc.includes(q) ||
-                            amount.includes(q) ||
-                            reason.includes(q) ||
-                            reasonLabel.includes(q)
-                          );
-                        });
-
-                    if (matchingTxs.length === 0) {
-                      return (
-                        <tr>
-                          <td colSpan={5} className="py-8 text-center text-gray-400">
-                            No suggested bank transactions for this tenant.
-                          </td>
-                        </tr>
-                      );
-                    }
-
-                    if (filteredRows.length === 0) {
-                      return (
-                        <tr>
-                          <td colSpan={5} className="py-8 text-center text-gray-400">
-                            No transactions match your search.
-                          </td>
-                        </tr>
-                      );
-                    }
-
-                    return filteredRows.map((row) => {
+                  ) : matchingTxs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-gray-400">
+                        {reconcileSearchQuery
+                          ? `No unreconciled transactions match “${reconcileSearchQuery}”.`
+                          : "No unreconciled bank transactions."}
+                      </td>
+                    </tr>
+                  ) : (
+                    matchingTxs.map((row) => {
                       const tx = row.transaction || row;
                       const isMatched = row.matchStatus === "matched";
-                      const matchLabel = isMatched ? "Matched" : "Needs Review";
+                      const hasSuggestion = Boolean(row.matchStatus);
+                      const matchLabel = isMatched
+                        ? "Matched"
+                        : hasSuggestion
+                          ? "Needs Review"
+                          : "Other";
                       const matchColors: Record<string, string> = {
                         Matched: "bg-emerald-900/20 text-emerald-400 border-emerald-700",
                         "Needs Review": "bg-amber-900/20 text-amber-400 border-amber-700",
+                        Other: "bg-gray-900/40 text-gray-400 border-gray-700",
                       };
                       return (
                         <tr key={tx._id || tx.transactionId} className="border-t border-[#151515] hover:bg-[#0e0e0e]">
@@ -1368,12 +1466,14 @@ export default function TenantsPage() {
                               <span className={`rounded-full border px-2 py-1 text-xs ${matchColors[matchLabel]}`}>
                                 {matchLabel}
                               </span>
-                              <div className="group relative inline-block">
-                                <Info className="h-3 w-3 text-gray-400 group-hover:text-gray-200" />
-                                <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-[240px] -translate-x-1/2 whitespace-normal rounded bg-gray-800 px-2 py-1 text-xs text-gray-200 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-                                  {formatMatchReason(row.matchReason)}
+                              {hasSuggestion && (
+                                <div className="group relative inline-block">
+                                  <Info className="h-3 w-3 text-gray-400 group-hover:text-gray-200" />
+                                  <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-[240px] -translate-x-1/2 whitespace-normal rounded bg-gray-800 px-2 py-1 text-xs text-gray-200 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                                    {formatMatchReason(row.matchReason)}
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </div>
                             <div className="mt-1 text-[10px] text-gray-500">
                               {formatMatchReason(row.matchReason)}
@@ -1393,19 +1493,50 @@ export default function TenantsPage() {
                           </td>
                         </tr>
                       );
-                    });
-                  })()}
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
 
+            {reconcileTotal > 0 && (
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-gray-400">
+                  Showing{" "}
+                  {Math.min((reconcilePage - 1) * reconcilePageSize + 1, reconcileTotal)} to{" "}
+                  {Math.min(reconcilePage * reconcilePageSize, reconcileTotal)} of {reconcileTotal}{" "}
+                  transactions
+                </p>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setReconcilePage((p) => Math.max(1, p - 1))}
+                    disabled={reconcilePage <= 1 || reconcileLoading}
+                    className="inline-flex items-center gap-2 rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </button>
+                  <span className="text-sm text-gray-400">
+                    Page {reconcilePage} of {reconcileTotalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setReconcilePage((p) => Math.min(reconcileTotalPages, p + 1))}
+                    disabled={reconcilePage >= reconcileTotalPages || reconcileLoading}
+                    className="inline-flex items-center gap-2 rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="mt-4 flex justify-end">
               <button
                 type="button"
-                onClick={() => {
-                  setReconcileOpen(false);
-                  setReconcileSearch("");
-                }}
+                onClick={closeReconcilePanel}
                 className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
               >
                 Close
@@ -1801,7 +1932,11 @@ export default function TenantsPage() {
                   checked={assignHasDeposit}
                   onChange={(e) => {
                     setAssignHasDeposit(e.target.checked);
-                    if (!e.target.checked) setAssignDeposit("");
+                    if (!e.target.checked) {
+                      setAssignDeposit("");
+                      setAssignDepositStart("");
+                      setAssignDepositEnd("");
+                    }
                   }}
                   className="h-4 w-4 rounded border-gray-600 bg-transparent text-emerald-600 focus:ring-emerald-600"
                 />
@@ -1811,14 +1946,37 @@ export default function TenantsPage() {
                 Optional — saved for records only. Does not affect rent or balance.
               </p>
               {assignHasDeposit && (
-                <div className="mt-2">
-                  <label className="mb-1 block text-sm text-gray-200">Deposit amount (£)</label>
-                  <input
-                    value={assignDeposit}
-                    onChange={(e) => setAssignDeposit(e.target.value.replace(/[^0-9.]/g, ""))}
-                    placeholder="e.g. 780"
-                    className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                  />
+                <div className="mt-2 space-y-3">
+                  <div>
+                    <label className="mb-1 block text-sm text-gray-200">Deposit amount (£)</label>
+                    <input
+                      value={assignDeposit}
+                      onChange={(e) => setAssignDeposit(e.target.value.replace(/[^0-9.]/g, ""))}
+                      placeholder="e.g. 780"
+                      className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-sm text-gray-200">Start date</label>
+                      <input
+                        type="date"
+                        value={assignDepositStart}
+                        onChange={(e) => setAssignDepositStart(e.target.value)}
+                        className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm text-gray-200">End date</label>
+                      <input
+                        type="date"
+                        value={assignDepositEnd}
+                        min={assignDepositStart || undefined}
+                        onChange={(e) => setAssignDepositEnd(e.target.value)}
+                        className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -1992,7 +2150,11 @@ export default function TenantsPage() {
                       checked={editHasDeposit}
                       onChange={(e) => {
                         setEditHasDeposit(e.target.checked);
-                        if (!e.target.checked) setEditDeposit("");
+                        if (!e.target.checked) {
+                          setEditDeposit("");
+                          setEditDepositStart("");
+                          setEditDepositEnd("");
+                        }
                       }}
                       className="h-4 w-4 rounded border-gray-600 bg-transparent text-emerald-600 focus:ring-emerald-600"
                     />
@@ -2002,14 +2164,37 @@ export default function TenantsPage() {
                     Optional — records only; does not change rent due or balance.
                   </p>
                   {editHasDeposit && (
-                    <div className="mt-2">
-                      <label className="mb-1 block text-sm text-gray-200">Deposit amount (£)</label>
-                      <input
-                        value={editDeposit}
-                        onChange={(e) => setEditDeposit(e.target.value.replace(/[^0-9.]/g, ""))}
-                        placeholder="e.g. 780"
-                        className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                      />
+                    <div className="mt-2 space-y-3">
+                      <div>
+                        <label className="mb-1 block text-sm text-gray-200">Deposit amount (£)</label>
+                        <input
+                          value={editDeposit}
+                          onChange={(e) => setEditDeposit(e.target.value.replace(/[^0-9.]/g, ""))}
+                          placeholder="e.g. 780"
+                          className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1 block text-sm text-gray-200">Start date</label>
+                          <input
+                            type="date"
+                            value={editDepositStart}
+                            onChange={(e) => setEditDepositStart(e.target.value)}
+                            className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-sm text-gray-200">End date</label>
+                          <input
+                            type="date"
+                            value={editDepositEnd}
+                            min={editDepositStart || undefined}
+                            onChange={(e) => setEditDepositEnd(e.target.value)}
+                            className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                          />
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2104,7 +2289,11 @@ export default function TenantsPage() {
                   <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Deposit</p>
                   <p className="text-sm text-gray-200">
                     {editHasDeposit && Number(editDeposit) > 0
-                      ? `£${Number(editDeposit).toFixed(2)}`
+                      ? `£${Number(editDeposit).toFixed(2)}${
+                          editDepositStart || editDepositEnd
+                            ? ` (${editDepositStart || "—"} – ${editDepositEnd || "—"})`
+                            : ""
+                        }`
                       : "None"}
                   </p>
                 </div>

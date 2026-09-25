@@ -59,6 +59,8 @@ export function useUpdateTenant() {
         moveInDate?: string | null;
         dueOn?: number;
         depositAmount?: number | string;
+        depositStartDate?: string | null;
+        depositEndDate?: string | null;
         rent?: number | string;
         rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
       };
@@ -91,6 +93,8 @@ export function useAssignTenant() {
         dueOn?: number;
         moveInDate?: string;
         depositAmount?: number | string;
+        depositStartDate?: string | null;
+        depositEndDate?: string | null;
         rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
       };
     }) => assignTenantToRoom(tenantId, payload),
