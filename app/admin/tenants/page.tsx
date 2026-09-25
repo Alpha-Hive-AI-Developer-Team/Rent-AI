@@ -13,6 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { formatDate } from "@/lib/utils";
 
 export default function TenantManagement() {
   // fetch live stats
@@ -132,16 +133,7 @@ export default function TenantManagement() {
     {
       key: "lastPayment",
       label: "Last Payment",
-      render: (row: any) => {
-        const v = row.lastPayment;
-        if (!v) return "—";
-        const d = new Date(v);
-        if (isNaN(d.getTime())) return "—";
-        const dd = String(d.getDate()).padStart(2, "0");
-        const mm = String(d.getMonth() + 1).padStart(2, "0");
-        const yyyy = d.getFullYear();
-        return `${dd}/${mm}/${yyyy}`;
-      },
+      render: (row: any) => formatDate(row.lastPayment),
     },
   ];
 
@@ -254,7 +246,7 @@ export default function TenantManagement() {
                               : [];
                             return (
                             <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
-                              <td className="py-2 px-3 text-gray-300">{tr.month}</td>
+                              <td className="py-2 px-3 text-gray-300">{formatDate(tr.month)}</td>
                               <td className="py-2 px-3 text-gray-300">{typeof tr.rent === 'number' ? `£${tr.rent}` : tr.rent}</td>
                               <td className={`py-2 px-3 ${tr.status === 'unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{typeof tr.amountPaid === 'number' ? `£${tr.amountPaid}` : tr.amountPaid ?? '—'}</td>
                               <td className="py-2 px-3 text-gray-300">
@@ -262,7 +254,7 @@ export default function TenantManagement() {
                                   <div className="flex flex-col gap-0.5 text-xs">
                                     {pieces.map((p: any, pi: number) => (
                                       <div key={pi}>
-                                        {p.paidOn ? new Date(p.paidOn).toLocaleDateString() : "—"}
+                                        {p.paidOn ? formatDate(p.paidOn) : "—"}
                                         {" · "}
                                         £{Number(p.amount || 0).toFixed(2)}
                                         {p.method ? ` · ${p.method}` : ""}
@@ -270,7 +262,7 @@ export default function TenantManagement() {
                                     ))}
                                   </div>
                                 ) : tr.paidOn ? (
-                                  new Date(tr.paidOn).toLocaleDateString()
+                                  formatDate(tr.paidOn)
                                 ) : (
                                   "—"
                                 )}

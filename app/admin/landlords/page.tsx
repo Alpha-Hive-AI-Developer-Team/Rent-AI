@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown, Search, Plus, X, ChevronLeft } from "lucide-react";
 import CustomTable from "@/components/admin/custom-table";
+import { formatDate } from "@/lib/utils";
 
 export default function LandlordManagement() {
   const [planFilter, setPlanFilter] = useState("All Plan");
@@ -64,7 +65,7 @@ export default function LandlordManagement() {
     plan: (String(l.planType || "free")).toLowerCase(),
     tenants: l.tenantsCount || 0,
     status: (String(l.status || "active")).toLowerCase(),
-    created: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : "—",
+    created: formatDate(l.createdAt),
     addresses: l.addresses || [],
   }));
 
@@ -400,7 +401,7 @@ export default function LandlordManagement() {
                                 <td className="py-3 px-4 text-gray-300">{Array.isArray(t.tenantName) ? t.tenantName.join(" ") : t.name || t.tenantName}</td>
                                 <td className="py-3 px-4 text-gray-300">{typeof t.rent === 'number' ? `£${t.rent}` : t.rent}</td>
                                 <td className="py-3 px-4 text-gray-300">{t.status || (t.rentHistory && t.rentHistory[0] ? t.rentHistory[0].status : "-")}</td>
-                                <td className="py-3 px-4 text-gray-300">{t.lastPayment ? new Date(t.lastPayment).toLocaleDateString() : '—'}</td>
+                                <td className="py-3 px-4 text-gray-300">{formatDate(t.lastPayment)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -509,7 +510,7 @@ export default function LandlordManagement() {
                                   : [];
                                 return (
                                   <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
-                                    <td className="py-2 px-3 text-gray-300">{tr.month}</td>
+                                    <td className="py-2 px-3 text-gray-300">{formatDate(tr.month)}</td>
                                     <td className="py-2 px-3 text-gray-300">{fmtCurrency(tr.rent)}</td>
                                     <td className={`py-2 px-3 ${statusLabel === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{fmtCurrency(tr.amountPaid || 0)}</td>
                                     <td className="py-2 px-3 text-gray-300">
@@ -517,7 +518,7 @@ export default function LandlordManagement() {
                                         <div className="flex flex-col gap-0.5 text-xs">
                                           {pieces.map((p: any, pi: number) => (
                                             <div key={pi}>
-                                              {p.paidOn ? new Date(p.paidOn).toLocaleDateString() : "—"}
+                                              {p.paidOn ? formatDate(p.paidOn) : "—"}
                                               {" · "}
                                               {fmtCurrency(Number(p.amount) || 0)}
                                               {p.method ? ` · ${p.method}` : ""}
@@ -525,7 +526,7 @@ export default function LandlordManagement() {
                                           ))}
                                         </div>
                                       ) : tr.paidOn ? (
-                                        new Date(tr.paidOn).toLocaleDateString()
+                                        formatDate(tr.paidOn)
                                       ) : (
                                         "—"
                                       )}
