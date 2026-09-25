@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, Fragment } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { useConnectedAccounts, useUnreconciledTransactions, useConnectedInstitution, useReconcileTransaction, useAutoMatchTransactions } from "@/hooks/useTransactions";
 import { createPlaidLinkToken, exchangePlaidPublicToken, getPlaidTransactions, simulatePlaidIncoming } from "@/lib/api/transactionApi";
+import { formatDate } from "@/lib/utils";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
 interface Transaction {
@@ -85,18 +86,6 @@ export default function TransactionsPage() {
     "Needs Review": "bg-amber-900/20 text-amber-400 border-amber-700",
   };
  
-  // Format dates for display as DD/MM/YYYY
-  function formatDate(input: any): string {
-    if (!input) return "-";
-    const d = new Date(input);
-    if (isNaN(d.getTime())) return "-";
-    const dd = String(d.getDate()).padStart(2, "0");
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const yyyy = d.getFullYear();
-    return `${dd}/${mm}/${yyyy}`;
-  }
-  
-
   // Fetch unreconciled transactions from API (keep the full query so we can refetch)
   const unreconciledQuery = useUnreconciledTransactions({
     page,
@@ -860,17 +849,28 @@ export default function TransactionsPage() {
           const data = res?.data ?? res;
           const scanned = Number(data?.scanned) || 0;
           const appliedCount = Number(data?.applied) || 0;
+          const reason = data?.reason;
+          const ambiguous = Number(data?.skippedAmbiguous) || 0;
+          const failures = Number(data?.applyFailures) || 0;
+          const failHint =
+            Array.isArray(data?.applyErrors) && data.applyErrors.length
+              ? ` (${data.applyErrors[0]})`
+              : "";
           setSyncFeedback({
             type: "success",
             title: "Auto-Reconcile finished",
             message:
               appliedCount > 0
-                ? `Applied ${appliedCount} linked-payer payment${appliedCount === 1 ? "" : "s"} (${scanned} matched candidates checked).`
-                : scanned > 0
-                  ? `Found ${scanned} linked-payer candidate${scanned === 1 ? "" : "s"} but none could be applied (ambiguous link or already paid up). Open a Matched row to confirm manually.`
-                  : data?.reason === "no_linked_payers"
-                    ? "No linked bank payers yet. Reconcile one payment manually first — that saves the fingerprint — then Auto-Reconcile can apply the rest."
-                    : "No linked-payer matches to apply.",
+                ? `Reconciled ${appliedCount} payment${appliedCount === 1 ? "" : "s"} via linked bank payer fingerprint${appliedCount === 1 ? "" : "s"}.`
+                : reason === "no_linked_payers"
+                  ? "No linked bank payers yet. Accept a match on a tenant once to save a fingerprint, then Auto-Reconcile will apply future payments from that payer."
+                  : failures > 0
+                    ? `Found linked-payer matches but ${failures} could not be applied${failHint}.`
+                    : ambiguous > 0
+                      ? `Checked ${scanned} transaction${scanned === 1 ? "" : "s"} — ${ambiguous} matched more than one tenant’s linked payer (needs manual Accept).`
+                      : scanned > 0
+                        ? `Checked ${scanned} transaction${scanned === 1 ? "" : "s"} against saved fingerprints — none uniquely matched a linked payer with unpaid rent.`
+                        : "No unreconciled transactions matched a saved linked payer fingerprint.",
           });
         } catch (err: any) {
           setSyncFeedback({

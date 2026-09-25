@@ -30,7 +30,13 @@ export async function autoMatchUnreconciledTransactions() {
 /** Unreconciled bank txs scored for a tenant (matched first, then others). Supports search + pagination. */
 export async function getTransactionsMatchingTenant(
   tenantId: string,
-  params: { limit?: number; page?: number; search?: string } = {}
+  params: {
+    limit?: number;
+    page?: number;
+    search?: string;
+    sortBy?: "date" | "amount" | "payer" | "match" | "status";
+    sortDir?: "asc" | "desc";
+  } = {}
 ) {
   const res = await apiClient.get(`/transactions/match-tenant`, {
     params: {
@@ -38,6 +44,8 @@ export async function getTransactionsMatchingTenant(
       limit: params.limit ?? 20,
       page: params.page ?? 1,
       ...(params.search?.trim() ? { search: params.search.trim() } : {}),
+      ...(params.sortBy ? { sortBy: params.sortBy } : {}),
+      ...(params.sortDir ? { sortDir: params.sortDir } : {}),
     },
   });
   return res.data;

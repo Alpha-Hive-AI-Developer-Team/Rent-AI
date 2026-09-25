@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getArrears } from "@/lib/api/tenantsApi";
+import { formatDate } from "@/lib/utils";
 
 export default function ArrearsPage() {
   const [openSection, setOpenSection] = useState<string | null>("Day 1");
@@ -28,16 +29,6 @@ export default function ArrearsPage() {
     if (section === "Day 7-13") return "Friendly / Firm";
     if (section === "Day 14-27") return "Firm";
     return "Legal / Final";
-  };
-
-  const formatDate = (d: any) => {
-    if (!d) return "—";
-    const date = d instanceof Date ? d : new Date(d);
-    if (isNaN(date.getTime())) return "—";
-    const day = date.getUTCDate();
-    const month = date.getUTCMonth() + 1;
-    const year = date.getUTCFullYear();
-    return `${day}/${month}/${year}`;
   };
 
   const toggleSection = (section: string) => {

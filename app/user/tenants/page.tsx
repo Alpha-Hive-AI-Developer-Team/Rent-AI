@@ -22,6 +22,7 @@ import { getTransactionsMatchingTenant } from "@/lib/api/transactionApi";
 import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthUser } from "@/redux/useAuthUser";
+import { formatDate } from "@/lib/utils";
 
 export default function TenantsPage() {
   /** True if char is a Unicode letter (works without regex `u` / `\p{L}`). */
@@ -75,16 +76,6 @@ export default function TenantsPage() {
     }
     const names = normalizeTenantNames(tenant?.tenantName ?? tenant?.name);
     return names.length > 0 ? names.join(", ") : "Tenant";
-  };
-
-  const formatDate = (d: any) => {
-    if (!d) return "—";
-    const date = d instanceof Date ? d : new Date(d);
-    if (isNaN(date.getTime())) return "—";
-    const day = date.getUTCDate();
-    const month = date.getUTCMonth() + 1;
-    const year = date.getUTCFullYear();
-    return `${day}/${month}/${year}`;
   };
 
   const formatMoney = (value: number) =>
@@ -728,6 +719,107 @@ export default function TenantsPage() {
     return pieces.filter((p: any) => (Number(p?.amount) || 0) > 0);
   };
 
+  type PaymentPieceRole = "payment" | "credit" | "cover";
+
+  const paymentPieceRoleMeta: Record<
+    PaymentPieceRole,
+    { label: string; className: string; title: string }
+  > = {
+    payment: {
+      label: "Payment",
+      className: "border-gray-700 bg-[#141414] text-gray-400",
+      title: "Amount from this payment applied to this month",
+    },
+    credit: {
+      label: "Credit",
+      className: "border-sky-800/70 bg-sky-950/40 text-sky-300",
+      title: "Leftover from an earlier overpayment applied to this month",
+    },
+    cover: {
+      label: "Cover",
+      className: "border-amber-800/70 bg-amber-950/40 text-amber-300",
+      title: "Later payment covering a shortfall on this month",
+    },
+  };
+
+  const toUtcDayMs = (value: any) => {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  };
+
+  /** Stable key so the same bank payment can be tracked across months. */
+  const getPaymentPieceGroupKey = (piece: any, historyIndex: number, pieceIndex: number) => {
+    const txId = piece?.transactionId;
+    if (txId != null && String(txId).trim() !== "") return `tx:${String(txId)}`;
+    // Cash / legacy rows without a bank id are one-off (not split across months).
+    return `solo:${historyIndex}:${pieceIndex}`;
+  };
+
+  /**
+   * Classify each linkedPayments piece across rentHistory:
+   * - payment: first month that received this bank/cash payment (on/before due)
+   * - cover: first month, but paid after due (topping up / late)
+   * - credit: later months receiving leftover from the same payment
+   */
+  const buildPaymentPieceRoleMap = (rentHistory: any[]) => {
+    const history = Array.isArray(rentHistory) ? rentHistory : [];
+    const roles = new Map<string, PaymentPieceRole>();
+    const groups = new Map<
+      string,
+      { historyIndex: number; pieceIndex: number; dueMs: number | null; paidMs: number | null }[]
+    >();
+
+    history.forEach((entry: any, historyIndex: number) => {
+      const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
+      const dueMs = toUtcDayMs(entry?.dueDate ?? entry?.month);
+      pieces.forEach((piece: any, pieceIndex: number) => {
+        if ((Number(piece?.amount) || 0) <= 0) return;
+        const key = getPaymentPieceGroupKey(piece, historyIndex, pieceIndex);
+        const list = groups.get(key) || [];
+        list.push({
+          historyIndex,
+          pieceIndex,
+          dueMs,
+          paidMs: toUtcDayMs(piece?.paidOn),
+        });
+        groups.set(key, list);
+      });
+    });
+
+    groups.forEach((list) => {
+      list.sort((a, b) => {
+        const dueA = a.dueMs ?? Number.POSITIVE_INFINITY;
+        const dueB = b.dueMs ?? Number.POSITIVE_INFINITY;
+        if (dueA !== dueB) return dueA - dueB;
+        if (a.historyIndex !== b.historyIndex) return a.historyIndex - b.historyIndex;
+        return a.pieceIndex - b.pieceIndex;
+      });
+
+      list.forEach((item, i) => {
+        const mapKey = `${item.historyIndex}:${item.pieceIndex}`;
+        if (i > 0) {
+          roles.set(mapKey, "credit");
+          return;
+        }
+        const late =
+          item.paidMs != null && item.dueMs != null && item.paidMs > item.dueMs;
+        roles.set(mapKey, late ? "cover" : "payment");
+      });
+    });
+
+    return roles;
+  };
+
+  const getPaymentPieceRole = (
+    roleMap: Map<string, PaymentPieceRole> | null | undefined,
+    historyIndex: number,
+    pieceIndex: number
+  ): PaymentPieceRole => roleMap?.get(`${historyIndex}:${pieceIndex}`) || "payment";
+
+  const paymentPieceRoles = buildPaymentPieceRoleMap(selectedTenant?.rentHistory || []);
+
   const openPaymentReview = async (index: number, entry: any) => {
     if (!selectedTenant || !hasRecordedPayment(entry)) return;
     setPaymentReview({
@@ -1016,7 +1108,7 @@ export default function TenantsPage() {
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 md:items-center md:p-6">
           <div style={{
           scrollbarWidth: 'none',
-          }} className="my-4 max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+          }} className="my-4 max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold">
@@ -1100,7 +1192,8 @@ export default function TenantsPage() {
               <div className="mb-4 rounded-xl border border-[#1a1a1a] bg-[#0B0B0B] px-4 py-3">
                 <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Linked bank payers</p>
                 <p className="mb-3 text-xs text-gray-500">
-                  Future payments from these bank identities auto-reconcile with this tenant. Unlink to stop that.
+                  Linked by payer name (payment refs like “October-rent” are ignored). Future payments from this
+                  name auto-reconcile here. Unlink to stop that.
                 </p>
                 <div className="space-y-2">
                   {selectedTenant.linkedPayers.map((payer: any) => {
@@ -1235,7 +1328,12 @@ export default function TenantsPage() {
                         </td>
                         <td className="px-4 py-3 align-top">
                           {(() => {
-                            const pieces = getPaymentPieces(entry);
+                            const rawPieces = Array.isArray(entry?.linkedPayments)
+                              ? entry.linkedPayments
+                              : [];
+                            const pieces = rawPieces
+                              .map((p: any, pieceIndex: number) => ({ p, pieceIndex }))
+                              .filter(({ p }: { p: any }) => (Number(p?.amount) || 0) > 0);
                             if (pieces.length === 0) {
                               return (
                                 <span className="text-sm text-gray-500">
@@ -1244,20 +1342,34 @@ export default function TenantsPage() {
                               );
                             }
                             return (
-                              <ul className="min-w-[8.5rem] space-y-1.5">
-                                {pieces.map((p: any, pi: number) => (
-                                  <li
-                                    key={pi}
-                                    className="flex items-baseline justify-between gap-3 text-sm"
-                                  >
-                                    <span className="shrink-0 text-gray-200">
-                                      {formatDate(p.paidOn)}
-                                    </span>
-                                    <span className="tabular-nums text-gray-400">
-                                      {formatMoney(Number(p.amount) || 0)}
-                                    </span>
-                                  </li>
-                                ))}
+                              <ul className="min-w-[15rem] space-y-1.5">
+                                {pieces.map(({ p, pieceIndex }: { p: any; pieceIndex: number }) => {
+                                  const role = getPaymentPieceRole(
+                                    paymentPieceRoles,
+                                    index,
+                                    pieceIndex
+                                  );
+                                  const meta = paymentPieceRoleMeta[role];
+                                  return (
+                                    <li
+                                      key={pieceIndex}
+                                      className="flex items-center gap-2 text-sm whitespace-nowrap"
+                                    >
+                                      <span className="shrink-0 text-gray-200">
+                                        {formatDate(p.paidOn)}
+                                      </span>
+                                      <span className="tabular-nums text-gray-400">
+                                        {formatMoney(Number(p.amount) || 0)}
+                                      </span>
+                                      <span
+                                        className={`ml-auto shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] leading-none ${meta.className}`}
+                                        title={meta.title}
+                                      >
+                                        {meta.label}
+                                      </span>
+                                    </li>
+                                  );
+                                })}
                               </ul>
                             );
                           })()}
@@ -1595,7 +1707,7 @@ export default function TenantsPage() {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
           <div
             style={{ scrollbarWidth: "none" }}
-            className="max-h-[95vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="max-h-[95vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           >
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
@@ -1637,6 +1749,47 @@ export default function TenantsPage() {
             ) : paymentReview.paymentMethod === "bank" ||
               (paymentReview.linkedTransactions?.length ?? 0) > 0 ? (
               <div className="mb-4">
+                {(Array.isArray(paymentReview.entry?.linkedPayments)
+                  ? paymentReview.entry.linkedPayments
+                  : []
+                ).some((p: any) => (Number(p?.amount) || 0) > 0) && (
+                  <div className="mb-4">
+                    <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
+                      Payment history this month
+                    </p>
+                    <ul className="space-y-1.5 rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3">
+                      {(Array.isArray(paymentReview.entry?.linkedPayments)
+                        ? paymentReview.entry.linkedPayments
+                        : []
+                      ).map((p: any, pieceIndex: number) => {
+                        if ((Number(p?.amount) || 0) <= 0) return null;
+                        const role = getPaymentPieceRole(
+                          paymentPieceRoles,
+                          paymentReview.index,
+                          pieceIndex
+                        );
+                        const meta = paymentPieceRoleMeta[role];
+                        return (
+                          <li
+                            key={pieceIndex}
+                            className="flex items-center gap-2 text-sm whitespace-nowrap"
+                          >
+                            <span className="shrink-0 text-gray-200">{formatDate(p.paidOn)}</span>
+                            <span className="tabular-nums text-gray-300">
+                              {formatMoney(Number(p.amount) || 0)}
+                            </span>
+                            <span
+                              className={`ml-auto shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] leading-none ${meta.className}`}
+                              title={meta.title}
+                            >
+                              {meta.label}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
                 <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
                   Linked bank transaction
                   {paymentReview.linkedTransactions.length > 1 ? "s" : ""}
@@ -1679,8 +1832,10 @@ export default function TenantsPage() {
                   </div>
                 )}
                 <p className="mt-2 text-[11px] text-gray-500">
-                  Each payment piece keeps its own bank date. Leftover from a payment rolls to the next unpaid month
-                  (oldest first) — only the amount used for this month is shown above.
+                  <span className="text-gray-400">Payment</span> = amount from that bank payment for this
+                  month. <span className="text-sky-300">Credit</span> = leftover from an overpayment used
+                  here. <span className="text-amber-300">Cover</span> = a later payment topping up a
+                  shortfall.
                 </p>
               </div>
             ) : (
