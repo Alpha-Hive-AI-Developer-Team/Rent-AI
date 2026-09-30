@@ -18,7 +18,7 @@ import usePayByCash, {
 } from "@/hooks/usetenants";
 import { useReconcileTransaction } from "@/hooks/useTransactions";
 import { getRentEntryPayment, getTenantById } from "@/lib/api/tenantsApi";
-import { getTransactionsMatchingTenant } from "@/lib/api/transactionApi";
+import { autoMatchTransactionsForTenant, getTransactionsMatchingTenant } from "@/lib/api/transactionApi";
 import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthUser } from "@/redux/useAuthUser";
@@ -208,8 +208,9 @@ export default function TenantsPage() {
   const [editDueOn, setEditDueOn] = useState(1);
   const [editHasDeposit, setEditHasDeposit] = useState(false);
   const [editDeposit, setEditDeposit] = useState("");
-  const [editDepositStart, setEditDepositStart] = useState("");
-  const [editDepositEnd, setEditDepositEnd] = useState("");
+  const [editDepositPaid, setEditDepositPaid] = useState("");
+  const [editFirstPayment, setEditFirstPayment] = useState("");
+  const [editFirstPaymentDate, setEditFirstPaymentDate] = useState("");
   const [editRent, setEditRent] = useState("");
   const [editRentAdjustments, setEditRentAdjustments] = useState<RentAdjustmentRow[]>([]);
   const [editConfirmationOpen, setEditConfirmationOpen] = useState(false);
@@ -239,8 +240,9 @@ export default function TenantsPage() {
   const [assignMoveIn, setAssignMoveIn] = useState("");
   const [assignHasDeposit, setAssignHasDeposit] = useState(false);
   const [assignDeposit, setAssignDeposit] = useState("");
-  const [assignDepositStart, setAssignDepositStart] = useState("");
-  const [assignDepositEnd, setAssignDepositEnd] = useState("");
+  const [assignDepositPaid, setAssignDepositPaid] = useState("");
+  const [assignFirstPayment, setAssignFirstPayment] = useState("");
+  const [assignFirstPaymentDate, setAssignFirstPaymentDate] = useState("");
   const [assignRentAdjustments, setAssignRentAdjustments] = useState<RentAdjustmentRow[]>([]);
 
   const { data, isLoading, isError } = useTenants();
@@ -251,6 +253,7 @@ export default function TenantsPage() {
   const unreconcileMutation = useUnreconcileRent();
   const unlinkPayerMutation = useUnlinkLinkedPayer();
   const reconcileMutation = useReconcileTransaction();
+  const [applyingLinkedPayers, setApplyingLinkedPayers] = useState(false);
   const qc = useQueryClient();
   const authUser = useAuthUser();
   const userId = authUser?.id || authUser?._id || authUser?.userId;
@@ -406,19 +409,18 @@ export default function TenantsPage() {
     const existingDeposit = Number(selectedTenant.depositAmount) || 0;
     setEditHasDeposit(existingDeposit > 0);
     setEditDeposit(existingDeposit > 0 ? String(existingDeposit) : "");
-    setEditDepositStart(
-      selectedTenant.depositStartDate
-        ? new Date(selectedTenant.depositStartDate).toISOString().slice(0, 10)
-        : ""
-    );
-    setEditDepositEnd(
-      selectedTenant.depositEndDate
-        ? new Date(selectedTenant.depositEndDate).toISOString().slice(0, 10)
-        : ""
+    setEditDepositPaid(
+      selectedTenant.depositPaidDate
+        ? new Date(selectedTenant.depositPaidDate).toISOString().slice(0, 10)
+        : selectedTenant.depositStartDate
+          ? new Date(selectedTenant.depositStartDate).toISOString().slice(0, 10)
+          : ""
     );
     const scheduleUi = scheduleFromTenant(selectedTenant);
     setEditRent(scheduleUi.baseRent);
     setEditRentAdjustments(scheduleUi.adjustments);
+    setEditFirstPayment("");
+    setEditFirstPaymentDate("");
     setEditConfirmationOpen(false);
     setEditTenantOpen(true);
     setTransactionModalOpen(false);
@@ -436,8 +438,9 @@ export default function TenantsPage() {
     setAssignMoveIn(new Date().toISOString().slice(0, 10));
     setAssignHasDeposit(false);
     setAssignDeposit("");
-    setAssignDepositStart("");
-    setAssignDepositEnd("");
+    setAssignDepositPaid("");
+    setAssignFirstPayment("");
+    setAssignFirstPaymentDate("");
     setAssignRentAdjustments([]);
     setAssignOpen(true);
     setTransactionModalOpen(false);
@@ -451,8 +454,9 @@ export default function TenantsPage() {
     setAssignMoveIn("");
     setAssignHasDeposit(false);
     setAssignDeposit("");
-    setAssignDepositStart("");
-    setAssignDepositEnd("");
+    setAssignDepositPaid("");
+    setAssignFirstPayment("");
+    setAssignFirstPaymentDate("");
     setAssignRentAdjustments([]);
     if (reopenDetails && selectedTenant) {
       setTransactionModalOpen(true);
@@ -481,14 +485,19 @@ export default function TenantsPage() {
         toast.error("Enter the deposit amount, or uncheck Record deposit.");
         return;
       }
-      if (!assignDepositStart || !assignDepositEnd) {
-        toast.error("Enter deposit start and end dates.");
+      if (!assignDepositPaid) {
+        toast.error("Enter the date the deposit was paid.");
         return;
       }
-      if (assignDepositEnd < assignDepositStart) {
-        toast.error("Deposit end date must be on or after the start date.");
-        return;
-      }
+    }
+    const firstPay = Number(assignFirstPayment);
+    if (assignFirstPayment.trim() && (!Number.isFinite(firstPay) || firstPay < 0)) {
+      toast.error("First payment amount must be a non-negative number.");
+      return;
+    }
+    if (firstPay > 0 && !assignFirstPaymentDate) {
+      toast.error("Enter the date of the first rent payment.");
+      return;
     }
 
     assignTenantMutation.mutate(
@@ -500,10 +509,11 @@ export default function TenantsPage() {
           dueOn: assignDueOn,
           moveInDate: assignMoveIn,
           depositAmount: assignHasDeposit && Number(assignDeposit) > 0 ? Number(assignDeposit) : 0,
-          depositStartDate:
-            assignHasDeposit && Number(assignDeposit) > 0 ? assignDepositStart || null : null,
-          depositEndDate:
-            assignHasDeposit && Number(assignDeposit) > 0 ? assignDepositEnd || null : null,
+          depositPaidDate:
+            assignHasDeposit && Number(assignDeposit) > 0 ? assignDepositPaid || null : null,
+          ...(firstPay > 0
+            ? { firstPaymentAmount: firstPay, firstPaymentDate: assignFirstPaymentDate }
+            : {}),
           rentSchedule: buildRentSchedulePayload(assignRentAdjustments),
         },
       },
@@ -532,8 +542,9 @@ export default function TenantsPage() {
     setEditDueOn(1);
     setEditHasDeposit(false);
     setEditDeposit("");
-    setEditDepositStart("");
-    setEditDepositEnd("");
+    setEditDepositPaid("");
+    setEditFirstPayment("");
+    setEditFirstPaymentDate("");
     setEditRent("");
     setEditRentAdjustments([]);
 
@@ -580,12 +591,20 @@ export default function TenantsPage() {
         toast.error("Enter the deposit amount, or uncheck Record deposit.");
         return;
       }
-      if (!editDepositStart || !editDepositEnd) {
-        toast.error("Enter deposit start and end dates.");
+      if (!editDepositPaid) {
+        toast.error("Enter the date the deposit was paid.");
         return;
       }
-      if (editDepositEnd < editDepositStart) {
-        toast.error("Deposit end date must be on or after the start date.");
+    }
+
+    if (!isVacant && canEditScheduleFields(selectedTenant)) {
+      const firstPay = Number(editFirstPayment);
+      if (editFirstPayment.trim() && (!Number.isFinite(firstPay) || firstPay < 0)) {
+        toast.error("First payment amount must be a non-negative number.");
+        return;
+      }
+      if (firstPay > 0 && !editFirstPaymentDate) {
+        toast.error("Enter the date of the first rent payment.");
         return;
       }
     }
@@ -623,8 +642,9 @@ export default function TenantsPage() {
       moveInDate?: string | null;
       dueOn?: number;
       depositAmount?: number;
-      depositStartDate?: string | null;
-      depositEndDate?: string | null;
+      depositPaidDate?: string | null;
+      firstPaymentAmount?: number;
+      firstPaymentDate?: string;
       rent?: number;
       rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
     } = {};
@@ -634,27 +654,24 @@ export default function TenantsPage() {
       // Always send so backend can rebuild prorated unpaid schedule (stale history from older rules)
       payload.moveInDate = editMoveIn || null;
       payload.dueOn = editDueOn;
+      const firstPay = Number(editFirstPayment);
+      if (firstPay > 0 && editFirstPaymentDate) {
+        payload.firstPaymentAmount = firstPay;
+        payload.firstPaymentDate = editFirstPaymentDate;
+      }
     }
     if (!isVacant) {
       const nextDeposit = editHasDeposit && Number(editDeposit) > 0 ? Number(editDeposit) : 0;
       const prevDeposit = Number(selectedTenant.depositAmount) || 0;
-      const nextStart =
-        nextDeposit > 0 && editDepositStart ? editDepositStart : null;
-      const nextEnd = nextDeposit > 0 && editDepositEnd ? editDepositEnd : null;
-      const prevStart = selectedTenant.depositStartDate
-        ? new Date(selectedTenant.depositStartDate).toISOString().slice(0, 10)
-        : null;
-      const prevEnd = selectedTenant.depositEndDate
-        ? new Date(selectedTenant.depositEndDate).toISOString().slice(0, 10)
-        : null;
-      if (
-        nextDeposit !== prevDeposit ||
-        nextStart !== prevStart ||
-        nextEnd !== prevEnd
-      ) {
+      const nextPaid = nextDeposit > 0 && editDepositPaid ? editDepositPaid : null;
+      const prevPaid = selectedTenant.depositPaidDate
+        ? new Date(selectedTenant.depositPaidDate).toISOString().slice(0, 10)
+        : selectedTenant.depositStartDate
+          ? new Date(selectedTenant.depositStartDate).toISOString().slice(0, 10)
+          : null;
+      if (nextDeposit !== prevDeposit || nextPaid !== prevPaid) {
         payload.depositAmount = nextDeposit;
-        payload.depositStartDate = nextStart;
-        payload.depositEndDate = nextEnd;
+        payload.depositPaidDate = nextPaid;
       }
       const nextRent = Number(editRent);
       const prevRent = Number(selectedTenant.rent) || 0;
@@ -960,6 +977,40 @@ export default function TenantsPage() {
     return map[reason] || reason.replace(/_/g, " ");
   };
 
+  const applyLinkedPayerPaymentsForTenant = useCallback(
+    async (tenantId: string, { silentEmpty = false }: { silentEmpty?: boolean } = {}) => {
+      if (!tenantId || applyingLinkedPayers) return { applied: 0 };
+      setApplyingLinkedPayers(true);
+      try {
+        const res = await autoMatchTransactionsForTenant(tenantId);
+        const applied = Number(res?.data?.applied) || 0;
+        if (applied > 0) {
+          toast.success(
+            `Also applied ${applied} other payment${applied === 1 ? "" : "s"} from linked payer(s)`
+          );
+          try {
+            const fresh = await getTenantById(tenantId);
+            const tenant = fresh?.data || fresh;
+            if (tenant) setSelectedTenant(tenant);
+          } catch {
+            /* ignore refresh errors */
+          }
+          qc.invalidateQueries({ queryKey: ["tenants", userId] });
+          qc.invalidateQueries({ queryKey: ["unreconciledTransactions"] });
+        } else if (!silentEmpty) {
+          toast.success(res?.message || "No other linked-payer payments to apply");
+        }
+        return { applied };
+      } catch (err: any) {
+        toast.error(err?.response?.data?.message || err?.message || "Failed to apply linked-payer payments");
+        return { applied: 0 };
+      } finally {
+        setApplyingLinkedPayers(false);
+      }
+    },
+    [applyingLinkedPayers, qc, userId]
+  );
+
   const confirmBankReconcile = () => {
     if (!selectedTenant || !pendingBankReconcile) return;
     const transactionId = pendingBankReconcile.transaction?.transactionId || pendingBankReconcile.transactionId;
@@ -968,17 +1019,20 @@ export default function TenantsPage() {
       return;
     }
 
+    const tenantId = selectedTenant._id;
     reconcileMutation.mutate(
-      { tenantId: selectedTenant._id, transactionId },
+      { tenantId, transactionId },
       {
-        onSuccess: (res: any) => {
+        onSuccess: async (res: any) => {
           const updatedTenant = res?.data?.tenant || res?.tenant || null;
           if (updatedTenant) setSelectedTenant(updatedTenant);
           setPendingBankReconcile(null);
           qc.invalidateQueries({ queryKey: ["tenants", userId] });
-          toast.success("Transaction reconciled");
+          toast.success("Transaction reconciled — payer linked");
+          // Same as Auto-Reconcile, but only for this tenant's linked payer(s)
+          await applyLinkedPayerPaymentsForTenant(tenantId, { silentEmpty: true });
           loadReconcileTxs({
-            tenantId: selectedTenant._id,
+            tenantId,
             page: reconcilePage,
             search: reconcileSearchQuery,
             showSpinner: false,
@@ -1161,18 +1215,44 @@ export default function TenantsPage() {
                   </span>
                 </p>
                 {Number(selectedTenant.depositAmount) > 0 && (
-                  <p>
+                  <p className="flex flex-wrap items-center gap-2">
                     Deposit held{" "}
                     <span className="font-medium text-gray-200">
                       {formatMoney(Number(selectedTenant.depositAmount))}
                     </span>
-                    {(selectedTenant.depositStartDate || selectedTenant.depositEndDate) && (
+                    {(selectedTenant.depositPaidDate || selectedTenant.depositStartDate) && (
                       <span className="text-gray-500">
                         {" "}
-                        ({formatDate(selectedTenant.depositStartDate)} –{" "}
-                        {formatDate(selectedTenant.depositEndDate)})
+                        (paid{" "}
+                        {formatDate(
+                          selectedTenant.depositPaidDate || selectedTenant.depositStartDate
+                        )}
+                        )
                       </span>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!selectedTenant?._id) return;
+                        updateTenantMutation.mutate(
+                          {
+                            tenantId: selectedTenant._id,
+                            payload: { depositAmount: 0, depositPaidDate: null },
+                          },
+                          {
+                            onSuccess: (res) => {
+                              const updated = res?.data;
+                              if (updated) setSelectedTenant(updated);
+                              toast.success("Deposit cleared — linked bank tx restored to rent queue if any");
+                            },
+                          }
+                        );
+                      }}
+                      disabled={updateTenantMutation.isPending}
+                      className="ml-1 rounded-full border border-[#333] px-2 py-0.5 text-[11px] text-gray-400 hover:border-rose-800 hover:text-rose-300 disabled:opacity-50"
+                    >
+                      Clear deposit
+                    </button>
                   </p>
                 )}
               </div>
@@ -1190,11 +1270,33 @@ export default function TenantsPage() {
 
             {Array.isArray(selectedTenant.linkedPayers) && selectedTenant.linkedPayers.length > 0 && (
               <div className="mb-4 rounded-xl border border-[#1a1a1a] bg-[#0B0B0B] px-4 py-3">
-                <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Linked bank payers</p>
-                <p className="mb-3 text-xs text-gray-500">
-                  Linked by payer name (payment refs like “October-rent” are ignored). Future payments from this
-                  name auto-reconcile here. Unlink to stop that.
-                </p>
+                <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Linked bank payers</p>
+                    <p className="text-xs text-gray-500">
+                      Linked by payer name (payment refs like “October-rent” are ignored). Future payments from this
+                      name auto-reconcile here. Unlink to stop that.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={applyingLinkedPayers}
+                    onClick={async () => {
+                      await applyLinkedPayerPaymentsForTenant(selectedTenant._id);
+                      if (reconcileOpen) {
+                        loadReconcileTxs({
+                          tenantId: selectedTenant._id,
+                          page: reconcilePage,
+                          search: reconcileSearchQuery,
+                          showSpinner: false,
+                        }).catch(() => {});
+                      }
+                    }}
+                    className="shrink-0 rounded-full border border-sky-800 px-3 py-1 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
+                  >
+                    {applyingLinkedPayers ? "Applying…" : "Apply linked payments"}
+                  </button>
+                </div>
                 <div className="space-y-2">
                   {selectedTenant.linkedPayers.map((payer: any) => {
                     const payerId = String(payer._id || payer.id || "");
@@ -1498,13 +1600,33 @@ export default function TenantsPage() {
                   {getPropertyDisplay(selectedTenant)} · matched first, then other unreconciled
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={closeReconcilePanel}
-                className="text-gray-400 hover:text-white"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {Array.isArray(selectedTenant.linkedPayers) && selectedTenant.linkedPayers.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={applyingLinkedPayers}
+                    onClick={async () => {
+                      await applyLinkedPayerPaymentsForTenant(selectedTenant._id);
+                      loadReconcileTxs({
+                        tenantId: selectedTenant._id,
+                        page: reconcilePage,
+                        search: reconcileSearchQuery,
+                        showSpinner: false,
+                      }).catch(() => {});
+                    }}
+                    className="rounded-full border border-sky-800 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
+                  >
+                    {applyingLinkedPayers ? "Applying…" : "Apply linked payments"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={closeReconcilePanel}
+                  className="text-gray-400 hover:text-white"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2089,8 +2211,7 @@ export default function TenantsPage() {
                     setAssignHasDeposit(e.target.checked);
                     if (!e.target.checked) {
                       setAssignDeposit("");
-                      setAssignDepositStart("");
-                      setAssignDepositEnd("");
+                      setAssignDepositPaid("");
                     }
                   }}
                   className="h-4 w-4 rounded border-gray-600 bg-transparent text-emerald-600 focus:ring-emerald-600"
@@ -2098,10 +2219,10 @@ export default function TenantsPage() {
                 Record deposit
               </label>
               <p className="mt-1 text-xs text-gray-500">
-                Optional — saved for records only. Does not affect rent or balance.
+                Security deposit only — enter the date it was paid in. Does not affect rent.
               </p>
               {assignHasDeposit && (
-                <div className="mt-2 space-y-3">
+                <div className="mt-2 grid grid-cols-2 gap-3">
                   <div>
                     <label className="mb-1 block text-sm text-gray-200">Deposit amount (£)</label>
                     <input
@@ -2111,29 +2232,44 @@ export default function TenantsPage() {
                       className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1 block text-sm text-gray-200">Start date</label>
-                      <input
-                        type="date"
-                        value={assignDepositStart}
-                        onChange={(e) => setAssignDepositStart(e.target.value)}
-                        className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm text-gray-200">End date</label>
-                      <input
-                        type="date"
-                        value={assignDepositEnd}
-                        min={assignDepositStart || undefined}
-                        onChange={(e) => setAssignDepositEnd(e.target.value)}
-                        className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                      />
-                    </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-gray-200">Deposit paid date</label>
+                    <input
+                      type="date"
+                      value={assignDepositPaid}
+                      onChange={(e) => setAssignDepositPaid(e.target.value)}
+                      className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                    />
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className="mt-4 rounded-xl border border-[#222] bg-[#0a0a0a] p-3">
+              <p className="text-sm font-medium text-gray-200">First rent payment (move-in)</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Optional — applied to the initial rent period only, not as credit for the next month.
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-sm text-gray-200">Amount paid (£)</label>
+                  <input
+                    value={assignFirstPayment}
+                    onChange={(e) => setAssignFirstPayment(e.target.value.replace(/[^0-9.]/g, ""))}
+                    placeholder="e.g. 300"
+                    className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-gray-200">Payment date</label>
+                  <input
+                    type="date"
+                    value={assignFirstPaymentDate}
+                    onChange={(e) => setAssignFirstPaymentDate(e.target.value)}
+                    className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="mt-5 flex justify-end gap-3">
@@ -2297,6 +2433,43 @@ export default function TenantsPage() {
                 />
               )}
 
+              {selectedTenant.tenancyStatus !== "vacant" && canEditScheduleFields(selectedTenant) && (
+                <div className="rounded-xl border border-[#222] bg-[#0a0a0a] p-3">
+                  <p className="text-sm font-medium text-gray-200">First rent payment (move-in)</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Optional — only available before any rent payments are recorded. Applied to the
+                    initial prorated period, not as credit for the next month.
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-sm text-gray-200">Amount paid (£)</label>
+                      <input
+                        value={editFirstPayment}
+                        onChange={(e) => setEditFirstPayment(e.target.value.replace(/[^0-9.]/g, ""))}
+                        placeholder="e.g. 300"
+                        className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm text-gray-200">Payment date</label>
+                      <input
+                        type="date"
+                        value={editFirstPaymentDate}
+                        onChange={(e) => setEditFirstPaymentDate(e.target.value)}
+                        className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedTenant.tenancyStatus !== "vacant" && !canEditScheduleFields(selectedTenant) && (
+                <p className="text-xs text-amber-400">
+                  First move-in rent payment can’t be added here after payments have been reconciled —
+                  use Pay by cash or Reconcile for later payments.
+                </p>
+              )}
+
               {selectedTenant.tenancyStatus !== "vacant" && (
                 <div>
                   <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-300">
@@ -2307,8 +2480,7 @@ export default function TenantsPage() {
                         setEditHasDeposit(e.target.checked);
                         if (!e.target.checked) {
                           setEditDeposit("");
-                          setEditDepositStart("");
-                          setEditDepositEnd("");
+                          setEditDepositPaid("");
                         }
                       }}
                       className="h-4 w-4 rounded border-gray-600 bg-transparent text-emerald-600 focus:ring-emerald-600"
@@ -2316,10 +2488,10 @@ export default function TenantsPage() {
                     Record deposit
                   </label>
                   <p className="mt-1 text-xs text-gray-500">
-                    Optional — records only; does not change rent due or balance.
+                    Security deposit only — enter the date it was paid in.
                   </p>
                   {editHasDeposit && (
-                    <div className="mt-2 space-y-3">
+                    <div className="mt-2 grid grid-cols-2 gap-3">
                       <div>
                         <label className="mb-1 block text-sm text-gray-200">Deposit amount (£)</label>
                         <input
@@ -2329,26 +2501,14 @@ export default function TenantsPage() {
                           className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="mb-1 block text-sm text-gray-200">Start date</label>
-                          <input
-                            type="date"
-                            value={editDepositStart}
-                            onChange={(e) => setEditDepositStart(e.target.value)}
-                            className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-sm text-gray-200">End date</label>
-                          <input
-                            type="date"
-                            value={editDepositEnd}
-                            min={editDepositStart || undefined}
-                            onChange={(e) => setEditDepositEnd(e.target.value)}
-                            className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                          />
-                        </div>
+                      <div>
+                        <label className="mb-1 block text-sm text-gray-200">Deposit paid date</label>
+                        <input
+                          type="date"
+                          value={editDepositPaid}
+                          onChange={(e) => setEditDepositPaid(e.target.value)}
+                          className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                        />
                       </div>
                     </div>
                   )}
@@ -2417,6 +2577,17 @@ export default function TenantsPage() {
                     <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Due day</p>
                     <p className="text-sm text-gray-200">{editDueOn}</p>
                   </div>
+                  {Number(editFirstPayment) > 0 && (
+                    <div>
+                      <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">
+                        First rent payment (move-in)
+                      </p>
+                      <p className="text-sm text-gray-200">
+                        £{Number(editFirstPayment).toFixed(2)}
+                        {editFirstPaymentDate ? ` on ${editFirstPaymentDate}` : ""}
+                      </p>
+                    </div>
+                  )}
                 </>
               )}
               {selectedTenant.tenancyStatus !== "vacant" && (
@@ -2445,9 +2616,7 @@ export default function TenantsPage() {
                   <p className="text-sm text-gray-200">
                     {editHasDeposit && Number(editDeposit) > 0
                       ? `£${Number(editDeposit).toFixed(2)}${
-                          editDepositStart || editDepositEnd
-                            ? ` (${editDepositStart || "—"} – ${editDepositEnd || "—"})`
-                            : ""
+                          editDepositPaid ? ` (paid ${editDepositPaid})` : ""
                         }`
                       : "None"}
                   </p>

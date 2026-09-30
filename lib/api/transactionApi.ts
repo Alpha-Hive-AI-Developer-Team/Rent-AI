@@ -27,6 +27,36 @@ export async function autoMatchUnreconciledTransactions() {
   return res.data;
 }
 
+/** Apply linked-payer matches for one tenant only (after Accept / from reconcile modal). */
+export async function autoMatchTransactionsForTenant(tenantId: string) {
+  const res = await apiClient.post(`/transactions/auto-match-tenant`, { tenantId });
+  return res.data;
+}
+
+/** Mark a bank tx as deposit / ignored / none — never applies to rent. */
+export async function classifyTransaction(payload: {
+  transactionId: string;
+  classification: "deposit" | "ignored" | "none";
+  tenantId?: string | null;
+}) {
+  const res = await apiClient.post(`/transactions/classify`, payload);
+  return res.data;
+}
+
+/** Bank txs marked as deposit (excluded from rent queue). */
+export async function getClassifiedTransactions(
+  params: { classification?: "deposit" | "ignored"; page?: number; limit?: number } = {}
+) {
+  const res = await apiClient.get(`/transactions/classified`, {
+    params: {
+      classification: params.classification ?? "deposit",
+      page: params.page ?? 1,
+      limit: params.limit ?? 20,
+    },
+  });
+  return res.data;
+}
+
 /** Unreconciled bank txs scored for a tenant (matched first, then others). Supports search + pagination. */
 export async function getTransactionsMatchingTenant(
   tenantId: string,

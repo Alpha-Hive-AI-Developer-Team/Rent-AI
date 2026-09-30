@@ -16,8 +16,9 @@ export type PropertySetupPayload = {
     room?: string;
     vacant?: boolean;
     depositAmount?: number | string;
-    depositStartDate?: string | null;
-    depositEndDate?: string | null;
+    depositPaidDate?: string | null;
+    firstPaymentAmount?: number | string;
+    firstPaymentDate?: string | null;
     rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
   }>;
 };

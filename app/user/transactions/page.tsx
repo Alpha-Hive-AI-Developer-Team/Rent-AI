@@ -4,9 +4,10 @@ import Image from "next/image";
 import { Plus, Search, Check, X, Bell, ChevronDown, Info, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { usePlaidLink } from "react-plaid-link";
-import { useConnectedAccounts, useUnreconciledTransactions, useConnectedInstitution, useReconcileTransaction, useAutoMatchTransactions } from "@/hooks/useTransactions";
+import { useConnectedAccounts, useUnreconciledTransactions, useConnectedInstitution, useReconcileTransaction, useAutoMatchTransactions, useClassifyTransaction, useClassifiedTransactions } from "@/hooks/useTransactions";
 import { createPlaidLinkToken, exchangePlaidPublicToken, getPlaidTransactions, simulatePlaidIncoming } from "@/lib/api/transactionApi";
 import { formatDate } from "@/lib/utils";
+import toast from "react-hot-toast";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
 interface Transaction {
@@ -87,12 +88,20 @@ export default function TransactionsPage() {
   };
  
   // Fetch unreconciled transactions from API (keep the full query so we can refetch)
+  const [txListTab, setTxListTab] = useState<"rent" | "deposit">("rent");
+  const [depositPage, setDepositPage] = useState(1);
   const unreconciledQuery = useUnreconciledTransactions({
     page,
     limit: pageSize,
     search: searchQuery || undefined,
     sortBy: txSortBy,
     sortDir: txSortDir,
+  });
+  const classifiedQuery = useClassifiedTransactions({
+    classification: "deposit",
+    page: depositPage,
+    limit: pageSize,
+    enabled: txListTab === "deposit",
   });
   const unreconciledRes = unreconciledQuery.data;
   const txLoading = unreconciledQuery.isLoading;
@@ -101,6 +110,10 @@ export default function TransactionsPage() {
   const totalPages = Math.max(1, Number(unreconciledRes?.data?.totalPages) || 1);
   const startIndex = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const endIndex = total === 0 ? 0 : Math.min(page * pageSize, total);
+
+  const depositDocs = classifiedQuery.data?.data?.docs ?? [];
+  const depositTotal = Number(classifiedQuery.data?.data?.total) || 0;
+  const depositTotalPages = Math.max(1, Number(classifiedQuery.data?.data?.totalPages) || 1);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -143,6 +156,12 @@ export default function TransactionsPage() {
   } | null>(null);
 
   const reconcileMutation = useReconcileTransaction();
+  const classifyMutation = useClassifyTransaction();
+  const [pendingClassify, setPendingClassify] = useState<{
+    transactionId: string;
+    tenantId?: string | null;
+    tenantName?: string;
+  } | null>(null);
   const autoMatchMutation = useAutoMatchTransactions();
 
   const connectedAccountsQuery = useConnectedAccounts(false);
@@ -481,6 +500,76 @@ export default function TransactionsPage() {
     );
   }
 
+  function requestMarkAsDeposit(tenant?: Tenant | null) {
+    const transactionId = getTransactionIdFromSelected();
+    if (!transactionId) {
+      setReconcileError("Missing transaction id — cannot classify.");
+      return;
+    }
+    if (!tenant?.tenantId) {
+      setReconcileError("Pick a tenant with the Deposit button so the deposit can be recorded on that tenancy.");
+      toast.error("Choose a tenant’s Deposit button — deposit must be linked to a tenant.");
+      return;
+    }
+    setReconcileError(null);
+    setPendingClassify({
+      transactionId,
+      tenantId: tenant.tenantId,
+      tenantName: tenant.name,
+    });
+  }
+
+  async function confirmMarkAsDeposit() {
+    if (!pendingClassify?.tenantId) return;
+    classifyMutation.mutate(
+      {
+        transactionId: pendingClassify.transactionId,
+        classification: "deposit",
+        tenantId: pendingClassify.tenantId,
+      },
+      {
+        onSuccess: async () => {
+          toast.success("Deposit recorded on tenant and removed from rent queue");
+          setPendingClassify(null);
+          setViewModalOpen(false);
+          setSelectedTransaction(null);
+          try {
+            await unreconciledQuery.refetch();
+            await classifiedQuery.refetch();
+          } catch (e) {
+            console.warn("Failed to refetch transactions", e);
+          }
+        },
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message || err?.message || "Failed to mark as deposit.";
+          setReconcileError(msg);
+          toast.error(msg);
+        },
+      }
+    );
+  }
+
+  function restoreDepositTransaction(transactionId: string) {
+    if (!transactionId) return;
+    classifyMutation.mutate(
+      { transactionId, classification: "none" },
+      {
+        onSuccess: async () => {
+          toast.success("Deposit cleared — transaction is back in the rent queue");
+          try {
+            await classifiedQuery.refetch();
+            await unreconciledQuery.refetch();
+          } catch (e) {
+            console.warn("Failed to refetch transactions", e);
+          }
+        },
+        onError: (err: any) => {
+          toast.error(err?.response?.data?.message || err?.message || "Failed to restore transaction.");
+        },
+      }
+    );
+  }
+
  
 
   return (
@@ -509,6 +598,7 @@ export default function TransactionsPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-500 hidden sm:inline">Use Deposit on a tenant row</span>
                 <span className={`px-2 py-1 text-xs rounded-full border ${statusColors[computeTransactionOverallStatus(selectedTransaction)]}`}>{computeTransactionOverallStatus(selectedTransaction)}</span>
                 <button onClick={() => { setViewModalOpen(false); setSelectedTransaction(null); }} className="text-gray-400 hover:text-white">
                   <X className="w-5 h-5" />
@@ -590,11 +680,15 @@ export default function TransactionsPage() {
                                   <Check className="w-3 h-3" />
                                   <span>Accept</span>
                                 </button>
-
-                                {/* <button onClick={() => rejectCandidate(selectedTransaction!.id, c.id)} className="flex items-center gap-2 bg-[#0b0b0b] border border-[#111] text-gray-300 px-3 py-1 rounded-full text-xs hover:bg-white/5 transition">
-                                  <X className="w-3 h-3" />
-                                  <span>Reject</span>
-                                </button> */}
+                                <button
+                                  type="button"
+                                  onClick={() => requestMarkAsDeposit(c)}
+                                  disabled={!c.tenantId || !getTransactionIdFromSelected() || classifyMutation.isPending}
+                                  className="flex items-center gap-2 bg-transparent border border-amber-800/70 text-amber-300 px-3 py-1 rounded-full text-xs hover:bg-amber-950/40 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title="Exclude from rent — this is a security deposit"
+                                >
+                                  <span>Deposit</span>
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -799,6 +893,57 @@ export default function TransactionsPage() {
         </div>
       )}
 
+      {/* Mark as deposit confirmation */}
+      {pendingClassify && selectedTransaction && (
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/70 p-4 md:items-center md:p-6">
+          <div className="my-4 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">Mark as deposit</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Record this bank payment as the security deposit for{" "}
+              <span className="text-white font-medium">{pendingClassify.tenantName}</span>. It will be
+              saved on that tenant (amount + paid date) and removed from the rent queue — it will not
+              clear rent.
+            </p>
+            <div className="bg-[#050505] border border-[#111] rounded-lg p-3 mb-4 space-y-2">
+              <div className="flex justify-between text-sm text-gray-300">
+                <span>Transaction</span>
+                <span className="text-right max-w-[60%] truncate">{selectedTransaction.description}</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-300">
+                <span>Amount</span>
+                <span>{selectedTransaction.amount}</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-300">
+                <span>Date</span>
+                <span>{selectedTransaction.date}</span>
+              </div>
+            </div>
+            {reconcileError && <p className="text-sm text-rose-400 mb-3">{reconcileError}</p>}
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingClassify(null);
+                  setReconcileError(null);
+                }}
+                disabled={classifyMutation.isPending}
+                className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmMarkAsDeposit}
+                disabled={classifyMutation.isPending}
+                className="px-4 py-2 rounded-full border border-amber-700 bg-amber-950/40 text-sm text-amber-200 hover:bg-amber-950/70 disabled:opacity-50"
+              >
+                {classifyMutation.isPending ? "Saving…" : "Confirm deposit"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Search (Left) + Buttons (Right) */}
 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
 
@@ -978,8 +1123,95 @@ export default function TransactionsPage() {
       )}
 
 
+      {/* Table tabs + list */}
+      <div className="mb-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setTxListTab("rent")}
+          className={`rounded-full px-4 py-1.5 text-sm border transition ${
+            txListTab === "rent"
+              ? "border-emerald-700 text-emerald-300 bg-emerald-950/30"
+              : "border-gray-800 text-gray-400 hover:text-gray-200"
+          }`}
+        >
+          Needs rent match
+        </button>
+        <button
+          type="button"
+          onClick={() => setTxListTab("deposit")}
+          className={`rounded-full px-4 py-1.5 text-sm border transition ${
+            txListTab === "deposit"
+              ? "border-amber-700 text-amber-300 bg-amber-950/30"
+              : "border-gray-800 text-gray-400 hover:text-gray-200"
+          }`}
+        >
+          Marked as deposit{depositTotal > 0 ? ` (${depositTotal})` : ""}
+        </button>
+      </div>
+
       {/* Table (inlined - same UI as DataTable) */}
       <div className="w-full overflow-x-auto rounded-2xl bg-[#0B0B0B] border border-[#1a1a1a]">
+        {txListTab === "deposit" ? (
+          <table className="min-w-full text-sm border-collapse">
+            <thead>
+              <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
+                <th className="py-4 px-6 font-medium text-xs md:text-sm rounded-tl-2xl">Date</th>
+                <th className="py-4 px-6 font-medium text-xs md:text-sm">Payer</th>
+                <th className="py-4 px-6 font-medium text-xs md:text-sm">Amount</th>
+                <th className="py-4 px-6 font-medium text-xs md:text-sm">Tenant</th>
+                <th className="py-4 px-6 font-medium text-xs md:text-sm rounded-tr-2xl text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {classifiedQuery.isLoading ? (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-gray-400">
+                    Loading deposit transactions…
+                  </td>
+                </tr>
+              ) : depositDocs.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-gray-400">
+                    No bank payments marked as deposit.
+                  </td>
+                </tr>
+              ) : (
+                depositDocs.map((row: any, i: number) => {
+                  const tx = row.transaction || {};
+                  const tenant = row.tenant;
+                  const txId = String(tx.transactionId || "");
+                  return (
+                    <tr key={txId || i} className="border-t border-[#151515]">
+                      <td className="py-4 px-6 text-gray-300 text-sm">
+                        {tx.date ? formatDate(tx.date) : "—"}
+                      </td>
+                      <td className="py-4 px-6 text-gray-300 text-sm">{tx.payerName || "—"}</td>
+                      <td className="py-4 px-6 text-gray-300 text-sm">
+                        {typeof tx.amount === "number" ? `£${tx.amount}` : String(tx.amount ?? "—")}
+                      </td>
+                      <td className="py-4 px-6 text-gray-300 text-sm">
+                        {tenant?.tenantName || "—"}
+                        {tenant?.property ? (
+                          <span className="block text-xs text-gray-500">{tenant.property}</span>
+                        ) : null}
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        <button
+                          type="button"
+                          onClick={() => restoreDepositTransaction(txId)}
+                          disabled={!txId || classifyMutation.isPending}
+                          className="rounded-full border border-sky-800 px-3 py-1 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
+                        >
+                          Restore to rent queue
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        ) : (
         <table className="min-w-full text-sm border-collapse">
           <thead>
             <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
@@ -1063,9 +1295,43 @@ export default function TransactionsPage() {
             )}
           </tbody>
         </table>
+        )}
       </div>
 
-      {total > 0 && (
+      {txListTab === "deposit" ? (
+        depositTotal > 0 && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-gray-400">
+              Showing {depositDocs.length} of {depositTotal} deposit transaction
+              {depositTotal === 1 ? "" : "s"}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDepositPage((prev) => Math.max(1, prev - 1))}
+                disabled={depositPage <= 1 || classifiedQuery.isFetching}
+                className="inline-flex items-center gap-2 rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </button>
+              <span className="text-sm text-gray-400">
+                Page {depositPage} of {depositTotalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setDepositPage((prev) => Math.min(depositTotalPages, prev + 1))}
+                disabled={depositPage >= depositTotalPages || classifiedQuery.isFetching}
+                className="inline-flex items-center gap-2 rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )
+      ) : (
+        total > 0 && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-gray-400">
             Showing {startIndex} to {endIndex} of {total} transactions
@@ -1095,6 +1361,7 @@ export default function TransactionsPage() {
             </button>
           </div>
         </div>
+        )
       )}
     </div>
   );
