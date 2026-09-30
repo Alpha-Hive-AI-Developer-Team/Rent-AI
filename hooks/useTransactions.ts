@@ -4,6 +4,8 @@ import {
 	getConnectedBank,
 	getConnectedAccounts,
 	autoMatchUnreconciledTransactions,
+	classifyTransaction,
+	getClassifiedTransactions,
 } from "@/lib/api/transactionApi";
 import { markRentPaidWithTransaction } from "@/lib/api/tenantsApi";
 import { useAuthUser } from "@/redux/useAuthUser";
@@ -93,5 +95,44 @@ export function useAutoMatchTransactions() {
 			qc.invalidateQueries({ queryKey: ["tenants", userId] });
 			qc.invalidateQueries({ queryKey: ["todaySummary", userId] });
 		},
+	});
+}
+
+/** Classify bank tx as deposit / ignored so it never clears rent. */
+export function useClassifyTransaction() {
+	const qc = useQueryClient();
+	const authUser = useAuthUser();
+	const userId = authUser?.id || authUser?._id || authUser?.userId;
+
+	return useMutation({
+		mutationFn: (payload: {
+			transactionId: string;
+			classification: "deposit" | "ignored" | "none";
+			tenantId?: string | null;
+		}) => classifyTransaction(payload),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["unreconciledTransactions"] });
+			qc.invalidateQueries({ queryKey: ["classifiedTransactions"] });
+			qc.invalidateQueries({ queryKey: ["tenants", userId] });
+			qc.invalidateQueries({ queryKey: ["todaySummary", userId] });
+		},
+	});
+}
+
+/** Bank txs marked as deposit (not in rent queue). */
+export function useClassifiedTransactions(
+	params: { classification?: "deposit" | "ignored"; page?: number; limit?: number; enabled?: boolean } = {}
+) {
+	const classification = params.classification ?? "deposit";
+	const page = params.page ?? 1;
+	const limit = params.limit ?? 20;
+	const enabled = params.enabled !== false;
+
+	return useQuery<any, Error, any>({
+		queryKey: ["classifiedTransactions", classification, page, limit],
+		queryFn: () => getClassifiedTransactions({ classification, page, limit }),
+		enabled,
+		staleTime: 30_000,
+		placeholderData: (prev: any) => prev,
 	});
 }
