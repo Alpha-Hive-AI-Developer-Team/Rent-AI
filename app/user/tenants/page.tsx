@@ -22,7 +22,7 @@ import { autoMatchTransactionsForTenant, getTransactionsMatchingTenant } from "@
 import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthUser } from "@/redux/useAuthUser";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
 
 export default function TenantsPage() {
   /** True if char is a Unicode letter (works without regex `u` / `\p{L}`). */
@@ -81,7 +81,36 @@ export default function TenantsPage() {
   const formatMoney = (value: number) =>
     `£${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  /** Positive = overpaid credit; negative = underpaid / owes. */
+  const toUtcDayMs = (value: any) => {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  };
+
+  /** Positive = overpaid credit; negative = underpaid / owes. Future dues not charged yet. */
+  const getFacingBalanceFromHistory = (tenant: any) => {
+    const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
+    if (history.length === 0) return Number(tenant?.currentBalance) || 0;
+
+    const now = new Date();
+    const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    let balance = 0;
+
+    for (const entry of history) {
+      const due = Number(entry?.amountDue) || 0;
+      const paid = Number(entry?.amountPaid) || 0;
+      const dueMs = toUtcDayMs(entry?.dueDate ?? entry?.month);
+      if (dueMs != null && dueMs > todayMs) {
+        balance += paid;
+      } else {
+        balance += paid - due;
+      }
+    }
+
+    return Math.round(balance * 100) / 100;
+  };
+
   const getBalanceSummary = (tenant: any) => {
     if (tenant?.tenancyStatus === "vacant") {
       return {
@@ -90,11 +119,11 @@ export default function TenantsPage() {
         className: "border-amber-800/60 bg-amber-950/30 text-amber-300",
       };
     }
-    const balance = Number(tenant?.currentBalance) || 0;
+    const balance = getFacingBalanceFromHistory(tenant);
 
     if (balance > 0) {
       return {
-        label: "Overpaid",
+        label: "In credit",
         amount: formatMoney(balance),
         className: "border-emerald-800/60 bg-emerald-950/40 text-emerald-300",
       };
@@ -115,15 +144,21 @@ export default function TenantsPage() {
     };
   };
 
-  /** Remaining unpaid amount across rentHistory entries (or currentBalance on list DTO). */
+  /** Remaining unpaid on months due today or earlier (future dues excluded). */
   const getRemainingAmount = (tenant: any) => {
     if (tenant?.tenancyStatus === "vacant") return 0;
     const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
     if (history.length > 0) {
+      const now = new Date();
+      const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
       return history.reduce((sum: number, entry: any) => {
         const due = Number(entry?.amountDue) || 0;
         const paid = Number(entry?.amountPaid) || 0;
-        return sum + Math.max(0, due - paid);
+        const rem = Math.max(0, due - paid);
+        if (rem <= 0) return sum;
+        const dueMs = toUtcDayMs(entry?.dueDate ?? entry?.month);
+        if (dueMs != null && dueMs > todayMs) return sum;
+        return sum + rem;
       }, 0);
     }
 
@@ -759,13 +794,6 @@ export default function TenantsPage() {
     },
   };
 
-  const toUtcDayMs = (value: any) => {
-    if (!value) return null;
-    const d = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(d.getTime())) return null;
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  };
-
   /** Stable key so the same bank payment can be tracked across months. */
   const getPaymentPieceGroupKey = (piece: any, historyIndex: number, pieceIndex: number) => {
     const txId = piece?.transactionId;
@@ -835,7 +863,105 @@ export default function TenantsPage() {
     pieceIndex: number
   ): PaymentPieceRole => roleMap?.get(`${historyIndex}:${pieceIndex}`) || "payment";
 
+  /**
+   * Total received for each bank/cash payment across all months
+   * (FIFO may split one bank tx; this restores the full payment amount).
+   */
+  const buildPaymentTotalsByGroup = (rentHistory: any[]) => {
+    const history = Array.isArray(rentHistory) ? rentHistory : [];
+    const totals = new Map<
+      string,
+      { amount: number; paidOn: any; method: string }
+    >();
+
+    history.forEach((entry: any, historyIndex: number) => {
+      const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
+      pieces.forEach((piece: any, pieceIndex: number) => {
+        const amt = Number(piece?.amount) || 0;
+        if (amt <= 0) return;
+        const key = getPaymentPieceGroupKey(piece, historyIndex, pieceIndex);
+        const prev = totals.get(key);
+        if (!prev) {
+          totals.set(key, {
+            amount: amt,
+            paidOn: piece.paidOn || null,
+            method: String(piece.method || (piece.transactionId ? "bank" : "cash")),
+          });
+          return;
+        }
+        prev.amount = Math.round((prev.amount + amt) * 100) / 100;
+        // Keep earliest paidOn
+        const prevMs = toUtcDayMs(prev.paidOn);
+        const nextMs = toUtcDayMs(piece.paidOn);
+        if (prevMs == null || (nextMs != null && nextMs < prevMs)) {
+          prev.paidOn = piece.paidOn;
+        }
+      });
+    });
+
+    return totals;
+  };
+
+  /**
+   * Payments that *originated* on this month (not leftover credit from an earlier month).
+   * Shows full bank/cash amounts so a £870 payment is not shown as £670 + £200.
+   */
+  const getOriginatingPaymentsForMonth = (
+    entry: any,
+    historyIndex: number,
+    roleMap: Map<string, PaymentPieceRole>,
+    paymentTotals: Map<string, { amount: number; paidOn: any; method: string }>
+  ) => {
+    const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
+    const byKey = new Map<
+      string,
+      {
+        key: string;
+        amount: number;
+        appliedThisMonth: number;
+        paidOn: any;
+        method: string;
+        role: PaymentPieceRole;
+        transactionId: any;
+      }
+    >();
+
+    pieces.forEach((piece: any, pieceIndex: number) => {
+      const applied = Number(piece?.amount) || 0;
+      if (applied <= 0) return;
+      const role = getPaymentPieceRole(roleMap, historyIndex, pieceIndex);
+      // Credit = leftover from a payment that already counted on an earlier month
+      if (role === "credit") return;
+
+      const key = getPaymentPieceGroupKey(piece, historyIndex, pieceIndex);
+      if (byKey.has(key)) {
+        const row = byKey.get(key)!;
+        row.appliedThisMonth = Math.round((row.appliedThisMonth + applied) * 100) / 100;
+        return;
+      }
+
+      const totals = paymentTotals.get(key);
+      byKey.set(key, {
+        key,
+        amount: totals?.amount ?? applied,
+        appliedThisMonth: applied,
+        paidOn: totals?.paidOn ?? piece.paidOn ?? null,
+        method: totals?.method ?? String(piece.method || (piece.transactionId ? "bank" : "cash")),
+        role,
+        transactionId: piece.transactionId || null,
+      });
+    });
+
+    return Array.from(byKey.values()).sort((a, b) => {
+      const da = toUtcDayMs(a.paidOn) ?? 0;
+      const db = toUtcDayMs(b.paidOn) ?? 0;
+      if (da !== db) return da - db;
+      return a.amount - b.amount;
+    });
+  };
+
   const paymentPieceRoles = buildPaymentPieceRoleMap(selectedTenant?.rentHistory || []);
+  const paymentTotalsByGroup = buildPaymentTotalsByGroup(selectedTenant?.rentHistory || []);
 
   const openPaymentReview = async (index: number, entry: any) => {
     if (!selectedTenant || !hasRecordedPayment(entry)) return;
@@ -1392,6 +1518,13 @@ export default function TenantsPage() {
                       );
                     }
 
+                    const now = new Date();
+                    const todayMs = Date.UTC(
+                      now.getUTCFullYear(),
+                      now.getUTCMonth(),
+                      now.getUTCDate()
+                    );
+
                     const visibleHistory = (selectedTenant.rentHistory || [])
                       .map((entry: any, index: number) => ({ entry, index }))
                       .filter(({ entry }: { entry: any }) => {
@@ -1399,6 +1532,9 @@ export default function TenantsPage() {
                         const paid = Number(entry?.amountPaid) || 0;
                         // Hide empty prorated rows (e.g. move-in on due day → £0 due)
                         if (due === 0 && paid === 0) return false;
+                        // Hide future due months — prepaid surplus shows as green credit above
+                        const dueMs = toUtcDayMs(entry?.dueDate ?? entry?.month);
+                        if (dueMs != null && dueMs > todayMs) return false;
                         return true;
                       });
 
@@ -1430,49 +1566,63 @@ export default function TenantsPage() {
                         </td>
                         <td className="px-4 py-3 align-top">
                           {(() => {
-                            const rawPieces = Array.isArray(entry?.linkedPayments)
-                              ? entry.linkedPayments
-                              : [];
-                            const pieces = rawPieces
-                              .map((p: any, pieceIndex: number) => ({ p, pieceIndex }))
-                              .filter(({ p }: { p: any }) => (Number(p?.amount) || 0) > 0);
-                            if (pieces.length === 0) {
-                              return (
-                                <span className="text-sm text-gray-500">
-                                  {entry.paidOn ? formatDate(entry.paidOn) : "—"}
-                                </span>
-                              );
+                            const totalPaid = Number(entry.amountPaid) || 0;
+                            const originating = getOriginatingPaymentsForMonth(
+                              entry,
+                              index,
+                              paymentPieceRoles,
+                              paymentTotalsByGroup
+                            );
+                            // Sum of full bank/cash payments that started this month
+                            // (e.g. £200 + £870 = £1,070), not just amount applied to due.
+                            const historyTotal = originating.reduce(
+                              (s, row) => s + (Number(row.amount) || 0),
+                              0
+                            );
+                            const creditOnly =
+                              totalPaid > 0 &&
+                              originating.length === 0 &&
+                              getPaymentPieces(entry).length > 0;
+                            const displayTotal = originating.length > 0 ? historyTotal : totalPaid;
+
+                            if (displayTotal <= 0 && !creditOnly) {
+                              return <span className="text-sm text-gray-500">—</span>;
                             }
+
                             return (
-                              <ul className="min-w-[15rem] space-y-1.5">
-                                {pieces.map(({ p, pieceIndex }: { p: any; pieceIndex: number }) => {
-                                  const role = getPaymentPieceRole(
-                                    paymentPieceRoles,
-                                    index,
-                                    pieceIndex
-                                  );
-                                  const meta = paymentPieceRoleMeta[role];
-                                  return (
-                                    <li
-                                      key={pieceIndex}
-                                      className="flex items-center gap-2 text-sm whitespace-nowrap"
-                                    >
-                                      <span className="shrink-0 text-gray-200">
-                                        {formatDate(p.paidOn)}
-                                      </span>
-                                      <span className="tabular-nums text-gray-400">
-                                        {formatMoney(Number(p.amount) || 0)}
-                                      </span>
-                                      <span
-                                        className={`ml-auto shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] leading-none ${meta.className}`}
-                                        title={meta.title}
-                                      >
-                                        {meta.label}
-                                      </span>
-                                    </li>
-                                  );
-                                })}
-                              </ul>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (recorded) openPaymentReview(index, entry);
+                                }}
+                                className={`text-left ${recorded ? "hover:opacity-90" : "cursor-default"}`}
+                                title={
+                                  originating.length >= 1
+                                    ? "Click to see each payment date and time"
+                                    : recorded
+                                      ? "Click for payment details"
+                                      : undefined
+                                }
+                              >
+                                <span className="block tabular-nums text-sm font-medium text-gray-200">
+                                  {formatMoney(displayTotal)}
+                                </span>
+                                {originating.length >= 1 ? (
+                                  <span className="mt-0.5 block text-[11px] text-sky-400/90">
+                                    {originating.length} payment
+                                    {originating.length === 1 ? "" : "s"} · view breakdown
+                                  </span>
+                                ) : creditOnly ? (
+                                  <span className="mt-0.5 block text-[11px] text-emerald-400/90">
+                                    From earlier credit
+                                  </span>
+                                ) : entry.paidOn ? (
+                                  <span className="mt-0.5 block text-[11px] text-gray-500">
+                                    {formatDate(entry.paidOn)}
+                                  </span>
+                                ) : null}
+                              </button>
                             );
                           })()}
                         </td>
@@ -1868,103 +2018,176 @@ export default function TenantsPage() {
 
             {paymentReview.loading ? (
               <p className="mb-4 text-sm text-gray-500">Loading linked bank transaction…</p>
-            ) : paymentReview.paymentMethod === "bank" ||
-              (paymentReview.linkedTransactions?.length ?? 0) > 0 ? (
-              <div className="mb-4">
-                {(Array.isArray(paymentReview.entry?.linkedPayments)
-                  ? paymentReview.entry.linkedPayments
-                  : []
-                ).some((p: any) => (Number(p?.amount) || 0) > 0) && (
-                  <div className="mb-4">
-                    <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
-                      Payment history this month
-                    </p>
-                    <ul className="space-y-1.5 rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3">
-                      {(Array.isArray(paymentReview.entry?.linkedPayments)
-                        ? paymentReview.entry.linkedPayments
-                        : []
-                      ).map((p: any, pieceIndex: number) => {
-                        if ((Number(p?.amount) || 0) <= 0) return null;
-                        const role = getPaymentPieceRole(
-                          paymentPieceRoles,
-                          paymentReview.index,
-                          pieceIndex
-                        );
-                        const meta = paymentPieceRoleMeta[role];
-                        return (
-                          <li
-                            key={pieceIndex}
-                            className="flex items-center gap-2 text-sm whitespace-nowrap"
-                          >
-                            <span className="shrink-0 text-gray-200">{formatDate(p.paidOn)}</span>
-                            <span className="tabular-nums text-gray-300">
-                              {formatMoney(Number(p.amount) || 0)}
-                            </span>
-                            <span
-                              className={`ml-auto shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] leading-none ${meta.className}`}
-                              title={meta.title}
-                            >
-                              {meta.label}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
-                <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
-                  Linked bank transaction
-                  {paymentReview.linkedTransactions.length > 1 ? "s" : ""}
-                </p>
-                {paymentReview.linkedTransactions.length === 0 ? (
-                  <p className="rounded-lg border border-[#1a1a1a] px-3 py-3 text-sm text-gray-500">
-                    No linked bank transaction found for this month (it may have been cleared already).
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {paymentReview.linkedTransactions.map((tx: any) => {
-                      const bankAmount = Math.abs(Number(tx.bankAmount ?? tx.amount) || 0);
-                      const allocated =
-                        tx.allocatedAmount != null && Number.isFinite(Number(tx.allocatedAmount))
-                          ? Number(tx.allocatedAmount)
-                          : null;
-                      return (
-                        <div
-                          key={tx._id || tx.transactionId}
-                          className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3 text-sm"
-                        >
-                          <div className="flex justify-between gap-3 text-gray-200">
-                            <span className="font-medium">
-                              {tx.payerName || tx.description || "Bank payment"}
-                            </span>
-                            <span>{formatMoney(allocated != null ? allocated : bankAmount)}</span>
-                          </div>
-                          <div className="mt-1 text-xs text-gray-500">
-                            {formatDate(tx.date)}
-                            {allocated != null && allocated < bankAmount - 0.001
-                              ? ` · applied to this month of ${formatMoney(bankAmount)} bank payment`
-                              : bankAmount
-                                ? ` · bank ${formatMoney(bankAmount)}`
-                                : ""}
-                            {tx.description ? ` · ${tx.description}` : ""}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                <p className="mt-2 text-[11px] text-gray-500">
-                  <span className="text-gray-400">Payment</span> = amount from that bank payment for this
-                  month. <span className="text-sky-300">Credit</span> = leftover from an overpayment used
-                  here. <span className="text-amber-300">Cover</span> = a later payment topping up a
-                  shortfall.
-                </p>
-              </div>
             ) : (
-              <p className="mb-4 text-sm text-gray-400">
-                This month includes <strong className="text-gray-200">cash</strong> payment(s). Reversing clears this
-                month so you can re-enter cash or leave it for bank match.
-              </p>
+              <div className="mb-4">
+                {(() => {
+                  const originating = getOriginatingPaymentsForMonth(
+                    paymentReview.entry,
+                    paymentReview.index,
+                    paymentPieceRoles,
+                    paymentTotalsByGroup
+                  );
+                  const creditPieces = (Array.isArray(paymentReview.entry?.linkedPayments)
+                    ? paymentReview.entry.linkedPayments
+                    : []
+                  )
+                    .map((p: any, pieceIndex: number) => ({ p, pieceIndex }))
+                    .filter(({ p, pieceIndex }: { p: any; pieceIndex: number }) => {
+                      if ((Number(p?.amount) || 0) <= 0) return false;
+                      return (
+                        getPaymentPieceRole(paymentPieceRoles, paymentReview.index, pieceIndex) ===
+                        "credit"
+                      );
+                    });
+                  const creditTotal = creditPieces.reduce(
+                    (s: number, { p }: { p: any }) => s + (Number(p?.amount) || 0),
+                    0
+                  );
+
+                  const txById = new Map(
+                    (paymentReview.linkedTransactions || []).map((tx: any) => [
+                      String(tx._id || ""),
+                      tx,
+                    ])
+                  );
+
+                  return (
+                    <>
+                      {originating.length > 0 && (
+                        <div className="mb-4">
+                          <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
+                            Payments this month (full amounts)
+                          </p>
+                          <ul className="space-y-1.5 rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3">
+                            {originating.map((row) => {
+                              const tx = row.transactionId
+                                ? txById.get(String(row.transactionId))
+                                : null;
+                              const bankAmt = tx
+                                ? Math.abs(Number(tx.bankAmount ?? tx.amount) || 0)
+                                : row.amount;
+                              const displayAmt = bankAmt > 0 ? bankAmt : row.amount;
+                              const isCash = String(row.method || "").toLowerCase() === "cash";
+                              return (
+                                <li
+                                  key={row.key}
+                                  className="flex flex-col gap-0.5 text-sm sm:flex-row sm:items-center sm:gap-2"
+                                >
+                                  <span className="shrink-0 text-gray-200">
+                                    {formatDateTime(row.paidOn || tx?.date)}
+                                  </span>
+                                  <span className="tabular-nums font-medium text-gray-100">
+                                    {formatMoney(displayAmt)}
+                                  </span>
+                                  {row.appliedThisMonth + 0.001 < displayAmt ? (
+                                    <span className="text-[11px] text-gray-500">
+                                      {formatMoney(row.appliedThisMonth)} applied here
+                                      {displayAmt - row.appliedThisMonth > 0.001
+                                        ? ` · ${formatMoney(displayAmt - row.appliedThisMonth)} to later months / credit`
+                                        : ""}
+                                    </span>
+                                  ) : null}
+                                  <span
+                                    className={`sm:ml-auto shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] leading-none ${
+                                      isCash
+                                        ? "border-amber-800/70 bg-amber-950/40 text-amber-300"
+                                        : paymentPieceRoleMeta[row.role].className
+                                    }`}
+                                  >
+                                    {isCash ? "Cash" : "Payment"}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                          <p className="mt-2 text-[11px] text-gray-500">
+                            Amounts are the full bank/cash payments. Rent due this month is still{" "}
+                            {formatMoney(Number(paymentReview.entry?.amountDue) || 0)}; any leftover
+                            clears later months or sits as credit.
+                          </p>
+                        </div>
+                      )}
+
+                      {creditTotal > 0.001 && (
+                        <div className="mb-4 rounded-lg border border-emerald-900/50 bg-emerald-950/20 px-3 py-3 text-sm">
+                          <p className="text-xs uppercase tracking-wide text-emerald-400/80">
+                            Applied from earlier credit
+                          </p>
+                          <p className="mt-1 tabular-nums text-emerald-300">
+                            {formatMoney(creditTotal)}
+                          </p>
+                          <p className="mt-1 text-[11px] text-gray-500">
+                            Leftover from a payment already counted on an earlier month — not a new
+                            payment.
+                          </p>
+                        </div>
+                      )}
+
+                      {paymentReview.paymentMethod === "bank" ||
+                      (paymentReview.linkedTransactions?.length ?? 0) > 0 ? (
+                        <>
+                          <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
+                            Linked bank transaction
+                            {(paymentReview.linkedTransactions?.length ?? 0) > 1 ? "s" : ""}
+                          </p>
+                          {(paymentReview.linkedTransactions?.length ?? 0) === 0 ? (
+                            <p className="rounded-lg border border-[#1a1a1a] px-3 py-3 text-sm text-gray-500">
+                              No linked bank transaction found for this month (it may have been
+                              cleared already).
+                            </p>
+                          ) : (
+                            <div className="space-y-2">
+                              {paymentReview.linkedTransactions.map((tx: any) => {
+                                const bankAmount = Math.abs(
+                                  Number(tx.bankAmount ?? tx.amount) || 0
+                                );
+                                const allocated =
+                                  tx.allocatedAmount != null &&
+                                  Number.isFinite(Number(tx.allocatedAmount))
+                                    ? Number(tx.allocatedAmount)
+                                    : null;
+                                const isCreditOnly =
+                                  allocated != null &&
+                                  originating.every(
+                                    (o) => String(o.transactionId || "") !== String(tx._id || "")
+                                  );
+                                return (
+                                  <div
+                                    key={tx._id || tx.transactionId}
+                                    className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3 text-sm"
+                                  >
+                                    <div className="flex justify-between gap-3 text-gray-200">
+                                      <span className="font-medium">
+                                        {tx.payerName || tx.description || "Bank payment"}
+                                      </span>
+                                      <span>{formatMoney(bankAmount)}</span>
+                                    </div>
+                                    <div className="mt-1 text-xs text-gray-500">
+                                      {formatDateTime(tx.date)}
+                                      {isCreditOnly
+                                        ? ` · ${formatMoney(allocated ?? 0)} from earlier credit`
+                                        : allocated != null && allocated < bankAmount - 0.001
+                                          ? ` · ${formatMoney(allocated)} applied to this month`
+                                          : ""}
+                                      {tx.description ? ` · ${tx.description}` : ""}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      ) : originating.length === 0 && creditTotal <= 0 ? (
+                        <p className="text-sm text-gray-400">
+                          This month includes <strong className="text-gray-200">cash</strong>{" "}
+                          payment(s). Reversing clears this month so you can re-enter cash or leave
+                          it for bank match.
+                        </p>
+                      ) : null}
+                    </>
+                  );
+                })()}
+              </div>
             )}
 
             <p className="mb-4 text-xs text-gray-500">

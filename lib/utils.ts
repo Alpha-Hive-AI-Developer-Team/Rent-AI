@@ -18,3 +18,19 @@ export function formatDate(input: any, empty = "—"): string {
   const yyyy = date.getUTCFullYear();
   return `${mm}/${dd}/${yyyy}`;
 }
+
+/**
+ * Date + time for payment breakdowns (UTC).
+ * Bank feeds are often date-only → midnight UTC (00:00).
+ */
+export function formatDateTime(input: any, empty = "—"): string {
+  if (!input) return empty;
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return empty;
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  const yyyy = date.getUTCFullYear();
+  const hh = String(date.getUTCHours()).padStart(2, "0");
+  const min = String(date.getUTCMinutes()).padStart(2, "0");
+  return `${mm}/${dd}/${yyyy} · ${hh}:${min}`;
+}
