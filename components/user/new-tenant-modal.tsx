@@ -1108,7 +1108,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                     firstPaymentDate: e.target.value,
                                   }))
                                 }
-                                className={inputClass}
+                                className={`${inputClass} [color-scheme:dark]`}
                               />
                             </div>
                           </div>
@@ -1411,7 +1411,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                           onChange={(e) =>
                                             updateRoom(room.id, { firstPaymentDate: e.target.value })
                                           }
-                                          className={inputClass}
+                                          className={`${inputClass} [color-scheme:dark]`}
                                         />
                                       </div>
                                     </div>
