@@ -88,27 +88,80 @@ export default function TenantsPage() {
     return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
   };
 
-  /** Positive = overpaid credit; negative = underpaid / owes. Future dues not charged yet. */
+  /** Classic balance: sum(paid - due) over all months. Positive = credit. */
   const getFacingBalanceFromHistory = (tenant: any) => {
+    const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
+    if (history.length === 0) return Number(tenant?.currentBalance) || 0;
+
+    let balance = 0;
+    for (const entry of history) {
+      const due = Number(entry?.amountDue) || 0;
+      const paid = Number(entry?.amountPaid) || 0;
+      balance += paid - due;
+    }
+
+    return Math.round(balance * 100) / 100;
+  };
+
+  /**
+   * Banner balance:
+   * - Underpaid = remaining on months due through today
+   * - In credit = Payment-history totals on those months − dues (visible rows only)
+   * - Settled = 0
+   */
+  const getLandlordDisplayBalance = (tenant: any) => {
     const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
     if (history.length === 0) return Number(tenant?.currentBalance) || 0;
 
     const now = new Date();
     const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    let balance = 0;
 
-    for (const entry of history) {
+    let dueUnpaid = 0;
+    let dueThroughToday = 0;
+
+    history.forEach((entry: any) => {
       const due = Number(entry?.amountDue) || 0;
       const paid = Number(entry?.amountPaid) || 0;
       const dueMs = toUtcDayMs(entry?.dueDate ?? entry?.month);
-      if (dueMs != null && dueMs > todayMs) {
-        balance += paid;
-      } else {
-        balance += paid - due;
+      const isFuture = dueMs != null && dueMs > todayMs;
+      if (!isFuture) {
+        dueThroughToday += due;
+        dueUnpaid += Math.max(0, due - paid);
       }
-    }
+    });
+    dueUnpaid = Math.round(dueUnpaid * 100) / 100;
+    if (dueUnpaid > 0) return -dueUnpaid;
 
-    return Math.round(balance * 100) / 100;
+    // Sum full originating payments whose first month is due through today
+    // (same basis as Payment history column on visible rows).
+    const totals = new Map<string, number>();
+    const firstDueMs = new Map<string, number>();
+    history.forEach((entry: any, historyIndex: number) => {
+      const dueMs = toUtcDayMs(entry?.dueDate ?? entry?.month);
+      const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
+      pieces.forEach((piece: any, pieceIndex: number) => {
+        const amt = Number(piece?.amount) || 0;
+        if (amt <= 0) return;
+        const key =
+          piece?.transactionId != null && String(piece.transactionId).trim() !== ""
+            ? `tx:${String(piece.transactionId)}`
+            : `solo:${historyIndex}:${pieceIndex}`;
+        totals.set(key, Math.round(((totals.get(key) || 0) + amt) * 100) / 100);
+        const prev = firstDueMs.get(key);
+        if (dueMs != null && (prev == null || dueMs < prev)) firstDueMs.set(key, dueMs);
+      });
+    });
+
+    let paidVisible = 0;
+    totals.forEach((amount, key) => {
+      const origin = firstDueMs.get(key);
+      if (origin == null || origin > todayMs) return;
+      paidVisible += amount;
+    });
+    paidVisible = Math.round(paidVisible * 100) / 100;
+
+    const credit = Math.round((paidVisible - dueThroughToday) * 100) / 100;
+    return credit > 0 ? credit : 0;
   };
 
   const getBalanceSummary = (tenant: any) => {
@@ -119,7 +172,7 @@ export default function TenantsPage() {
         className: "border-amber-800/60 bg-amber-950/30 text-amber-300",
       };
     }
-    const balance = getFacingBalanceFromHistory(tenant);
+    const balance = getLandlordDisplayBalance(tenant);
 
     if (balance > 0) {
       return {
@@ -144,7 +197,7 @@ export default function TenantsPage() {
     };
   };
 
-  /** Remaining unpaid on months due today or earlier (future dues excluded). */
+  /** Remaining unpaid on months due today or earlier (future dues excluded from “owes now”). */
   const getRemainingAmount = (tenant: any) => {
     if (tenant?.tenancyStatus === "vacant") return 0;
     const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
