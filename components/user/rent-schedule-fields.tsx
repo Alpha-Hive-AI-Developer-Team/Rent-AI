@@ -124,7 +124,7 @@ export default function RentScheduleFields({
           )}
         </div>
         <p className="mb-2 text-xs text-gray-500">
-          Optional. Each change applies from that month until the next one.
+          Optional — for a future rent increase or decrease.
         </p>
 
         {adjustments.length === 0 ? (
@@ -135,7 +135,7 @@ export default function RentScheduleFields({
               className="inline-flex items-center gap-1.5 text-sm text-gray-400 transition hover:text-emerald-400"
             >
               <Plus className="h-3.5 w-3.5" />
-              Add a rent change
+              Change rent from a month
             </button>
           )
         ) : (

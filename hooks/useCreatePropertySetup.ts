@@ -19,6 +19,7 @@ export type PropertySetupPayload = {
     depositPaidDate?: string | null;
     firstPaymentAmount?: number | string;
     firstPaymentDate?: string | null;
+    firstPaymentMethod?: "cash" | "bank";
     rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
   }>;
 };

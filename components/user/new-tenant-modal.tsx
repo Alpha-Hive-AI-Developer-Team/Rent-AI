@@ -14,6 +14,9 @@ import RentScheduleFields, {
   buildRentSchedulePayload,
   type RentAdjustmentRow,
 } from "@/components/user/rent-schedule-fields";
+import DateInput from "@/components/ui/date-input";
+import FirstRentPaymentFields from "@/components/user/first-rent-payment-fields";
+import { formatDate } from "@/lib/utils";
 
 interface NewTenantModalProps {
   open: boolean;
@@ -45,6 +48,7 @@ type RoomTenant = {
   /** Optional: first rent paid on move-in (applied to initial period only) */
   firstPaymentAmount?: string;
   firstPaymentDate?: string;
+  firstPaymentMethod?: "cash" | "bank" | "";
   rentAdjustments?: RentAdjustmentRow[];
 };
 
@@ -137,6 +141,7 @@ function depositPayloadFromFields(opts: {
 function validateFirstPaymentFields(opts: {
   firstPaymentAmount?: string;
   firstPaymentDate?: string;
+  firstPaymentMethod?: string;
 }): string | null {
   const raw = opts.firstPaymentAmount?.trim() || "";
   if (!raw) return null;
@@ -147,18 +152,31 @@ function validateFirstPaymentFields(opts: {
   if (n > 0 && !opts.firstPaymentDate) {
     return "Enter the date of the first rent payment.";
   }
+  if (n > 0 && opts.firstPaymentMethod !== "cash" && opts.firstPaymentMethod !== "bank") {
+    return "Select whether the first rent was paid by cash or bank.";
+  }
   return null;
 }
 
 function firstPaymentPayloadFromFields(opts: {
   firstPaymentAmount?: string;
   firstPaymentDate?: string;
-}): { firstPaymentAmount?: number; firstPaymentDate?: string } {
+  firstPaymentMethod?: string;
+}): {
+  firstPaymentAmount?: number;
+  firstPaymentDate?: string;
+  firstPaymentMethod?: "cash" | "bank";
+} {
   const n = Number(opts.firstPaymentAmount);
   if (!Number.isFinite(n) || n <= 0) return {};
+  const method =
+    opts.firstPaymentMethod === "cash" || opts.firstPaymentMethod === "bank"
+      ? opts.firstPaymentMethod
+      : undefined;
   return {
     firstPaymentAmount: n,
     firstPaymentDate: opts.firstPaymentDate || undefined,
+    firstPaymentMethod: method,
   };
 }
 
@@ -177,6 +195,7 @@ function newRoom(index: number): RoomTenant {
     depositPaidDate: "",
     firstPaymentAmount: "",
     firstPaymentDate: "",
+    firstPaymentMethod: "",
     rentAdjustments: [],
   };
 }
@@ -208,6 +227,7 @@ function buildExistingRoomsForProperty(address: string, tenants: any[]): RoomTen
           : "",
       firstPaymentAmount: "",
       firstPaymentDate: "",
+      firstPaymentMethod: "" as "" | "cash" | "bank",
     }))
     .sort((a, b) => {
       const aNum = roomNumberFromLabel(a.room);
@@ -245,6 +265,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     depositPaidDate: "",
     firstPaymentAmount: "",
     firstPaymentDate: "",
+    firstPaymentMethod: "" as "" | "cash" | "bank",
     rentAdjustments: [] as RentAdjustmentRow[],
   });
   const [rooms, setRooms] = useState<RoomTenant[]>([newRoom(1)]);
@@ -341,6 +362,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
       depositPaidDate: "",
       firstPaymentAmount: "",
       firstPaymentDate: "",
+      firstPaymentMethod: "",
       rentAdjustments: [],
     });
     setRooms([newRoom(1)]);
@@ -551,7 +573,37 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
   };
 
   const handleSubmit = () => {
-    if (!validateStep3() || createMutation.isPending) return;
+    if (createMutation.isPending) return;
+
+    if (tenancyType === "single" && !addingToExisting) {
+      const depositErr = validateDepositFields(singleTenant);
+      if (depositErr) {
+        toast.error(depositErr);
+        return;
+      }
+      const firstPayErr = validateFirstPaymentFields(singleTenant);
+      if (firstPayErr) {
+        toast.error(firstPayErr);
+        return;
+      }
+    } else {
+      const editable = addingToExisting ? newRooms : rooms;
+      for (const r of editable) {
+        if (r.vacant) continue;
+        const depositErr = validateDepositFields(r);
+        if (depositErr) {
+          toast.error(depositErr);
+          return;
+        }
+        const firstPayErr = validateFirstPaymentFields(r);
+        if (firstPayErr) {
+          toast.error(firstPayErr);
+          return;
+        }
+      }
+    }
+
+    if (!validateStep3()) return;
 
     const effectiveType = addingToExisting ? "hmo" : tenancyType;
 
@@ -598,6 +650,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
 
   const inputClass =
     "w-full rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-3 py-2.5 text-sm text-white placeholder:text-gray-600 outline-none transition focus:border-emerald-600";
+  /** Forces the native date calendar glyph white on dark inputs (Windows Chrome/Edge). */
+  const dateInputClass = `${inputClass} [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-100`;
   const labelClass = "mb-1.5 block text-xs font-medium text-gray-400";
 
   const headerTitle = addingToExisting ? "Add room to property" : "Add New Tenant";
@@ -973,11 +1027,9 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
               </div>
                 <div>
                           <label className={labelClass}>Move-in date</label>
-                  <input
-                    type="date"
+                          <DateInput
                             value={singleTenant.moveInDate}
-                            onChange={(e) => {
-                              const moveInDate = e.target.value;
+                            onChange={(moveInDate) => {
                               setSingleTenant((s) => ({
                                 ...s,
                                 moveInDate,
@@ -1062,13 +1114,12 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                               </div>
                               <div>
                                 <label className={labelClass}>Deposit paid date</label>
-                                <input
-                                  type="date"
+                                <DateInput
                                   value={singleTenant.depositPaidDate}
-                                  onChange={(e) =>
+                                  onChange={(depositPaidDate) =>
                                     setSingleTenant((s) => ({
                                       ...s,
-                                      depositPaidDate: e.target.value,
+                                      depositPaidDate,
                                     }))
                                   }
                                   className={inputClass}
@@ -1077,41 +1128,28 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                             </div>
                           )}
                         </div>
-                        <div className="md:col-span-2 xl:col-span-4 rounded-xl border border-[#222] bg-[#0c0c0c] p-4">
-                          <p className="text-sm font-medium text-gray-200">First rent payment (move-in)</p>
-                          <p className="mt-1 text-[11px] text-gray-500">
-                            Optional — how much they paid for the initial period (e.g. mid-month move-in). Applied to that period only, not as credit for the next month.
-                          </p>
-                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                            <div>
-                              <label className={labelClass}>Amount paid on move-in (£)</label>
-                              <input
-                                value={singleTenant.firstPaymentAmount}
-                                onChange={(e) =>
-                                  setSingleTenant((s) => ({
-                                    ...s,
-                                    firstPaymentAmount: sanitizeRentInput(e.target.value),
-                                  }))
-                                }
-                                placeholder="e.g. 300"
-                                className={inputClass}
-                              />
-                            </div>
-                            <div>
-                              <label className={labelClass}>Date of first payment</label>
-                              <input
-                                type="date"
-                                value={singleTenant.firstPaymentDate}
-                                onChange={(e) =>
-                                  setSingleTenant((s) => ({
-                                    ...s,
-                                    firstPaymentDate: e.target.value,
-                                  }))
-                                }
-                                className={`${inputClass} [color-scheme:dark]`}
-                              />
-                            </div>
-                          </div>
+                        <div className="md:col-span-2 xl:col-span-4">
+                          <FirstRentPaymentFields
+                            monthlyRent={singleTenant.rent}
+                            moveInDate={singleTenant.moveInDate}
+                            dueOn={singleTenant.dueOn}
+                            rentSchedule={buildRentSchedulePayload(singleTenant.rentAdjustments || [])}
+                            amount={singleTenant.firstPaymentAmount}
+                            paymentDate={singleTenant.firstPaymentDate}
+                            paymentMethod={singleTenant.firstPaymentMethod}
+                            onAmountChange={(firstPaymentAmount) =>
+                              setSingleTenant((s) => ({ ...s, firstPaymentAmount }))
+                            }
+                            onPaymentDateChange={(firstPaymentDate) =>
+                              setSingleTenant((s) => ({ ...s, firstPaymentDate }))
+                            }
+                            onPaymentMethodChange={(firstPaymentMethod) =>
+                              setSingleTenant((s) => ({ ...s, firstPaymentMethod }))
+                            }
+                            className="rounded-xl border border-[#222] bg-[#0c0c0c] p-4"
+                            inputClassName={inputClass}
+                            dateInputClassName={dateInputClass}
+                          />
                         </div>
                       </div>
                     ) : (
@@ -1172,6 +1210,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                           depositPaidDate: e.target.checked ? "" : room.depositPaidDate,
                                           firstPaymentAmount: e.target.checked ? "" : room.firstPaymentAmount,
                                           firstPaymentDate: e.target.checked ? "" : room.firstPaymentDate,
+                                          firstPaymentMethod: e.target.checked ? "" : room.firstPaymentMethod,
                                         })
                                       }
                                       className="h-3.5 w-3.5 rounded border-gray-600 bg-transparent text-emerald-600 focus:ring-emerald-600"
@@ -1267,13 +1306,12 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                               </div>
                               <div>
                                 <label className={labelClass}>Move-in date</label>
-                                <input
-                                  type="date"
+                                <DateInput
                                   value={
                                     isVacant && !isAssigning ? "" : room.moveInDate
                                   }
-                                  onChange={(e) =>
-                                    updateRoom(room.id, { moveInDate: e.target.value })
+                                  onChange={(moveInDate) =>
+                                    updateRoom(room.id, { moveInDate })
                                   }
                                   disabled={fieldsLocked}
                                   className={`${inputClass} [color-scheme:dark] disabled:cursor-not-allowed disabled:text-gray-400`}
@@ -1372,11 +1410,10 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                         </div>
                                         <div>
                                           <label className={labelClass}>Deposit paid date</label>
-                                          <input
-                                            type="date"
+                                          <DateInput
                                             value={room.depositPaidDate || ""}
-                                            onChange={(e) =>
-                                              updateRoom(room.id, { depositPaidDate: e.target.value })
+                                            onChange={(depositPaidDate) =>
+                                              updateRoom(room.id, { depositPaidDate })
                                             }
                                             className={inputClass}
                                           />
@@ -1384,37 +1421,28 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                       </div>
                                     )}
                                   </div>
-                                  <div className="rounded-xl border border-[#222] bg-[#0a0a0a] p-3">
-                                    <p className="text-sm font-medium text-gray-200">First rent payment (move-in)</p>
-                                    <p className="mt-1 text-[11px] text-gray-500">
-                                      Optional — applied to the initial rent period only.
-                                    </p>
-                                    <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                                      <div>
-                                        <label className={labelClass}>Amount paid on move-in (£)</label>
-                                        <input
-                                          value={room.firstPaymentAmount || ""}
-                                          onChange={(e) =>
-                                            updateRoom(room.id, {
-                                              firstPaymentAmount: sanitizeRentInput(e.target.value),
-                                            })
-                                          }
-                                          placeholder="e.g. 300"
-                                          className={inputClass}
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className={labelClass}>Date of first payment</label>
-                                        <input
-                                          type="date"
-                                          value={room.firstPaymentDate || ""}
-                                          onChange={(e) =>
-                                            updateRoom(room.id, { firstPaymentDate: e.target.value })
-                                          }
-                                          className={`${inputClass} [color-scheme:dark]`}
-                                        />
-                                      </div>
-                                    </div>
+                                  <div className="md:col-span-2 xl:col-span-4">
+                                    <FirstRentPaymentFields
+                                      monthlyRent={room.rent}
+                                      moveInDate={room.moveInDate}
+                                      dueOn={room.dueOn}
+                                      rentSchedule={buildRentSchedulePayload(room.rentAdjustments || [])}
+                                      amount={room.firstPaymentAmount || ""}
+                                      paymentDate={room.firstPaymentDate || ""}
+                                      paymentMethod={room.firstPaymentMethod || ""}
+                                      onAmountChange={(firstPaymentAmount) =>
+                                        updateRoom(room.id, { firstPaymentAmount })
+                                      }
+                                      onPaymentDateChange={(firstPaymentDate) =>
+                                        updateRoom(room.id, { firstPaymentDate })
+                                      }
+                                      onPaymentMethodChange={(firstPaymentMethod) =>
+                                        updateRoom(room.id, { firstPaymentMethod })
+                                      }
+                                      className="rounded-xl border border-[#222] bg-[#0a0a0a] p-3"
+                                      inputClassName={inputClass}
+                                      dateInputClassName={dateInputClass}
+                                    />
                                   </div>
                                 </div>
                               )}
@@ -1426,7 +1454,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                     {room.depositPaidDate && (
                                       <>
                                         {" "}
-                                        (paid {room.depositPaidDate})
+                                        (paid {formatDate(room.depositPaidDate)})
                                       </>
                                     )}
                                   </p>

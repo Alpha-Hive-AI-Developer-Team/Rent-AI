@@ -12,6 +12,7 @@ import {
 import { MoreVertical } from "lucide-react";
 import toast from "react-hot-toast";
 import { withAuth } from "@/hooks/withAuth";
+import { formatDate } from "@/lib/utils";
 import {
   useAdmins,
   useAdminInvites,
@@ -173,10 +174,10 @@ function AdminManagementPage() {
                   <tr key={inv._id} className="border-t border-[#111] hover:bg-[#0e0e0e]">
                     <td className="py-3 px-4 text-gray-200">{inv.email}</td>
                     <td className="py-3 px-4 text-gray-300">
-                      {inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : "—"}
+                      {formatDate(inv.createdAt)}
                     </td>
                     <td className="py-3 px-4 text-gray-300">
-                      {inv.expiresAt ? new Date(inv.expiresAt).toLocaleDateString() : "—"}
+                      {formatDate(inv.expiresAt)}
                     </td>
                     <td className="py-3 px-6 text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -250,7 +251,7 @@ function AdminManagementPage() {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-gray-300">
-                    {a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "—"}
+                    {formatDate(a.createdAt)}
                   </td>
                   <td className="py-3 px-6 text-right">
                     <DropdownMenu>

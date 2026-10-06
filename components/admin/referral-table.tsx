@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 
 interface ReferralData {
   code: string;
@@ -38,12 +39,6 @@ interface ReferralTableProps {
 
 export default function ReferralTable({ data, total, page, pageSize, statusFilter, searchTerm, onStatusChange, onSearch, onPageChange }: ReferralTableProps) {
   const formatMoney = (cents: number) => `£${(Math.max(0, Math.round(cents || 0)) / 100).toFixed(2)}`;
-  const formatDate = (iso: string) => {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-  };
 
   // Local input state + debounce so we don't fire onSearch on every keystroke
   const [localSearch, setLocalSearch] = useState<string>(searchTerm || "");

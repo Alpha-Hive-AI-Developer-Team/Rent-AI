@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { useReferralsSummary } from "@/hooks/useAuth";
 import { useNotifications } from "@/hooks/useNotifications";
 import plansConfig, { PLAN_PRICE_CENTS } from "@/lib/plans";
+import { formatDate } from "@/lib/utils";
 
 export default function ReferralsPage() {
   const [copied, setCopied] = useState(false);
@@ -243,7 +244,7 @@ export default function ReferralsPage() {
             notifications.slice(0, 6).map((n) => (
               <div key={n._id} className="rounded-xl border border-[#2A2A2A] bg-transparent p-4">
                 <p className="text-[13px] text-gray-200">{n.description}</p>
-                <p className="text-[12px] text-gray-500 mt-2">{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</p>
+                <p className="text-[12px] text-gray-500 mt-2">{n.createdAt ? formatDate(n.createdAt) : ''}</p>
               </div>
             ))
           ) : (

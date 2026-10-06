@@ -10,6 +10,7 @@ import Link from "next/link";
 import usePayout from '@/hooks/usePayout';
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog';
 import { toast } from "react-hot-toast";
+import { formatDate } from "@/lib/utils";
 
 export default function PaymentPage() {
   const { startCheckout, cancelSubscription, cancelMutation, loading, error } = usePayment();
@@ -99,7 +100,7 @@ export default function PaymentPage() {
           )}
           {profileResp.data.subscriptionStatus === 'active' && profileResp.data.cancelAtPeriodEnd && (
             <div className="inline-flex flex-col gap-1">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#2a0b0b] text-rose-300 text-sm">Subscription cancelled — ends {profileResp.data.currentPeriodEnd ? new Date(profileResp.data.currentPeriodEnd).toLocaleDateString() : ''}</div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#2a0b0b] text-rose-300 text-sm">Subscription cancelled — ends {profileResp.data.currentPeriodEnd ? formatDate(profileResp.data.currentPeriodEnd) : ''}</div>
               <div className="text-xs text-gray-400 mt-1">You will retain access to paid features until the end of the current period.</div>
             </div>
           )}
