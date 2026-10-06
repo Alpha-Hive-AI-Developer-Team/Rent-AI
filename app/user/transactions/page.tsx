@@ -1092,8 +1092,14 @@ export default function TransactionsPage() {
                 <div className="text-rose-400">Failed to load connected accounts.</div>
               )}
 
-              {!connectedAccountsQuery.data && !connectedAccountsQuery.isFetching && (
-                <div className="text-sm text-gray-400">No accounts found. Use Connect Open Banking first.</div>
+              {!connectedAccountsQuery.isFetching &&
+                !connectedAccountsQuery.isError &&
+                (connectedAccountsQuery.data?.data ?? []).length === 0 && (
+                <div className="text-sm text-gray-400">
+                  {connectedInstitution
+                    ? `No accounts found for ${connectedInstitution}. Try Reconnect bank, then open Sync Bank Feed again.`
+                    : "No accounts found. Connect a bank first."}
+                </div>
               )}
 
               {(connectedAccountsQuery.data?.data ?? []).map((acc: any) => (

@@ -9,6 +9,9 @@ import RentScheduleFields, {
   type RentAdjustmentRow,
 } from "@/components/user/rent-schedule-fields";
 import usePayByCash, {
+  useAddTenantAdjustment,
+  useUpdateTenantLineItem,
+  useRemoveTenantLineItem,
   useAssignTenant,
   useEndTenancy,
   useTenants,
@@ -23,6 +26,8 @@ import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthUser } from "@/redux/useAuthUser";
 import { formatDate, formatDateTime } from "@/lib/utils";
+import DateInput from "@/components/ui/date-input";
+import FirstRentPaymentFields from "@/components/user/first-rent-payment-fields";
 
 export default function TenantsPage() {
   /** True if char is a Unicode letter (works without regex `u` / `\p{L}`). */
@@ -106,8 +111,10 @@ export default function TenantsPage() {
   /**
    * Banner balance:
    * - Underpaid = remaining on months due through today
-   * - In credit = Payment-history totals on those months − dues (visible rows only)
+   * - In credit = overpay on those months + prepaid already on future months
+   *   (future rows are hidden; prepaid surplus shows as green credit)
    * - Settled = 0
+   * Also respect tenant.currentBalance when it includes unallocated bank leftovers.
    */
   const getLandlordDisplayBalance = (tenant: any) => {
     const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
@@ -118,50 +125,38 @@ export default function TenantsPage() {
 
     let dueUnpaid = 0;
     let dueThroughToday = 0;
+    let paidVisible = 0;
+    let futurePrepaid = 0;
 
     history.forEach((entry: any) => {
       const due = Number(entry?.amountDue) || 0;
       const paid = Number(entry?.amountPaid) || 0;
       const dueMs = toUtcDayMs(entry?.dueDate ?? entry?.month);
       const isFuture = dueMs != null && dueMs > todayMs;
-      if (!isFuture) {
-        dueThroughToday += due;
-        dueUnpaid += Math.max(0, due - paid);
+      if (isFuture) {
+        futurePrepaid += paid;
+        return;
       }
+      dueThroughToday += due;
+      dueUnpaid += Math.max(0, due - paid);
+      paidVisible += paid;
     });
     dueUnpaid = Math.round(dueUnpaid * 100) / 100;
     if (dueUnpaid > 0) return -dueUnpaid;
 
-    // Sum full originating payments whose first month is due through today
-    // (same basis as Payment history column on visible rows).
-    const totals = new Map<string, number>();
-    const firstDueMs = new Map<string, number>();
-    history.forEach((entry: any, historyIndex: number) => {
-      const dueMs = toUtcDayMs(entry?.dueDate ?? entry?.month);
-      const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
-      pieces.forEach((piece: any, pieceIndex: number) => {
-        const amt = Number(piece?.amount) || 0;
-        if (amt <= 0) return;
-        const key =
-          piece?.transactionId != null && String(piece.transactionId).trim() !== ""
-            ? `tx:${String(piece.transactionId)}`
-            : `solo:${historyIndex}:${pieceIndex}`;
-        totals.set(key, Math.round(((totals.get(key) || 0) + amt) * 100) / 100);
-        const prev = firstDueMs.get(key);
-        if (dueMs != null && (prev == null || dueMs < prev)) firstDueMs.set(key, dueMs);
-      });
-    });
-
-    let paidVisible = 0;
-    totals.forEach((amount, key) => {
-      const origin = firstDueMs.get(key);
-      if (origin == null || origin > todayMs) return;
-      paidVisible += amount;
-    });
     paidVisible = Math.round(paidVisible * 100) / 100;
+    futurePrepaid = Math.round(futurePrepaid * 100) / 100;
+    const historyCredit =
+      Math.round((paidVisible - dueThroughToday + futurePrepaid) * 100) / 100;
 
-    const credit = Math.round((paidVisible - dueThroughToday) * 100) / 100;
-    return credit > 0 ? credit : 0;
+    // Backend currentBalance may include unallocated reconciled bank leftovers
+    // (money paid but not yet attached because the next due row did not exist yet).
+    const stored = Number(tenant?.currentBalance);
+    if (Number.isFinite(stored) && stored > historyCredit + 0.001) {
+      return Math.round(stored * 100) / 100;
+    }
+
+    return historyCredit > 0 ? historyCredit : 0;
   };
 
   const getBalanceSummary = (tenant: any) => {
@@ -299,6 +294,7 @@ export default function TenantsPage() {
   const [editDepositPaid, setEditDepositPaid] = useState("");
   const [editFirstPayment, setEditFirstPayment] = useState("");
   const [editFirstPaymentDate, setEditFirstPaymentDate] = useState("");
+  const [editFirstPaymentMethod, setEditFirstPaymentMethod] = useState<"" | "cash" | "bank">("");
   const [editRent, setEditRent] = useState("");
   const [editRentAdjustments, setEditRentAdjustments] = useState<RentAdjustmentRow[]>([]);
   const [editConfirmationOpen, setEditConfirmationOpen] = useState(false);
@@ -331,7 +327,21 @@ export default function TenantsPage() {
   const [assignDepositPaid, setAssignDepositPaid] = useState("");
   const [assignFirstPayment, setAssignFirstPayment] = useState("");
   const [assignFirstPaymentDate, setAssignFirstPaymentDate] = useState("");
+  const [assignFirstPaymentMethod, setAssignFirstPaymentMethod] = useState<"" | "cash" | "bank">("");
   const [assignRentAdjustments, setAssignRentAdjustments] = useState<RentAdjustmentRow[]>([]);
+  const [adjustmentOpen, setAdjustmentOpen] = useState(false);
+  const [adjustmentType, setAdjustmentType] = useState<"charge" | "discount" | "refund">("charge");
+  const [adjustmentAmount, setAdjustmentAmount] = useState("");
+  const [adjustmentDate, setAdjustmentDate] = useState("");
+  const [adjustmentDescription, setAdjustmentDescription] = useState("");
+  const [adjustmentMonthLink, setAdjustmentMonthLink] = useState("");
+  /** When set, modal edits an existing folded line item instead of adding. */
+  const [editingLineItem, setEditingLineItem] = useState<null | {
+    rentEntryId: string;
+    lineItemId: string;
+    type: "charge" | "discount" | "refund";
+    monthLabel: string;
+  }>(null);
 
   const { data, isLoading, isError } = useTenants();
   const payByCashMutation = usePayByCash();
@@ -340,6 +350,9 @@ export default function TenantsPage() {
   const endTenancyMutation = useEndTenancy();
   const unreconcileMutation = useUnreconcileRent();
   const unlinkPayerMutation = useUnlinkLinkedPayer();
+  const addAdjustmentMutation = useAddTenantAdjustment();
+  const updateLineItemMutation = useUpdateTenantLineItem();
+  const removeLineItemMutation = useRemoveTenantLineItem();
   const reconcileMutation = useReconcileTransaction();
   const [applyingLinkedPayers, setApplyingLinkedPayers] = useState(false);
   const qc = useQueryClient();
@@ -352,6 +365,7 @@ export default function TenantsPage() {
     Paid: "bg-green-900/40 text-green-400 border-green-700/60",
     Unpaid: "bg-red-900/40 text-red-400 border-red-700/60",
     Partial: "bg-yellow-900/40 text-yellow-400 border-yellow-700/60",
+    Applied: "bg-violet-900/40 text-violet-300 border-violet-700/60",
     Vacant: "bg-amber-900/40 text-amber-300 border-amber-700/60",
   };
 
@@ -446,7 +460,25 @@ export default function TenantsPage() {
     try {
       const res = await getTenantById(String(id));
       const full = res?.data ?? res;
-      if (full) setSelectedTenant(full);
+      if (full) {
+        setSelectedTenant(full);
+        // Keep list red-tag in sync with landlord-facing balance from detail
+        qc.setQueryData(["tenants", userId], (prev: any) => {
+          if (!prev?.data || !Array.isArray(prev.data)) return prev;
+          return {
+            ...prev,
+            data: prev.data.map((row: any) => {
+              if (String(row?._id || row?.id) !== String(id)) return row;
+              return {
+                ...row,
+                currentBalance: full.currentBalance,
+                status: full.status,
+                lastPayment: full.lastPayment ?? row.lastPayment,
+              };
+            }),
+          };
+        });
+      }
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || "Failed to load tenant details");
     } finally {
@@ -509,6 +541,7 @@ export default function TenantsPage() {
     setEditRentAdjustments(scheduleUi.adjustments);
     setEditFirstPayment("");
     setEditFirstPaymentDate("");
+    setEditFirstPaymentMethod("");
     setEditConfirmationOpen(false);
     setEditTenantOpen(true);
     setTransactionModalOpen(false);
@@ -529,6 +562,7 @@ export default function TenantsPage() {
     setAssignDepositPaid("");
     setAssignFirstPayment("");
     setAssignFirstPaymentDate("");
+    setAssignFirstPaymentMethod("");
     setAssignRentAdjustments([]);
     setAssignOpen(true);
     setTransactionModalOpen(false);
@@ -545,6 +579,7 @@ export default function TenantsPage() {
     setAssignDepositPaid("");
     setAssignFirstPayment("");
     setAssignFirstPaymentDate("");
+    setAssignFirstPaymentMethod("");
     setAssignRentAdjustments([]);
     if (reopenDetails && selectedTenant) {
       setTransactionModalOpen(true);
@@ -587,6 +622,10 @@ export default function TenantsPage() {
       toast.error("Enter the date of the first rent payment.");
       return;
     }
+    if (firstPay > 0 && assignFirstPaymentMethod !== "cash" && assignFirstPaymentMethod !== "bank") {
+      toast.error("Select whether the first rent was paid by cash or bank.");
+      return;
+    }
 
     assignTenantMutation.mutate(
       {
@@ -600,7 +639,13 @@ export default function TenantsPage() {
           depositPaidDate:
             assignHasDeposit && Number(assignDeposit) > 0 ? assignDepositPaid || null : null,
           ...(firstPay > 0
-            ? { firstPaymentAmount: firstPay, firstPaymentDate: assignFirstPaymentDate }
+            ? {
+                firstPaymentAmount: firstPay,
+                firstPaymentDate: assignFirstPaymentDate,
+                ...(assignFirstPaymentMethod === "cash" || assignFirstPaymentMethod === "bank"
+                  ? { firstPaymentMethod: assignFirstPaymentMethod }
+                  : {}),
+              }
             : {}),
           rentSchedule: buildRentSchedulePayload(assignRentAdjustments),
         },
@@ -633,6 +678,7 @@ export default function TenantsPage() {
     setEditDepositPaid("");
     setEditFirstPayment("");
     setEditFirstPaymentDate("");
+    setEditFirstPaymentMethod("");
     setEditRent("");
     setEditRentAdjustments([]);
 
@@ -695,6 +741,10 @@ export default function TenantsPage() {
         toast.error("Enter the date of the first rent payment.");
         return;
       }
+      if (firstPay > 0 && editFirstPaymentMethod !== "cash" && editFirstPaymentMethod !== "bank") {
+        toast.error("Select whether the first rent was paid by cash or bank.");
+        return;
+      }
     }
 
     if (!isVacant) {
@@ -733,6 +783,7 @@ export default function TenantsPage() {
       depositPaidDate?: string | null;
       firstPaymentAmount?: number;
       firstPaymentDate?: string;
+      firstPaymentMethod?: "cash" | "bank";
       rent?: number;
       rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
     } = {};
@@ -746,6 +797,9 @@ export default function TenantsPage() {
       if (firstPay > 0 && editFirstPaymentDate) {
         payload.firstPaymentAmount = firstPay;
         payload.firstPaymentDate = editFirstPaymentDate;
+        if (editFirstPaymentMethod === "cash" || editFirstPaymentMethod === "bank") {
+          payload.firstPaymentMethod = editFirstPaymentMethod;
+        }
       }
     }
     if (!isVacant) {
@@ -816,6 +870,35 @@ export default function TenantsPage() {
     const method = String(entry?.paymentMethod || "none").toLowerCase();
     const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
     return paid > 0 || method === "bank" || method === "cash" || pieces.length > 0;
+  };
+
+  /** True when this rent row was cleared by the move-in first payment. */
+  const isFirstMoveInPaymentEntry = (entry: any, tenant: any = selectedTenant) => {
+    if (!entry) return false;
+    const label = String(entry.label || "").toLowerCase();
+    if (label === "first payment" || label.includes("first payment")) return true;
+    const pieces = Array.isArray(entry.linkedPayments) ? entry.linkedPayments : [];
+    if (
+      pieces.some((p: any) =>
+        String(p?.note || "")
+          .toLowerCase()
+          .includes("first move-in")
+      )
+    ) {
+      return true;
+    }
+    const moveInMs = toUtcDayMs(tenant?.moveInDate);
+    const dueMs = toUtcDayMs(entry?.dueDate);
+    if (
+      moveInMs != null &&
+      dueMs != null &&
+      moveInMs === dueMs &&
+      (Number(entry.amountPaid) || 0) > 0 &&
+      (!entry.kind || entry.kind === "rent")
+    ) {
+      return true;
+    }
+    return false;
   };
 
   /** Per-payment pieces (full or partial) with their own paidOn dates. */
@@ -1047,16 +1130,42 @@ export default function TenantsPage() {
 
   const confirmReversePayment = () => {
     if (!selectedTenant || !paymentReview) return;
+    const tenantId = selectedTenant._id;
     unreconcileMutation.mutate(
       {
-        tenantId: selectedTenant._id,
+        tenantId,
         payload: { index: paymentReview.index },
       },
       {
-        onSuccess: (res) => {
-          const updatedTenant = res?.data?.tenant || null;
-          if (updatedTenant) setSelectedTenant(updatedTenant);
+        onSuccess: async (res) => {
           setPaymentReview(null);
+          const updatedTenant = res?.data?.tenant || null;
+          if (updatedTenant) {
+            setSelectedTenant(updatedTenant);
+            qc.setQueryData(["tenants", userId], (prev: any) => {
+              if (!prev?.data || !Array.isArray(prev.data)) return prev;
+              return {
+                ...prev,
+                data: prev.data.map((row: any) => {
+                  if (String(row?._id || row?.id) !== String(tenantId)) return row;
+                  return {
+                    ...row,
+                    currentBalance: updatedTenant.currentBalance,
+                    status: updatedTenant.status,
+                    lastPayment: updatedTenant.lastPayment ?? row.lastPayment,
+                  };
+                }),
+              };
+            });
+          }
+          // Reload full detail so history / banner match DB after reverse
+          try {
+            const fresh = await getTenantById(String(tenantId));
+            const full = fresh?.data ?? fresh;
+            if (full) setSelectedTenant(full);
+          } catch {
+            /* keep mutation response */
+          }
         },
       }
     );
@@ -1447,6 +1556,27 @@ export default function TenantsPage() {
               )}
             </div>
 
+            {selectedTenant.tenancyStatus !== "vacant" && (
+              <div className="mb-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingLineItem(null);
+                    setAdjustmentType("charge");
+                    setAdjustmentAmount("");
+                    setAdjustmentDate(new Date().toISOString().slice(0, 10));
+                    setAdjustmentDescription("");
+                    setAdjustmentMonthLink("");
+                    setAdjustmentOpen(true);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full border border-violet-800 px-4 py-2 text-sm text-violet-300 hover:bg-violet-950/40"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add charge / discount
+                </button>
+              </div>
+            )}
+
             {Array.isArray(selectedTenant.linkedPayers) && selectedTenant.linkedPayers.length > 0 && (
               <div className="mb-4 rounded-xl border border-[#1a1a1a] bg-[#0B0B0B] px-4 py-3">
                 <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
@@ -1581,8 +1711,14 @@ export default function TenantsPage() {
                     const visibleHistory = (selectedTenant.rentHistory || [])
                       .map((entry: any, index: number) => ({ entry, index }))
                       .filter(({ entry }: { entry: any }) => {
+                        const kind = String(entry?.kind || "rent");
                         const due = Number(entry?.amountDue) || 0;
                         const paid = Number(entry?.amountPaid) || 0;
+                        const adj = Number(entry?.adjustmentAmount) || 0;
+                        // Show applied discount/refund audit rows
+                        if (kind === "discount" || kind === "refund") {
+                          return adj > 0 || due !== 0 || paid !== 0;
+                        }
                         // Hide empty prorated rows (e.g. move-in on due day → £0 due)
                         if (due === 0 && paid === 0) return false;
                         // Hide future due months — prepaid surplus shows as green credit above
@@ -1602,43 +1738,161 @@ export default function TenantsPage() {
                     }
 
                     return visibleHistory.map(({ entry, index }: { entry: any; index: number }) => {
+                      const kind = String(entry?.kind || "rent");
+                      const isAdjustment = kind === "discount" || kind === "refund";
+                      const isChargeLike = kind === "charge" || kind === "transition";
+                      const isFirstPayment = !isAdjustment && isFirstMoveInPaymentEntry(entry);
+                      const lineItems = Array.isArray(entry?.lineItems) ? entry.lineItems : [];
                       const remaining =
                         (Number(entry.amountDue) || 0) - (Number(entry.amountPaid) || 0);
-                      const recorded = hasRecordedPayment(entry);
+                      const recorded = !isAdjustment && hasRecordedPayment(entry);
+                      const statusLabel = String(entry.status || "unpaid");
+                      const statusKey =
+                        statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1);
+                      const dueDisplay = isAdjustment
+                        ? -(Number(entry.adjustmentAmount) || 0)
+                        : Number(entry.amountDue) || 0;
                       return (
                       <tr
-                        key={entry._id || index}
+                        key={entry._id || `${kind}-${index}`}
                         className={`border-t border-[#151515] hover:bg-[#0e0e0e] ${recorded ? "cursor-pointer" : ""}`}
                         onClick={() => {
                           if (recorded) openPaymentReview(index, entry);
                         }}
                       >
-                        <td className="px-4 py-3 text-gray-300">{formatMoney(Number(entry.amountDue) || 0)}</td>
-                        <td className={`px-4 py-3 ${remaining > 0 ? "text-rose-400" : "text-gray-300"}`}>
-                          {formatMoney(Number(entry.amountPaid) || 0)}
+                        <td className="px-4 py-3 text-gray-300">
+                          <div className="tabular-nums">{formatMoney(dueDisplay)}</div>
+                          {/* {isFirstPayment && (
+                            <span className="mt-1 inline-flex rounded-full border border-sky-800/70 bg-sky-950/40 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300">
+                              First payment
+                            </span>
+                          )} */}
+                          {lineItems.map((item: any, i: number) => {
+                            const itemAmt = Number(item?.amount) || 0;
+                            if (!(itemAmt > 0)) return null;
+                            const itemType = String(item?.type || "charge");
+                            const sign = itemType === "charge" ? "+" : "−";
+                            const lineItemId = item?._id ? String(item._id) : "";
+                            const rentEntryId = entry?._id ? String(entry._id) : "";
+                            return (
+                              <div
+                                key={lineItemId || i}
+                                className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-500"
+                              >
+                                <span>
+                                  {sign}
+                                  {formatMoney(itemAmt)}
+                                  {item?.label ? ` · ${item.label}` : ""}
+                                </span>
+                                {lineItemId && rentEntryId && (
+                                  <span className="inline-flex items-center gap-0.5">
+                                    <button
+                                      type="button"
+                                      title="Edit"
+                                      className="rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-sky-300"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const t = (["charge", "discount", "refund"].includes(itemType)
+                                          ? itemType
+                                          : "charge") as "charge" | "discount" | "refund";
+                                        const rawDate = item?.date
+                                          ? new Date(item.date).toISOString().slice(0, 10)
+                                          : new Date().toISOString().slice(0, 10);
+                                        const monthSrc = entry?.month || entry?.dueDate;
+                                        let monthLabel = "";
+                                        let monthLink = "";
+                                        if (monthSrc) {
+                                          const md = new Date(monthSrc);
+                                          if (!Number.isNaN(md.getTime())) {
+                                            monthLink = `${md.getUTCFullYear()}-${String(md.getUTCMonth() + 1).padStart(2, "0")}`;
+                                            monthLabel = md.toLocaleString("en-GB", {
+                                              month: "long",
+                                              year: "numeric",
+                                              timeZone: "UTC",
+                                            });
+                                          }
+                                        }
+                                        setEditingLineItem({
+                                          rentEntryId,
+                                          lineItemId,
+                                          type: t,
+                                          monthLabel: monthLabel || "this month",
+                                        });
+                                        setAdjustmentType(t);
+                                        setAdjustmentAmount(String(itemAmt.toFixed(2)));
+                                        setAdjustmentDate(rawDate);
+                                        setAdjustmentDescription(String(item?.label || ""));
+                                        setAdjustmentMonthLink(monthLink);
+                                        setAdjustmentOpen(true);
+                                      }}
+                                    >
+                                      <Pencil className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Remove"
+                                      disabled={removeLineItemMutation.isPending}
+                                      className="rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-rose-400 disabled:opacity-50"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (
+                                          !window.confirm(
+                                            `Remove this ${itemType}${item?.label ? ` (${item.label})` : ""}?`
+                                          )
+                                        ) {
+                                          return;
+                                        }
+                                        removeLineItemMutation.mutate(
+                                          {
+                                            tenantId: selectedTenant._id,
+                                            rentEntryId,
+                                            lineItemId,
+                                          },
+                                          {
+                                            onSuccess: (res) => {
+                                              if (res?.data) setSelectedTenant(res.data);
+                                            },
+                                          }
+                                        );
+                                      }}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {!isFirstPayment && lineItems.length === 0 && (isChargeLike || isAdjustment) && (
+                            <div className="mt-0.5 text-[11px] text-gray-500">
+                              {entry.label || kind}
+                            </div>
+                          )}
+                        </td>
+                        <td className={`px-4 py-3 ${!isAdjustment && remaining > 0 ? "text-rose-400" : "text-gray-300"}`}>
+                          {isAdjustment ? "—" : formatMoney(Number(entry.amountPaid) || 0)}
                         </td>
                         <td className="px-4 py-3 align-top">
                           {(() => {
+                            if (isAdjustment) {
+                              return <span className="text-sm text-gray-500">—</span>;
+                            }
+                            // Show what cleared *this month* (matches Amount Paid / bank-style month view).
+                            // Do not sum full bank transfers that also covered later months.
                             const totalPaid = Number(entry.amountPaid) || 0;
+                            const pieces = getPaymentPieces(entry);
                             const originating = getOriginatingPaymentsForMonth(
                               entry,
                               index,
                               paymentPieceRoles,
                               paymentTotalsByGroup
                             );
-                            // Sum of full bank/cash payments that started this month
-                            // (e.g. £200 + £870 = £1,070), not just amount applied to due.
-                            const historyTotal = originating.reduce(
-                              (s, row) => s + (Number(row.amount) || 0),
-                              0
-                            );
                             const creditOnly =
                               totalPaid > 0 &&
                               originating.length === 0 &&
-                              getPaymentPieces(entry).length > 0;
-                            const displayTotal = originating.length > 0 ? historyTotal : totalPaid;
+                              pieces.length > 0;
 
-                            if (displayTotal <= 0 && !creditOnly) {
+                            if (totalPaid <= 0 && !creditOnly) {
                               return <span className="text-sm text-gray-500">—</span>;
                             }
 
@@ -1651,20 +1905,20 @@ export default function TenantsPage() {
                                 }}
                                 className={`text-left ${recorded ? "hover:opacity-90" : "cursor-default"}`}
                                 title={
-                                  originating.length >= 1
-                                    ? "Click to see each payment date and time"
+                                  pieces.length >= 1
+                                    ? "Click to see each payment applied to this month"
                                     : recorded
                                       ? "Click for payment details"
                                       : undefined
                                 }
                               >
                                 <span className="block tabular-nums text-sm font-medium text-gray-200">
-                                  {formatMoney(displayTotal)}
+                                  {formatMoney(totalPaid)}
                                 </span>
-                                {originating.length >= 1 ? (
+                                {pieces.length >= 1 && !creditOnly ? (
                                   <span className="mt-0.5 block text-[11px] text-sky-400/90">
-                                    {originating.length} payment
-                                    {originating.length === 1 ? "" : "s"} · view breakdown
+                                    {pieces.length} payment
+                                    {pieces.length === 1 ? "" : "s"} · view breakdown
                                   </span>
                                 ) : creditOnly ? (
                                   <span className="mt-0.5 block text-[11px] text-emerald-400/90">
@@ -1681,12 +1935,14 @@ export default function TenantsPage() {
                         </td>
                         <td className="px-4 py-3 text-gray-300">{formatDate(entry.dueDate)}</td>
                         <td className="px-4 py-3">
-                          <span className={`rounded-full border px-2 py-1 text-xs ${statusColors[(entry.status || "").charAt(0).toUpperCase() + (entry.status || "").slice(1) as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
-                            {entry.status?.charAt(0).toUpperCase() + entry.status?.slice(1)}
+                          <span className={`rounded-full border px-2 py-1 text-xs ${statusColors[statusKey as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
+                            {statusKey}
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          {remaining > 0 ? (
+                          {isAdjustment ? (
+                            <span className="text-xs text-gray-500">—</span>
+                          ) : remaining > 0 ? (
                             <div className="flex flex-col items-start gap-1">
                               {entry.paymentMethod && entry.paymentMethod !== "none" && (
                                 <button
@@ -2109,7 +2365,7 @@ export default function TenantsPage() {
                       {originating.length > 0 && (
                         <div className="mb-4">
                           <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
-                            Payments this month (full amounts)
+                            Applied to this month
                           </p>
                           <ul className="space-y-1.5 rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3">
                             {originating.map((row) => {
@@ -2119,7 +2375,8 @@ export default function TenantsPage() {
                               const bankAmt = tx
                                 ? Math.abs(Number(tx.bankAmount ?? tx.amount) || 0)
                                 : row.amount;
-                              const displayAmt = bankAmt > 0 ? bankAmt : row.amount;
+                              const fullBankAmt = bankAmt > 0 ? bankAmt : row.amount;
+                              const appliedAmt = Number(row.appliedThisMonth) || 0;
                               const isCash = String(row.method || "").toLowerCase() === "cash";
                               return (
                                 <li
@@ -2130,13 +2387,13 @@ export default function TenantsPage() {
                                     {formatDateTime(row.paidOn || tx?.date)}
                                   </span>
                                   <span className="tabular-nums font-medium text-gray-100">
-                                    {formatMoney(displayAmt)}
+                                    {formatMoney(appliedAmt)}
                                   </span>
-                                  {row.appliedThisMonth + 0.001 < displayAmt ? (
+                                  {appliedAmt + 0.001 < fullBankAmt ? (
                                     <span className="text-[11px] text-gray-500">
-                                      {formatMoney(row.appliedThisMonth)} applied here
-                                      {displayAmt - row.appliedThisMonth > 0.001
-                                        ? ` · ${formatMoney(displayAmt - row.appliedThisMonth)} to later months / credit`
+                                      of {formatMoney(fullBankAmt)} bank payment
+                                      {fullBankAmt - appliedAmt > 0.001
+                                        ? ` · ${formatMoney(fullBankAmt - appliedAmt)} to later months / credit`
                                         : ""}
                                     </span>
                                   ) : null}
@@ -2154,9 +2411,8 @@ export default function TenantsPage() {
                             })}
                           </ul>
                           <p className="mt-2 text-[11px] text-gray-500">
-                            Amounts are the full bank/cash payments. Rent due this month is still{" "}
-                            {formatMoney(Number(paymentReview.entry?.amountDue) || 0)}; any leftover
-                            clears later months or sits as credit.
+                            Figures are the rent applied to this month only (not deposit). Deposit is
+                            recorded separately above.
                           </p>
                         </div>
                       )}
@@ -2185,8 +2441,8 @@ export default function TenantsPage() {
                           </p>
                           {(paymentReview.linkedTransactions?.length ?? 0) === 0 ? (
                             <p className="rounded-lg border border-[#1a1a1a] px-3 py-3 text-sm text-gray-500">
-                              No linked bank transaction found for this month (it may have been
-                              cleared already).
+                              No linked bank transaction for this month — this was recorded manually
+                              (e.g. first rent). Reverse will clear the payment on this month.
                             </p>
                           ) : (
                             <div className="space-y-2">
@@ -2244,8 +2500,9 @@ export default function TenantsPage() {
             )}
 
             <p className="mb-4 text-xs text-gray-500">
-              Reverse undoes this month&apos;s bank payment(s). Linked bank transactions are fully released back to
-              the Transactions list (including any split used on other months), and the balance is recalculated.
+              Reverse clears this month&apos;s payment(s). Linked bank transactions are fully released
+              back to the Transactions list (including any split used on other months). Manual first
+              rent or cash is cleared on this month only, and the balance is recalculated.
             </p>
 
             <div className="flex flex-wrap justify-end gap-3">
@@ -2430,11 +2687,9 @@ export default function TenantsPage() {
               </div>
               <div>
                 <label className="mb-1 block text-sm text-gray-200">Move-in date</label>
-                <input
-                  type="date"
+                <DateInput
                   value={assignMoveIn}
-                  onChange={(e) => {
-                    const moveIn = e.target.value;
+                  onChange={(moveIn) => {
                     setAssignMoveIn(moveIn);
                     if (moveIn && /^\d{4}-\d{2}-\d{2}$/.test(moveIn)) {
                       const [y, m] = moveIn.split("-").map(Number);
@@ -2510,10 +2765,9 @@ export default function TenantsPage() {
                   </div>
                   <div>
                     <label className="mb-1 block text-sm text-gray-200">Deposit paid date</label>
-                    <input
-                      type="date"
+                    <DateInput
                       value={assignDepositPaid}
-                      onChange={(e) => setAssignDepositPaid(e.target.value)}
+                      onChange={setAssignDepositPaid}
                       className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
                     />
                   </div>
@@ -2521,31 +2775,20 @@ export default function TenantsPage() {
               )}
             </div>
 
-            <div className="mt-4 rounded-xl border border-[#222] bg-[#0a0a0a] p-3">
-              <p className="text-sm font-medium text-gray-200">First rent payment (move-in)</p>
-              <p className="mt-1 text-xs text-gray-500">
-                Optional — applied to the initial rent period only, not as credit for the next month.
-              </p>
-              <div className="mt-2 grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-sm text-gray-200">Amount paid (£)</label>
-                  <input
-                    value={assignFirstPayment}
-                    onChange={(e) => setAssignFirstPayment(e.target.value.replace(/[^0-9.]/g, ""))}
-                    placeholder="e.g. 300"
-                    className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm text-gray-200">Payment date</label>
-                  <input
-                    type="date"
-                    value={assignFirstPaymentDate}
-                    onChange={(e) => setAssignFirstPaymentDate(e.target.value)}
-                    className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                  />
-                </div>
-              </div>
+            <div className="mt-4">
+              <FirstRentPaymentFields
+                monthlyRent={assignRent}
+                moveInDate={assignMoveIn}
+                dueOn={assignDueOn}
+                rentSchedule={buildRentSchedulePayload(assignRentAdjustments)}
+                amount={assignFirstPayment}
+                paymentDate={assignFirstPaymentDate}
+                paymentMethod={assignFirstPaymentMethod}
+                onAmountChange={setAssignFirstPayment}
+                onPaymentDateChange={setAssignFirstPaymentDate}
+                onPaymentMethodChange={setAssignFirstPaymentMethod}
+                amountLabel="Amount paid (£)"
+              />
             </div>
 
             <div className="mt-5 flex justify-end gap-3">
@@ -2570,24 +2813,24 @@ export default function TenantsPage() {
       )}
 
       {editTenantOpen && selectedTenant && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
-          <div className="max-h-[95vh] w-full max-w-md overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <div className="mb-4 flex items-start justify-between">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+          <div className="max-h-[95vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="mb-5 flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold">
+                <h3 className="text-xl font-semibold">
                   {selectedTenant.tenancyStatus === "vacant" ? "Edit room" : "Edit tenant"}
                 </h3>
-                <p className="text-sm text-gray-400">{getPropertyDisplay(selectedTenant)}</p>
+                <p className="mt-1 text-sm text-gray-400">{getPropertyDisplay(selectedTenant)}</p>
               </div>
               <button onClick={() => closeEditTenantModal()} className="text-gray-400 hover:text-white">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleEditSubmit} className="space-y-4">
+            <form onSubmit={handleEditSubmit} className="space-y-5">
               {selectedTenant.tenancyStatus !== "vacant" && (
                 <div>
-                  <label className="mb-1 block text-sm text-gray-200">Tenant name(s)</label>
+                  <label className="mb-1.5 block text-base text-gray-200">Tenant name</label>
                   <div className="mb-2 flex gap-2">
                     <input
                       value={currentEditName}
@@ -2598,13 +2841,13 @@ export default function TenantsPage() {
                           addEditName();
                         }
                       }}
-                      className="flex-1 rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                      placeholder="Type a name and press Enter or click Add"
+                      className="flex-1 rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                      placeholder="Name"
                     />
                     <button
                       type="button"
                       onClick={addEditName}
-                      className="rounded-full border border-emerald-700 px-3 py-2 text-sm text-emerald-300 hover:bg-[#0b1510]"
+                      className="rounded-full border border-emerald-700 px-4 py-2.5 text-sm text-emerald-300 hover:bg-[#0b1510]"
                     >
                       Add
                     </button>
@@ -2612,7 +2855,7 @@ export default function TenantsPage() {
 
                   <div className="flex flex-wrap gap-2">
                     {editTenantNames.map((name, index) => (
-                      <div key={`${name}-${index}`} className="flex items-center gap-2 rounded-full border border-[#222] bg-[#0b0b0b] px-3 py-1 text-sm">
+                      <div key={`${name}-${index}`} className="flex items-center gap-2 rounded-full border border-[#222] bg-[#0b0b0b] px-3 py-1.5 text-sm">
                         <span className="text-gray-200">{name}</span>
                         <button
                           type="button"
@@ -2620,41 +2863,37 @@ export default function TenantsPage() {
                           className="text-gray-400 hover:text-white"
                           aria-label={`Remove ${name}`}
                         >
-                          <X className="h-3 w-3" />
+                          <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     ))}
                   </div>
 
                   {editTenantNames.length === 0 && !currentEditName.trim() && (
-                    <p className="mt-2 text-xs text-amber-400">Add at least one tenant name before saving.</p>
+                    <p className="mt-2 text-sm text-amber-400">Add at least one name.</p>
                   )}
-                  <p className="mt-2 text-xs text-gray-500">Letters only — numbers and special characters are not allowed.</p>
                 </div>
               )}
 
               {showRoomEditField(selectedTenant) && (
                 <div>
-                  <label className="mb-1 block text-sm text-gray-200">Room</label>
+                  <label className="mb-1.5 block text-base text-gray-200">Room</label>
                   <input
                     value={editRoom}
                     onChange={(e) => setEditRoom(e.target.value)}
-                    className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                    className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
                     placeholder="e.g. Room 3"
                   />
-                  <p className="mt-1 text-xs text-gray-500">Must be unique on this property among active and vacant units.</p>
                 </div>
               )}
 
               {selectedTenant.tenancyStatus !== "vacant" && (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-sm text-gray-200">Move-in date</label>
-                    <input
-                      type="date"
+                    <label className="mb-1.5 block text-base text-gray-200">Move-in date</label>
+                    <DateInput
                       value={editMoveIn}
-                      onChange={(e) => {
-                        const next = e.target.value;
+                      onChange={(next) => {
                         setEditMoveIn(next);
                         if (next && /^\d{4}-\d{2}-\d{2}$/.test(next)) {
                           const [y, m] = next.split("-").map(Number);
@@ -2663,16 +2902,16 @@ export default function TenantsPage() {
                         }
                       }}
                       disabled={!canEditScheduleFields(selectedTenant)}
-                      className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm text-gray-200">Due day</label>
+                    <label className="mb-1.5 block text-base text-gray-200">Rent due day</label>
                     <select
                       value={editDueOn}
                       onChange={(e) => setEditDueOn(Number(e.target.value) || 1)}
                       disabled={!canEditScheduleFields(selectedTenant)}
-                      className="w-full rounded-lg border border-[#2A2A2A] bg-[#111] px-3 py-2 text-sm text-gray-100 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-full rounded-lg border border-[#2A2A2A] bg-[#111] px-3 py-2.5 text-base text-gray-100 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {(() => {
                         let max = 31;
@@ -2688,13 +2927,9 @@ export default function TenantsPage() {
                       })()}
                     </select>
                   </div>
-                  {!canEditScheduleFields(selectedTenant) ? (
-                    <p className="text-xs text-amber-400 sm:col-span-2">
-                      Move-in and due day are locked after payments are recorded.
-                    </p>
-                  ) : (
-                    <p className="text-xs text-gray-500 sm:col-span-2">
-                      Changing either rebuilds the unpaid rent schedule (including first-month pro-rata).
+                  {!canEditScheduleFields(selectedTenant) && (
+                    <p className="text-sm text-amber-400 sm:col-span-2">
+                      Move-in and due day are locked after payments.
                     </p>
                   )}
                 </div>
@@ -2706,49 +2941,30 @@ export default function TenantsPage() {
                   onBaseRentChange={setEditRent}
                   adjustments={editRentAdjustments}
                   onAdjustmentsChange={setEditRentAdjustments}
+                  labelClass="mb-1.5 block text-base text-gray-200"
+                  inputClass="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
                 />
               )}
 
               {selectedTenant.tenancyStatus !== "vacant" && canEditScheduleFields(selectedTenant) && (
-                <div className="rounded-xl border border-[#222] bg-[#0a0a0a] p-3">
-                  <p className="text-sm font-medium text-gray-200">First rent payment (move-in)</p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Optional — only available before any rent payments are recorded. Applied to the
-                    initial prorated period, not as credit for the next month.
-                  </p>
-                  <div className="mt-2 grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1 block text-sm text-gray-200">Amount paid (£)</label>
-                      <input
-                        value={editFirstPayment}
-                        onChange={(e) => setEditFirstPayment(e.target.value.replace(/[^0-9.]/g, ""))}
-                        placeholder="e.g. 300"
-                        className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm text-gray-200">Payment date</label>
-                      <input
-                        type="date"
-                        value={editFirstPaymentDate}
-                        onChange={(e) => setEditFirstPaymentDate(e.target.value)}
-                        className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {selectedTenant.tenancyStatus !== "vacant" && !canEditScheduleFields(selectedTenant) && (
-                <p className="text-xs text-amber-400">
-                  First move-in rent payment can’t be added here after payments have been reconciled —
-                  use Pay by cash or Reconcile for later payments.
-                </p>
+                <FirstRentPaymentFields
+                  monthlyRent={editRent}
+                  moveInDate={editMoveIn}
+                  dueOn={editDueOn}
+                  rentSchedule={buildRentSchedulePayload(editRentAdjustments)}
+                  amount={editFirstPayment}
+                  paymentDate={editFirstPaymentDate}
+                  paymentMethod={editFirstPaymentMethod}
+                  onAmountChange={setEditFirstPayment}
+                  onPaymentDateChange={setEditFirstPaymentDate}
+                  onPaymentMethodChange={setEditFirstPaymentMethod}
+                  amountLabel="Amount paid (£)"
+                />
               )}
 
               {selectedTenant.tenancyStatus !== "vacant" && (
                 <div>
-                  <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-300">
+                  <label className="inline-flex cursor-pointer items-center gap-2.5 text-base text-gray-200">
                     <input
                       type="checkbox"
                       checked={editHasDeposit}
@@ -2763,27 +2979,23 @@ export default function TenantsPage() {
                     />
                     Record deposit
                   </label>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Security deposit only — enter the date it was paid in.
-                  </p>
                   {editHasDeposit && (
-                    <div className="mt-2 grid grid-cols-2 gap-3">
+                    <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div>
-                        <label className="mb-1 block text-sm text-gray-200">Deposit amount (£)</label>
+                        <label className="mb-1.5 block text-base text-gray-200">Deposit (£)</label>
                         <input
                           value={editDeposit}
                           onChange={(e) => setEditDeposit(e.target.value.replace(/[^0-9.]/g, ""))}
-                          placeholder="e.g. 780"
-                          className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                          placeholder="200"
+                          className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
                         />
                       </div>
                       <div>
-                        <label className="mb-1 block text-sm text-gray-200">Deposit paid date</label>
-                        <input
-                          type="date"
+                        <label className="mb-1.5 block text-base text-gray-200">Paid on</label>
+                        <DateInput
                           value={editDepositPaid}
-                          onChange={(e) => setEditDepositPaid(e.target.value)}
-                          className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                          onChange={setEditDepositPaid}
+                          className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 focus:outline-none focus:ring-1 focus:ring-gray-700"
                         />
                       </div>
                     </div>
@@ -2791,11 +3003,11 @@ export default function TenantsPage() {
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-3 pt-2">
+              <div className="flex items-center justify-end gap-3 pt-3">
                 <button
                   type="button"
                   onClick={() => closeEditTenantModal()}
-                  className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+                  className="rounded-full border border-[#2A2A2A] px-5 py-2.5 text-base text-gray-300 hover:bg-white/5"
                 >
                   Cancel
                 </button>
@@ -2806,7 +3018,7 @@ export default function TenantsPage() {
                       ? finalEditNames.length === 0
                       : !editRoom.trim()
                   }
-                  className="rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-full bg-emerald-500 px-5 py-2.5 text-base font-medium text-black hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Continue
                 </button>
@@ -2861,6 +3073,7 @@ export default function TenantsPage() {
                       <p className="text-sm text-gray-200">
                         £{Number(editFirstPayment).toFixed(2)}
                         {editFirstPaymentDate ? ` on ${editFirstPaymentDate}` : ""}
+                        {editFirstPaymentMethod ? ` · ${editFirstPaymentMethod}` : ""}
                       </p>
                     </div>
                   )}
@@ -2915,6 +3128,213 @@ export default function TenantsPage() {
                 className="rounded-full bg-emerald-500 px-4 py-2 text-sm text-black hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {updateTenantMutation.isPending ? "Saving..." : "Confirm edit"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {adjustmentOpen && selectedTenant && (
+        <div className="fixed inset-0 z-[10000] flex items-start justify-center overflow-y-auto bg-black/70 p-4 md:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-[#1a1a1a] bg-[#0B0B0B] p-5 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-white">
+                  {editingLineItem
+                    ? `Edit ${editingLineItem.type}`
+                    : "Add charge, discount or refund"}
+                </h3>
+                <p className="mt-1 text-sm text-gray-400">
+                  {editingLineItem
+                    ? `Updates the amount on ${editingLineItem.monthLabel}'s rent row.`
+                    : "Charges add to that month's rent (e.g. April £690 + £30 keys = £720). Discounts and refunds reduce what's owed — no fake credit or arrears."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAdjustmentOpen(false);
+                  setEditingLineItem(null);
+                }}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 grid grid-cols-3 gap-2">
+              {(
+                [
+                  { id: "charge", label: "Charge" },
+                  { id: "discount", label: "Discount" },
+                  { id: "refund", label: "Refund" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  disabled={!!editingLineItem}
+                  onClick={() => setAdjustmentType(opt.id)}
+                  className={`rounded-full border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
+                    adjustmentType === opt.id
+                      ? opt.id === "charge"
+                        ? "border-sky-700 bg-sky-950/50 text-sky-300"
+                        : opt.id === "discount"
+                          ? "border-amber-700 bg-amber-950/40 text-amber-300"
+                          : "border-rose-700 bg-rose-950/40 text-rose-300"
+                      : "border-[#2A2A2A] text-gray-400 hover:bg-white/5"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-sm text-gray-400">
+                Date recorded
+                <DateInput
+                  value={adjustmentDate}
+                  onChange={setAdjustmentDate}
+                  className="mt-1 w-full rounded-lg border border-[#222] bg-[#050505] px-3 py-2 text-gray-200"
+                />
+                <span className="mt-1 block text-[11px] text-gray-500">
+                  When this was added (for your records only). Not a due date — the month&apos;s rent due date stays the same.
+                </span>
+              </label>
+              <label className="block text-sm text-gray-400">
+                Amount (£)
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={adjustmentAmount}
+                  onChange={(e) => setAdjustmentAmount(e.target.value)}
+                  placeholder="30.00"
+                  className="mt-1 w-full rounded-lg border border-[#222] bg-[#050505] px-3 py-2 text-gray-200"
+                />
+              </label>
+              <label className="block text-sm text-gray-400">
+                Description / Purpose
+                <textarea
+                  value={adjustmentDescription}
+                  onChange={(e) => setAdjustmentDescription(e.target.value)}
+                  rows={3}
+                  placeholder={
+                    adjustmentType === "charge"
+                      ? "e.g. Key replacement"
+                      : adjustmentType === "discount"
+                        ? "e.g. Discount for leak fixing"
+                        : "e.g. Partial refund"
+                  }
+                  className="mt-1 w-full rounded-lg border border-[#222] bg-[#050505] px-3 py-2 text-gray-200"
+                />
+              </label>
+              <label className="block text-sm text-gray-400">
+                {editingLineItem
+                  ? "Applied to month"
+                  : adjustmentType === "charge"
+                    ? "Apply to month"
+                    : "Link to month (optional)"}
+                <input
+                  type="month"
+                  value={adjustmentMonthLink}
+                  onChange={(e) => setAdjustmentMonthLink(e.target.value)}
+                  required={!editingLineItem && adjustmentType === "charge"}
+                  disabled={!!editingLineItem}
+                  className="mt-1 w-full rounded-lg border border-[#222] bg-[#050505] px-3 py-2 text-gray-200 disabled:opacity-60"
+                />
+                <span className="mt-1 block text-[11px] text-gray-500">
+                  {editingLineItem
+                    ? "Month can’t be changed here — remove and re-add to move it."
+                    : adjustmentType === "charge"
+                      ? "Adds this amount onto that month’s rent — no extra row."
+                      : "Prefer applying a discount/refund against this month first."}
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAdjustmentOpen(false);
+                  setEditingLineItem(null);
+                }}
+                className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={
+                  addAdjustmentMutation.isPending || updateLineItemMutation.isPending
+                }
+                onClick={() => {
+                  const amt = Number(adjustmentAmount);
+                  if (!(amt > 0)) {
+                    toast.error("Enter a positive amount");
+                    return;
+                  }
+                  if (!adjustmentDescription.trim()) {
+                    toast.error("Add a description");
+                    return;
+                  }
+                  if (editingLineItem) {
+                    updateLineItemMutation.mutate(
+                      {
+                        tenantId: selectedTenant._id,
+                        rentEntryId: editingLineItem.rentEntryId,
+                        lineItemId: editingLineItem.lineItemId,
+                        payload: {
+                          amount: amt,
+                          description: adjustmentDescription.trim(),
+                          date: adjustmentDate || undefined,
+                        },
+                      },
+                      {
+                        onSuccess: (res) => {
+                          if (res?.data) setSelectedTenant(res.data);
+                          setAdjustmentOpen(false);
+                          setEditingLineItem(null);
+                        },
+                      }
+                    );
+                    return;
+                  }
+                  if (adjustmentType === "charge" && !adjustmentMonthLink) {
+                    toast.error("Pick which month this charge adds to");
+                    return;
+                  }
+                  addAdjustmentMutation.mutate(
+                    {
+                      tenantId: selectedTenant._id,
+                      payload: {
+                        type: adjustmentType,
+                        amount: amt,
+                        description: adjustmentDescription.trim(),
+                        date: adjustmentDate || undefined,
+                        monthLink: adjustmentMonthLink
+                          ? `${adjustmentMonthLink}-01`
+                          : null,
+                      },
+                    },
+                    {
+                      onSuccess: (res) => {
+                        if (res?.data) setSelectedTenant(res.data);
+                        setAdjustmentOpen(false);
+                        setEditingLineItem(null);
+                      },
+                    }
+                  );
+                }}
+                className="rounded-full bg-violet-500 px-4 py-2 text-sm font-medium text-black hover:brightness-105 disabled:opacity-50"
+              >
+                {addAdjustmentMutation.isPending || updateLineItemMutation.isPending
+                  ? "Saving…"
+                  : editingLineItem
+                    ? "Save"
+                    : "Add"}
               </button>
             </div>
           </div>

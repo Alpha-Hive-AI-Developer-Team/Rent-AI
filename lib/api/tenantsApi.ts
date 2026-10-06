@@ -30,6 +30,7 @@ export async function createTenant(payload: {
   depositPaidDate?: string | null;
   firstPaymentAmount?: number | string;
   firstPaymentDate?: string | null;
+  firstPaymentMethod?: "cash" | "bank";
 }) {
   const res = await apiClient.post(`/tenants`, payload);
   return res.data;
@@ -51,6 +52,7 @@ export async function createPropertySetup(payload: {
     depositPaidDate?: string | null;
     firstPaymentAmount?: number | string;
     firstPaymentDate?: string | null;
+    firstPaymentMethod?: "cash" | "bank";
     rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
   }>;
 }) {
@@ -86,6 +88,7 @@ export async function updateTenant(
     depositPaidDate?: string | null;
     firstPaymentAmount?: number | string;
     firstPaymentDate?: string | null;
+    firstPaymentMethod?: "cash" | "bank";
     rent?: number | string;
     rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
   }
@@ -106,6 +109,7 @@ export async function assignTenantToRoom(
     depositPaidDate?: string | null;
     firstPaymentAmount?: number | string;
     firstPaymentDate?: string | null;
+    firstPaymentMethod?: "cash" | "bank";
     rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
   }
 ) {
@@ -161,6 +165,66 @@ export async function unlinkLinkedPayer(tenantId: string, payerId: string) {
 /** Reconcile a bank transaction against a tenant's oldest unpaid rent. */
 export async function markRentPaidWithTransaction(tenantId: string, transactionId: string) {
   const res = await apiClient.post(`/tenants/${tenantId}/pay`, { transactionId });
+  return res.data;
+}
+
+/** One-off charge, discount, or refund (keeps rent ledger synced). */
+export async function addTenantAdjustment(
+  tenantId: string,
+  payload: {
+    type: "charge" | "discount" | "refund";
+    amount: number | string;
+    description: string;
+    date?: string;
+    monthLink?: string | null;
+  }
+) {
+  const res = await apiClient.post(`/tenants/${tenantId}/adjustments`, payload);
+  return res.data;
+}
+
+/** Edit a folded charge / discount / refund on a rent month. */
+export async function updateTenantLineItem(
+  tenantId: string,
+  rentEntryId: string,
+  lineItemId: string,
+  payload: {
+    amount?: number | string;
+    description?: string;
+    date?: string;
+  }
+) {
+  const res = await apiClient.put(
+    `/tenants/${tenantId}/rent-history/${rentEntryId}/line-items/${lineItemId}`,
+    payload
+  );
+  return res.data;
+}
+
+/** Remove a folded charge / discount / refund from a rent month. */
+export async function removeTenantLineItem(
+  tenantId: string,
+  rentEntryId: string,
+  lineItemId: string
+) {
+  const res = await apiClient.delete(
+    `/tenants/${tenantId}/rent-history/${rentEntryId}/line-items/${lineItemId}`
+  );
+  return res.data;
+}
+
+/** Change due day mid-tenancy; optional transition/prorated charge. */
+export async function changeTenantDueDate(
+  tenantId: string,
+  payload: {
+    newDueOn: number;
+    effectiveFrom: string;
+    addTransition?: boolean;
+    differenceDue?: number | string;
+    note?: string;
+  }
+) {
+  const res = await apiClient.post(`/tenants/${tenantId}/change-due-date`, payload);
   return res.data;
 }
 
