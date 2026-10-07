@@ -171,6 +171,12 @@ export async function getRentEntryPayment(
   return res.data;
 }
 
+/** Linked bank transaction for a tenant deposit (deposit-only payments). */
+export async function getDepositPayment(tenantId: string) {
+  const res = await apiClient.get(`/tenants/${tenantId}/deposit-payment`);
+  return res.data;
+}
+
 export async function unreconcileRentEntry(
   tenantId: string,
   payload: { index?: number; month?: string } = {}

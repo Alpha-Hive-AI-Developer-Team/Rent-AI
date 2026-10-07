@@ -21,7 +21,7 @@ import usePayByCash, {
   useUnreconcileRent,
   useUpdateTenant,
 } from "@/hooks/usetenants";
-import { getRentEntryPayment, getTenantById } from "@/lib/api/tenantsApi";
+import { getDepositPayment, getRentEntryPayment, getTenantById } from "@/lib/api/tenantsApi";
 import { autoMatchTransactionsForTenant, getTransactionsMatchingTenant } from "@/lib/api/transactionApi";
 import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -322,6 +322,12 @@ export default function TenantsPage() {
     paymentHistory: any[];
     paymentMethod: string;
   } | null>(null);
+  const [depositReview, setDepositReview] = useState<{
+    loading: boolean;
+    depositAmount: number;
+    depositPaidDate: string | null;
+    transaction: any | null;
+  } | null>(null);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [reconcileLoading, setReconcileLoading] = useState(false);
   const [matchingTxs, setMatchingTxs] = useState<any[]>([]);
@@ -472,6 +478,7 @@ export default function TenantsPage() {
     setReconcileSearch("");
     setPendingBankReconcile(null);
     setPaymentReview(null);
+    setDepositReview(null);
   };
 
   const openTenantDetails = async (tenant: any) => {
@@ -1248,6 +1255,33 @@ export default function TenantsPage() {
     }
   };
 
+  const openDepositReview = async () => {
+    if (!selectedTenant?._id || !(Number(selectedTenant.depositAmount) > 0)) return;
+    setDepositReview({
+      loading: true,
+      depositAmount: Number(selectedTenant.depositAmount) || 0,
+      depositPaidDate: selectedTenant.depositPaidDate || selectedTenant.depositStartDate || null,
+      transaction: null,
+    });
+    try {
+      const res = await getDepositPayment(selectedTenant._id);
+      const data = res?.data || {};
+      setDepositReview({
+        loading: false,
+        depositAmount: Number(data.depositAmount) || Number(selectedTenant.depositAmount) || 0,
+        depositPaidDate:
+          data.depositPaidDate ||
+          selectedTenant.depositPaidDate ||
+          selectedTenant.depositStartDate ||
+          null,
+        transaction: data.transaction || null,
+      });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Could not load deposit bank payment");
+      setDepositReview(null);
+    }
+  };
+
   const confirmReversePayment = () => {
     if (!selectedTenant || !paymentReview) return;
     const tenantId = selectedTenant._id;
@@ -1682,6 +1716,14 @@ export default function TenantsPage() {
                     )}
                     <button
                       type="button"
+                      onClick={() => openDepositReview()}
+                      className="ml-1 rounded-full border border-sky-900/80 px-2 py-0.5 text-[11px] text-sky-300 hover:bg-sky-950/40"
+                      title="See the bank transaction linked to this deposit"
+                    >
+                      View bank payment
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         if (!selectedTenant?._id) return;
                         updateTenantMutation.mutate(
@@ -1693,13 +1735,14 @@ export default function TenantsPage() {
                             onSuccess: (res) => {
                               const updated = res?.data;
                               if (updated) setSelectedTenant(updated);
+                              setDepositReview(null);
                               toast.success("Deposit cleared — linked bank tx restored to rent queue if any");
                             },
                           }
                         );
                       }}
                       disabled={updateTenantMutation.isPending}
-                      className="ml-1 rounded-full border border-[#333] px-2 py-0.5 text-[11px] text-gray-400 hover:border-rose-800 hover:text-rose-300 disabled:opacity-50"
+                      className="rounded-full border border-[#333] px-2 py-0.5 text-[11px] text-gray-400 hover:border-rose-800 hover:text-rose-300 disabled:opacity-50"
                     >
                       Clear deposit
                     </button>
@@ -2514,6 +2557,131 @@ export default function TenantsPage() {
               >
                 <Check className="h-3.5 w-3.5" />
                 {applyingLinkedPayers ? "Applying…" : "Accept"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {depositReview && selectedTenant && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold">Deposit bank payment</h3>
+                <p className="text-sm text-gray-400">
+                  Linked to deposit held ·{" "}
+                  {depositReview.depositPaidDate
+                    ? `paid ${formatDate(depositReview.depositPaidDate)}`
+                    : "date not set"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDepositReview(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 space-y-2 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a] px-4 py-3 text-sm">
+              <div className="flex justify-between text-gray-300">
+                <span>Deposit held</span>
+                <span className="tabular-nums font-medium text-gray-100">
+                  {formatMoney(depositReview.depositAmount)}
+                </span>
+              </div>
+            </div>
+
+            {depositReview.loading ? (
+              <p className="mb-4 text-sm text-gray-500">Loading linked bank transaction…</p>
+            ) : depositReview.transaction ? (
+              <div className="mb-4">
+                <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
+                  Linked bank transaction
+                </p>
+                <div className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3 text-sm">
+                  <div className="flex justify-between gap-3 text-gray-200">
+                    <span className="font-medium">
+                      {depositReview.transaction.payerName ||
+                        depositReview.transaction.description ||
+                        "Bank payment"}
+                    </span>
+                    <span className="tabular-nums">
+                      {formatMoney(
+                        Math.abs(
+                          Number(
+                            depositReview.transaction.bankAmount ??
+                              depositReview.transaction.amount
+                          ) || 0
+                        )
+                      )}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500">
+                    {formatDateTime(depositReview.transaction.date)}
+                    {depositReview.transaction.description
+                      ? ` · ${depositReview.transaction.description}`
+                      : ""}
+                    {depositReview.transaction.reference
+                      ? ` · Ref ${depositReview.transaction.reference}`
+                      : ""}
+                  </div>
+                  <div className="mt-2 flex justify-between gap-3 text-[12px] text-gray-400">
+                    <span>Applied to deposit</span>
+                    <span className="tabular-nums text-gray-300">
+                      {formatMoney(
+                        Number(depositReview.transaction.allocatedAmount) ||
+                          depositReview.depositAmount
+                      )}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] text-gray-500">
+                  Deposit-only bank payments are kept off the rent table. Clearing the deposit
+                  restores this transaction to the rent reconcile queue.
+                </p>
+              </div>
+            ) : (
+              <p className="mb-4 rounded-lg border border-[#1a1a1a] px-3 py-3 text-sm text-gray-500">
+                No linked bank transaction — this deposit was recorded manually.
+              </p>
+            )}
+
+            <div className="flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDepositReview(null)}
+                className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedTenant?._id) return;
+                  updateTenantMutation.mutate(
+                    {
+                      tenantId: selectedTenant._id,
+                      payload: { depositAmount: 0, depositPaidDate: null },
+                    },
+                    {
+                      onSuccess: (res) => {
+                        const updated = res?.data;
+                        if (updated) setSelectedTenant(updated);
+                        setDepositReview(null);
+                        toast.success(
+                          "Deposit cleared — linked bank tx restored to rent queue if any"
+                        );
+                      },
+                    }
+                  );
+                }}
+                disabled={updateTenantMutation.isPending}
+                className="rounded-full border border-rose-900/70 bg-rose-950/40 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/70 disabled:opacity-50"
+              >
+                Clear deposit
               </button>
             </div>
           </div>
