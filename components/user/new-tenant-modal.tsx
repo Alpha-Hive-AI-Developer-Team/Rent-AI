@@ -14,6 +14,10 @@ import RentScheduleFields, {
   buildRentSchedulePayload,
   type RentAdjustmentRow,
 } from "@/components/user/rent-schedule-fields";
+import DueOnScheduleFields, {
+  buildDueOnSchedulePayload,
+  type DueOnAdjustmentRow,
+} from "@/components/user/due-on-schedule-fields";
 import DateInput from "@/components/ui/date-input";
 import { formatDate } from "@/lib/utils";
 
@@ -45,6 +49,7 @@ type RoomTenant = {
   depositAmount?: string;
   depositPaidDate?: string;
   rentAdjustments?: RentAdjustmentRow[];
+  dueOnAdjustments?: DueOnAdjustmentRow[];
 };
 
 const RENT_NUMERIC = /[^0-9.]/g;
@@ -146,6 +151,7 @@ function newRoom(index: number): RoomTenant {
     depositAmount: "",
     depositPaidDate: "",
     rentAdjustments: [],
+    dueOnAdjustments: [],
   };
 }
 
@@ -210,6 +216,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     depositAmount: "",
     depositPaidDate: "",
     rentAdjustments: [] as RentAdjustmentRow[],
+    dueOnAdjustments: [] as DueOnAdjustmentRow[],
   });
   const [rooms, setRooms] = useState<RoomTenant[]>([newRoom(1)]);
   const [payerSuggestions, setPayerSuggestions] = useState<string[]>([]);
@@ -304,6 +311,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
       depositAmount: "",
       depositPaidDate: "",
       rentAdjustments: [],
+      dueOnAdjustments: [],
     });
     setRooms([newRoom(1)]);
   };
@@ -449,6 +457,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
         dueOn: clampDueOn(room.dueOn, room.moveInDate),
         moveInDate: room.moveInDate,
         rentSchedule: buildRentSchedulePayload(room.rentAdjustments || []),
+        dueOnSchedule: buildDueOnSchedulePayload(room.dueOnAdjustments || []),
         ...depositPayloadFromFields(room),
       });
       setRooms((prev) =>
@@ -539,6 +548,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
               moveInDate: singleTenant.moveInDate || undefined,
               ...depositPayloadFromFields(singleTenant),
               rentSchedule: buildRentSchedulePayload(singleTenant.rentAdjustments || []),
+              dueOnSchedule: buildDueOnSchedulePayload(singleTenant.dueOnAdjustments || []),
             },
           ]
         : (addingToExisting ? newRooms : rooms).map((r) => ({
@@ -552,6 +562,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
               ? { depositAmount: 0, depositPaidDate: null }
               : depositPayloadFromFields(r)),
             rentSchedule: r.vacant ? [] : buildRentSchedulePayload(r.rentAdjustments || []),
+            dueOnSchedule: r.vacant ? [] : buildDueOnSchedulePayload(r.dueOnAdjustments || []),
           }));
 
     createMutation.mutate(
@@ -980,6 +991,25 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                           )}
                 </div>
                         <div className="md:col-span-2 xl:col-span-4">
+                          <DueOnScheduleFields
+                            baseDueOn={singleTenant.dueOn}
+                            onBaseDueOnChange={(dueOn) =>
+                              setSingleTenant((s) => ({
+                                ...s,
+                                dueOn: clampDueOn(dueOn, s.moveInDate),
+                              }))
+                            }
+                            adjustments={singleTenant.dueOnAdjustments || []}
+                            onAdjustmentsChange={(dueOnAdjustments) =>
+                              setSingleTenant((s) => ({ ...s, dueOnAdjustments }))
+                            }
+                            hideBaseDueOn
+                            labelClass={labelClass}
+                            inputClass={inputClass}
+                            maxDueDay={dueDayOptions(singleTenant.moveInDate).length}
+                          />
+                        </div>
+                        <div className="md:col-span-2 xl:col-span-4">
                           <RentScheduleFields
                             baseRent={singleTenant.rent}
                             onBaseRentChange={(rent) => setSingleTenant((s) => ({ ...s, rent }))}
@@ -1232,35 +1262,68 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                 )}
                               </div>
                               {!(isExisting && !isAssigning) && !isVacant && (
-                                <div className="md:col-span-2 xl:col-span-4">
-                                  <RentScheduleFields
-                                    baseRent={room.rent}
-                                    onBaseRentChange={(rent) => updateRoom(room.id, { rent })}
-                                    adjustments={room.rentAdjustments || []}
-                                    onAdjustmentsChange={(rentAdjustments) =>
-                                      updateRoom(room.id, { rentAdjustments })
-                                    }
-                                    hideBaseRent
-                                    disabled={fieldsLocked}
-                                    labelClass={labelClass}
-                                    inputClass={inputClass}
-                                  />
-                                </div>
+                                <>
+                                  <div className="md:col-span-2 xl:col-span-4">
+                                    <DueOnScheduleFields
+                                      baseDueOn={room.dueOn}
+                                      onBaseDueOnChange={(dueOn) => updateRoom(room.id, { dueOn })}
+                                      adjustments={room.dueOnAdjustments || []}
+                                      onAdjustmentsChange={(dueOnAdjustments) =>
+                                        updateRoom(room.id, { dueOnAdjustments })
+                                      }
+                                      hideBaseDueOn
+                                      disabled={fieldsLocked}
+                                      labelClass={labelClass}
+                                      inputClass={inputClass}
+                                      maxDueDay={dueDayOptions(room.moveInDate).length}
+                                    />
+                                  </div>
+                                  <div className="md:col-span-2 xl:col-span-4">
+                                    <RentScheduleFields
+                                      baseRent={room.rent}
+                                      onBaseRentChange={(rent) => updateRoom(room.id, { rent })}
+                                      adjustments={room.rentAdjustments || []}
+                                      onAdjustmentsChange={(rentAdjustments) =>
+                                        updateRoom(room.id, { rentAdjustments })
+                                      }
+                                      hideBaseRent
+                                      disabled={fieldsLocked}
+                                      labelClass={labelClass}
+                                      inputClass={inputClass}
+                                    />
+                                  </div>
+                                </>
                               )}
                               {isVacant && isAssigning && (
-                                <div className="md:col-span-2 xl:col-span-4">
-                                  <RentScheduleFields
-                                    baseRent={room.rent}
-                                    onBaseRentChange={(rent) => updateRoom(room.id, { rent })}
-                                    adjustments={room.rentAdjustments || []}
-                                    onAdjustmentsChange={(rentAdjustments) =>
-                                      updateRoom(room.id, { rentAdjustments })
-                                    }
-                                    hideBaseRent
-                                    labelClass={labelClass}
-                                    inputClass={inputClass}
-                                  />
-                                </div>
+                                <>
+                                  <div className="md:col-span-2 xl:col-span-4">
+                                    <DueOnScheduleFields
+                                      baseDueOn={room.dueOn}
+                                      onBaseDueOnChange={(dueOn) => updateRoom(room.id, { dueOn })}
+                                      adjustments={room.dueOnAdjustments || []}
+                                      onAdjustmentsChange={(dueOnAdjustments) =>
+                                        updateRoom(room.id, { dueOnAdjustments })
+                                      }
+                                      hideBaseDueOn
+                                      labelClass={labelClass}
+                                      inputClass={inputClass}
+                                      maxDueDay={dueDayOptions(room.moveInDate).length}
+                                    />
+                                  </div>
+                                  <div className="md:col-span-2 xl:col-span-4">
+                                    <RentScheduleFields
+                                      baseRent={room.rent}
+                                      onBaseRentChange={(rent) => updateRoom(room.id, { rent })}
+                                      adjustments={room.rentAdjustments || []}
+                                      onAdjustmentsChange={(rentAdjustments) =>
+                                        updateRoom(room.id, { rentAdjustments })
+                                      }
+                                      hideBaseRent
+                                      labelClass={labelClass}
+                                      inputClass={inputClass}
+                                    />
+                                  </div>
+                                </>
                               )}
                               {!fieldsLocked && (
                                 <div className="md:col-span-2 xl:col-span-4 space-y-3">

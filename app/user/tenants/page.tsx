@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Archive, ArchiveRestore } from "lucide-react";
+import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Archive, ArchiveRestore, CalendarClock } from "lucide-react";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import NewTenantModal from "@/components/user/new-tenant-modal";
 import RentScheduleFields, {
@@ -8,6 +8,12 @@ import RentScheduleFields, {
   scheduleFromTenant,
   type RentAdjustmentRow,
 } from "@/components/user/rent-schedule-fields";
+import DueOnScheduleFields, {
+  buildDueOnSchedulePayload,
+  dueOnScheduleFromTenant,
+  getCurrentDueOnFromTenant,
+  type DueOnAdjustmentRow,
+} from "@/components/user/due-on-schedule-fields";
 import usePayByCash, {
   useAddTenantAdjustment,
   useUpdateTenantLineItem,
@@ -20,6 +26,7 @@ import usePayByCash, {
   useUnlinkLinkedPayer,
   useUnreconcileRent,
   useUpdateTenant,
+  useChangeTenantDueDate,
 } from "@/hooks/usetenants";
 import { getDepositPayment, getRentEntryPayment, getTenantById } from "@/lib/api/tenantsApi";
 import { autoMatchTransactionsForTenant, getTransactionsMatchingTenant } from "@/lib/api/transactionApi";
@@ -28,6 +35,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuthUser } from "@/redux/useAuthUser";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import DateInput from "@/components/ui/date-input";
+import {
+  computeDueDayTransitionPreview,
+  defaultEffectiveFromForDueDayChange,
+  isDueDayChangeLineItem,
+} from "@/lib/dueDayChange";
 
 export default function TenantsPage() {
   /** True if char is a Unicode letter (works without regex `u` / `\p{L}`). */
@@ -307,6 +319,7 @@ export default function TenantsPage() {
   const [editRoom, setEditRoom] = useState("");
   const [editMoveIn, setEditMoveIn] = useState("");
   const [editDueOn, setEditDueOn] = useState(1);
+  const [editDueOnAdjustments, setEditDueOnAdjustments] = useState<DueOnAdjustmentRow[]>([]);
   const [editHasDeposit, setEditHasDeposit] = useState(false);
   const [editDeposit, setEditDeposit] = useState("");
   const [editDepositPaid, setEditDepositPaid] = useState("");
@@ -342,6 +355,7 @@ export default function TenantsPage() {
   const [assignName, setAssignName] = useState("");
   const [assignRent, setAssignRent] = useState("");
   const [assignDueOn, setAssignDueOn] = useState(1);
+  const [assignDueOnAdjustments, setAssignDueOnAdjustments] = useState<DueOnAdjustmentRow[]>([]);
   const [assignMoveIn, setAssignMoveIn] = useState("");
   const [assignHasDeposit, setAssignHasDeposit] = useState(false);
   const [assignDeposit, setAssignDeposit] = useState("");
@@ -368,6 +382,10 @@ export default function TenantsPage() {
     itemType: string;
     label?: string;
   }>(null);
+  const [dueDayChangeOpen, setDueDayChangeOpen] = useState(false);
+  const [dueDayNewOn, setDueDayNewOn] = useState(1);
+  const [dueDayEffectiveFrom, setDueDayEffectiveFrom] = useState("");
+  const [dueDayNote, setDueDayNote] = useState("");
 
   const { data, isLoading, isError } = useTenants({
     archived: showArchived ? "only" : "exclude",
@@ -383,6 +401,7 @@ export default function TenantsPage() {
   const addAdjustmentMutation = useAddTenantAdjustment();
   const updateLineItemMutation = useUpdateTenantLineItem();
   const removeLineItemMutation = useRemoveTenantLineItem();
+  const changeDueDateMutation = useChangeTenantDueDate();
   const [applyingLinkedPayers, setApplyingLinkedPayers] = useState(false);
   const qc = useQueryClient();
   const authUser = useAuthUser();
@@ -571,6 +590,9 @@ export default function TenantsPage() {
     const scheduleUi = scheduleFromTenant(selectedTenant);
     setEditRent(scheduleUi.baseRent);
     setEditRentAdjustments(scheduleUi.adjustments);
+    const dueUi = dueOnScheduleFromTenant(selectedTenant);
+    setEditDueOn(dueUi.baseDueOn);
+    setEditDueOnAdjustments(dueUi.adjustments);
     setEditConfirmationOpen(false);
     setEditTenantOpen(true);
     setTransactionModalOpen(false);
@@ -585,6 +607,7 @@ export default function TenantsPage() {
         : ""
     );
     setAssignDueOn(Number(selectedTenant.dueOn) || 1);
+    setAssignDueOnAdjustments([]);
     setAssignMoveIn(new Date().toISOString().slice(0, 10));
     setAssignHasDeposit(false);
     setAssignDeposit("");
@@ -599,6 +622,7 @@ export default function TenantsPage() {
     setAssignName("");
     setAssignRent("");
     setAssignDueOn(1);
+    setAssignDueOnAdjustments([]);
     setAssignMoveIn("");
     setAssignHasDeposit(false);
     setAssignDeposit("");
@@ -649,6 +673,7 @@ export default function TenantsPage() {
           depositPaidDate:
             assignHasDeposit && Number(assignDeposit) > 0 ? assignDepositPaid || null : null,
           rentSchedule: buildRentSchedulePayload(assignRentAdjustments),
+          dueOnSchedule: buildDueOnSchedulePayload(assignDueOnAdjustments),
         },
       },
       {
@@ -761,6 +786,7 @@ export default function TenantsPage() {
       room?: string;
       moveInDate?: string | null;
       dueOn?: number;
+      dueOnSchedule?: Array<{ effectiveFrom: string; dueOn: number }>;
       depositAmount?: number;
       depositPaidDate?: string | null;
       rent?: number;
@@ -772,6 +798,7 @@ export default function TenantsPage() {
       // Always send so backend can rebuild prorated unpaid schedule (stale history from older rules)
       payload.moveInDate = editMoveIn || null;
       payload.dueOn = editDueOn;
+      payload.dueOnSchedule = buildDueOnSchedulePayload(editDueOnAdjustments);
     }
     if (!isVacant) {
       const nextDeposit = editHasDeposit && Number(editDeposit) > 0 ? Number(editDeposit) : 0;
@@ -1779,6 +1806,25 @@ export default function TenantsPage() {
                   <Plus className="h-4 w-4" />
                   Add charge / discount
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (tenantHasPayments(selectedTenant)) {
+                      const currentDue = getCurrentDueOnFromTenant(selectedTenant);
+                      setDueDayNewOn(currentDue === 5 ? 17 : currentDue);
+                      setDueDayEffectiveFrom(defaultEffectiveFromForDueDayChange(selectedTenant));
+                      setDueDayNote("");
+                      setDueDayChangeOpen(true);
+                      return;
+                    }
+                    // No payments yet — open edit tenant where due day adjustments work like rent adjustments
+                    openEditTenantModal();
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full border border-amber-800 px-4 py-2 text-sm text-amber-300 hover:bg-amber-950/40"
+                >
+                  <CalendarClock className="h-4 w-4" />
+                  Change due day
+                </button>
               </div>
             )}
 
@@ -1968,11 +2014,20 @@ export default function TenantsPage() {
                       >
                         <td className="px-4 py-3 text-gray-300">
                           <div className="tabular-nums">{formatMoney(dueDisplay)}</div>
-                          {/* {isFirstPayment && (
-                            <span className="mt-1 inline-flex rounded-full border border-sky-800/70 bg-sky-950/40 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300">
-                              First payment
-                            </span>
-                          )} */}
+                          {(() => {
+                            const dueDayExtras = lineItems.filter(isDueDayChangeLineItem);
+                            if (!dueDayExtras.length || isAdjustment) return null;
+                            const extraTotal = dueDayExtras.reduce(
+                              (s: number, li: any) => s + (Number(li?.amount) || 0),
+                              0
+                            );
+                            const baseRent = Math.round((dueDisplay - extraTotal) * 100) / 100;
+                            return (
+                              <div className="mt-0.5 text-[11px] text-amber-400/90">
+                                {formatMoney(baseRent)} rent + {formatMoney(extraTotal)} extra days
+                              </div>
+                            );
+                          })()}
                           {lineItems.map((item: any, i: number) => {
                             const itemAmt = Number(item?.amount) || 0;
                             if (!(itemAmt > 0)) return null;
@@ -1980,10 +2035,13 @@ export default function TenantsPage() {
                             const sign = itemType === "charge" ? "+" : "−";
                             const lineItemId = item?._id ? String(item._id) : "";
                             const rentEntryId = entry?._id ? String(entry._id) : "";
+                            const isDueDayAdj = isDueDayChangeLineItem(item);
                             return (
                               <div
                                 key={lineItemId || i}
-                                className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-500"
+                                className={`mt-0.5 flex items-center gap-1.5 text-[11px] ${
+                                  isDueDayAdj ? "text-amber-500/80" : "text-gray-500"
+                                }`}
                               >
                                 <span>
                                   {sign}
@@ -3316,6 +3374,24 @@ export default function TenantsPage() {
             </div>
 
             <div className="mt-4">
+              <DueOnScheduleFields
+                baseDueOn={assignDueOn}
+                onBaseDueOnChange={setAssignDueOn}
+                adjustments={assignDueOnAdjustments}
+                onAdjustmentsChange={setAssignDueOnAdjustments}
+                hideBaseDueOn
+                maxDueDay={
+                  assignMoveIn && /^\d{4}-\d{2}-\d{2}$/.test(assignMoveIn)
+                    ? (() => {
+                        const [y, m] = assignMoveIn.split("-").map(Number);
+                        return new Date(y, m, 0).getDate();
+                      })()
+                    : 31
+                }
+              />
+            </div>
+
+            <div className="mt-4">
               <RentScheduleFields
                 baseRent={assignRent}
                 onBaseRentChange={setAssignRent}
@@ -3505,10 +3581,46 @@ export default function TenantsPage() {
                   </div>
                   {!canEditScheduleFields(selectedTenant) && (
                     <p className="text-sm text-amber-400 sm:col-span-2">
-                      Move-in and due day are locked after payments.
+                      Move-in and due day schedule are locked after payments. Current due day:{" "}
+                      {getCurrentDueOnFromTenant(selectedTenant)}. To switch going forward, use{" "}
+                      <button
+                        type="button"
+                        className="underline hover:text-amber-300"
+                        onClick={() => {
+                          setEditTenantOpen(false);
+                          const currentDue = getCurrentDueOnFromTenant(selectedTenant);
+                          setDueDayNewOn(currentDue === 5 ? 17 : currentDue);
+                          setDueDayEffectiveFrom(defaultEffectiveFromForDueDayChange(selectedTenant));
+                          setDueDayNote("");
+                          setDueDayChangeOpen(true);
+                        }}
+                      >
+                        Change due day
+                      </button>
+                      .
                     </p>
                   )}
                 </div>
+              )}
+
+              {selectedTenant.tenancyStatus !== "vacant" && canEditScheduleFields(selectedTenant) && (
+                <DueOnScheduleFields
+                  baseDueOn={editDueOn}
+                  onBaseDueOnChange={setEditDueOn}
+                  adjustments={editDueOnAdjustments}
+                  onAdjustmentsChange={setEditDueOnAdjustments}
+                  hideBaseDueOn
+                  labelClass="mb-1.5 block text-base text-gray-200"
+                  inputClass="w-full rounded-lg border border-[#2A2A2A] bg-[#111] px-3 py-2.5 text-base text-gray-100 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  maxDueDay={
+                    editMoveIn && /^\d{4}-\d{2}-\d{2}$/.test(editMoveIn)
+                      ? (() => {
+                          const [y, m] = editMoveIn.split("-").map(Number);
+                          return new Date(y, m, 0).getDate();
+                        })()
+                      : 31
+                  }
+                />
               )}
 
               {selectedTenant.tenancyStatus !== "vacant" && (
@@ -3623,7 +3735,21 @@ export default function TenantsPage() {
                   </div>
                   <div>
                     <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Due day</p>
-                    <p className="text-sm text-gray-200">{editDueOn}</p>
+                    <p className="text-sm text-gray-200">
+                      {editDueOn}
+                      {editDueOnAdjustments.length > 0
+                        ? ` · ${editDueOnAdjustments.length} change${editDueOnAdjustments.length === 1 ? "" : "s"}`
+                        : ""}
+                    </p>
+                    {editDueOnAdjustments.length > 0 && (
+                      <ul className="mt-1 space-y-0.5 text-xs text-gray-500">
+                        {editDueOnAdjustments.map((a) => (
+                          <li key={a.id}>
+                            From {a.startMonth}: day {a.dueOn}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 </>
               )}
@@ -3883,6 +4009,170 @@ export default function TenantsPage() {
                   : editingLineItem
                     ? "Save"
                     : "Add"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dueDayChangeOpen && selectedTenant && (
+        <div className="fixed inset-0 z-[10000] flex items-start justify-center overflow-y-auto bg-black/70 p-4 md:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-[#1a1a1a] bg-[#0B0B0B] p-5 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Change due day</h3>
+                <p className="mt-1 text-sm text-gray-400">
+                  Switch the recurring rent day. The first new due includes monthly rent plus
+                  prorated extra days from the effective date (e.g. 5th → 17th ≈ £800 + extra days).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDueDayChangeOpen(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-sm text-gray-400">
+                Current due day
+                <div className="mt-1 rounded-lg border border-[#222] bg-[#050505] px-3 py-2 text-gray-300">
+                  {getCurrentDueOnFromTenant(selectedTenant)}
+                </div>
+              </label>
+              <label className="block text-sm text-gray-400">
+                New due day
+                <select
+                  value={dueDayNewOn}
+                  onChange={(e) => setDueDayNewOn(Number(e.target.value) || 1)}
+                  className="mt-1 w-full rounded-lg border border-[#222] bg-[#111] px-3 py-2 text-gray-100 [color-scheme:dark]"
+                >
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                    <option key={day} value={day} className="bg-[#111]">
+                      {day}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm text-gray-400">
+                Effective from
+                <DateInput
+                  value={dueDayEffectiveFrom}
+                  onChange={setDueDayEffectiveFrom}
+                  className="mt-1 w-full rounded-lg border border-[#222] bg-[#050505] px-3 py-2 text-gray-200"
+                />
+                <span className="mt-1 block text-[11px] text-gray-500">
+                  Usually the next unpaid due on the old schedule (start of the bridge to the new day).
+                  Unpaid dues from this date onward are replaced by the new schedule.
+                </span>
+              </label>
+              <label className="block text-sm text-gray-400">
+                Note (optional)
+                <input
+                  type="text"
+                  value={dueDayNote}
+                  onChange={(e) => setDueDayNote(e.target.value)}
+                  placeholder="e.g. Tenant requested 17th"
+                  className="mt-1 w-full rounded-lg border border-[#222] bg-[#050505] px-3 py-2 text-gray-200"
+                />
+              </label>
+
+              {(() => {
+                if (!dueDayEffectiveFrom || !/^\d{4}-\d{2}-\d{2}$/.test(dueDayEffectiveFrom)) {
+                  return null;
+                }
+                const monthly = Number(selectedTenant.rent) || 0;
+                const preview = computeDueDayTransitionPreview(
+                  monthly,
+                  dueDayEffectiveFrom,
+                  dueDayNewOn
+                );
+                const firstDueLabel = formatDate(preview.firstNewDue);
+                return (
+                  <div className="rounded-xl border border-amber-900/50 bg-amber-950/20 px-3 py-3 text-sm">
+                    <p className="text-amber-200">Transition preview</p>
+                    <p className="mt-1 text-gray-300">
+                      First new due: <span className="tabular-nums text-white">{firstDueLabel}</span>
+                    </p>
+                    {preview.hasExtraDays ? (
+                      <p className="mt-1 tabular-nums text-gray-300">
+                        Amount due:{" "}
+                        <span className="text-white">{formatMoney(preview.totalAmount)}</span>
+                        <span className="mt-0.5 block text-[11px] text-amber-400/90">
+                          {formatMoney(preview.monthlyRent)} rent +{" "}
+                          {formatMoney(preview.extraAmount)} extra days ({preview.extraDays} day
+                          {preview.extraDays === 1 ? "" : "s"})
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="mt-1 tabular-nums text-gray-300">
+                        Amount due:{" "}
+                        <span className="text-white">{formatMoney(preview.monthlyRent)}</span>
+                        <span className="mt-0.5 block text-[11px] text-gray-500">
+                          No extra days — effective date falls on the new due day.
+                        </span>
+                      </p>
+                    )}
+                    <p className="mt-2 text-[11px] text-gray-500">
+                      After that, rent is the normal monthly amount on the {dueDayNewOn}
+                      {dueDayNewOn === 1
+                        ? "st"
+                        : dueDayNewOn === 2
+                          ? "nd"
+                          : dueDayNewOn === 3
+                            ? "rd"
+                            : "th"}{" "}
+                      each month.
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDueDayChangeOpen(false)}
+                className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={changeDueDateMutation.isPending}
+                onClick={() => {
+                  const currentDue = getCurrentDueOnFromTenant(selectedTenant);
+                  if (dueDayNewOn === currentDue) {
+                    toast.error("Pick a different due day");
+                    return;
+                  }
+                  if (!dueDayEffectiveFrom || !/^\d{4}-\d{2}-\d{2}$/.test(dueDayEffectiveFrom)) {
+                    toast.error("Pick an effective date");
+                    return;
+                  }
+                  changeDueDateMutation.mutate(
+                    {
+                      tenantId: selectedTenant._id,
+                      payload: {
+                        newDueOn: dueDayNewOn,
+                        effectiveFrom: dueDayEffectiveFrom,
+                        addTransition: true,
+                        note: dueDayNote.trim() || undefined,
+                      },
+                    },
+                    {
+                      onSuccess: (res) => {
+                        if (res?.data) setSelectedTenant(res.data);
+                        setDueDayChangeOpen(false);
+                      },
+                    }
+                  );
+                }}
+                className="rounded-full bg-amber-500 px-4 py-2 text-sm font-medium text-black hover:brightness-105 disabled:opacity-50"
+              >
+                {changeDueDateMutation.isPending ? "Saving…" : "Change due day"}
               </button>
             </div>
           </div>
