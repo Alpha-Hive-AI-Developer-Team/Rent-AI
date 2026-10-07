@@ -72,6 +72,7 @@ export async function createPropertySetup(payload: {
     firstPaymentDate?: string | null;
     firstPaymentMethod?: "cash" | "bank";
     rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
+    dueOnSchedule?: Array<{ effectiveFrom: string; dueOn: number }>;
   }>;
 }) {
   const res = await apiClient.post(`/tenants/property-setup`, payload);
@@ -109,6 +110,7 @@ export async function updateTenant(
     firstPaymentMethod?: "cash" | "bank";
     rent?: number | string;
     rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
+    dueOnSchedule?: Array<{ effectiveFrom: string; dueOn: number }>;
   }
 ) {
   const res = await apiClient.put(`/tenants/${id}`, payload);
@@ -129,6 +131,7 @@ export async function assignTenantToRoom(
     firstPaymentDate?: string | null;
     firstPaymentMethod?: "cash" | "bank";
     rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
+    dueOnSchedule?: Array<{ effectiveFrom: string; dueOn: number }>;
   }
 ) {
   const res = await apiClient.post(`/tenants/${id}/assign`, payload);
