@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   endTenancy,
   getTenants,
+  archiveTenant,
+  unarchiveTenant,
   payRentByCash,
   unreconcileRentEntry,
   unlinkLinkedPayer,
@@ -15,15 +17,16 @@ import {
 import { useAuthUser } from "@/redux/useAuthUser";
 import toast from "react-hot-toast";
 
-export function useTenants() {
+export function useTenants(opts: { archived?: "exclude" | "only" | "include" } = {}) {
   const authUser = useAuthUser();
   const userId = authUser?.id || authUser?._id || authUser?.userId;
+  const archived = opts.archived ?? "exclude";
 
   return useQuery<any, Error, any>({
-    queryKey: ["tenants", userId],
-    queryFn: () => getTenants(),
+    queryKey: ["tenants", userId, archived],
+    queryFn: () => getTenants({ archived }),
     enabled: !!userId,
-    staleTime: 60_000,
+    staleTime: 0,
   });
 }
 
@@ -38,10 +41,22 @@ export default function usePayByCash() {
       payload,
     }: {
       tenantId: string;
-      payload?: { index?: number; month?: string; amount?: number };
+      payload?: {
+        index?: number;
+        month?: string;
+        amount?: number;
+        paymentMethod?: "cash" | "bank";
+      };
     }) => payRentByCash(tenantId, payload),
-    onSuccess: () => {
+    onSuccess: (_res, vars) => {
       qc.invalidateQueries({ queryKey: ["tenants", userId] });
+      const method = vars?.payload?.paymentMethod === "bank" ? "bank" : "cash";
+      toast.success(method === "bank" ? "Marked as paid by bank" : "Cash payment recorded");
+    },
+    onError: (err: any) => {
+      const msg =
+        err?.response?.data?.message || err?.message || "Failed to record payment";
+      toast.error(msg);
     },
   });
 }
@@ -131,6 +146,42 @@ export function useEndTenancy() {
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.message || err?.message || "Failed to remove tenant";
+      toast.error(msg);
+    },
+  });
+}
+
+export function useArchiveTenant() {
+  const qc = useQueryClient();
+  const authUser = useAuthUser();
+  const userId = authUser?.id || authUser?._id || authUser?.userId;
+
+  return useMutation({
+    mutationFn: ({ tenantId }: { tenantId: string }) => archiveTenant(tenantId),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["tenants", userId] });
+      toast.success(res?.message || "Tenant archived");
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || err?.message || "Failed to archive tenant";
+      toast.error(msg);
+    },
+  });
+}
+
+export function useUnarchiveTenant() {
+  const qc = useQueryClient();
+  const authUser = useAuthUser();
+  const userId = authUser?.id || authUser?._id || authUser?.userId;
+
+  return useMutation({
+    mutationFn: ({ tenantId }: { tenantId: string }) => unarchiveTenant(tenantId),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["tenants", userId] });
+      toast.success(res?.message || "Tenant restored");
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || err?.message || "Failed to restore tenant";
       toast.error(msg);
     },
   });

@@ -27,9 +27,17 @@ export async function autoMatchUnreconciledTransactions() {
   return res.data;
 }
 
-/** Apply linked-payer matches for one tenant only (after Accept / from reconcile modal). */
-export async function autoMatchTransactionsForTenant(tenantId: string) {
-  const res = await apiClient.post(`/transactions/auto-match-tenant`, { tenantId });
+/** Apply matched bank payments for one tenant, oldest bank date first. */
+export async function autoMatchTransactionsForTenant(
+  tenantId: string,
+  opts: { includeTransactionId?: string } = {}
+) {
+  const res = await apiClient.post(`/transactions/auto-match-tenant`, {
+    tenantId,
+    ...(opts.includeTransactionId
+      ? { includeTransactionId: opts.includeTransactionId }
+      : {}),
+  });
   return res.data;
 }
 
