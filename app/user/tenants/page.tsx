@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Archive, ArchiveRestore } from "lucide-react";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import NewTenantModal from "@/components/user/new-tenant-modal";
 import RentScheduleFields, {
@@ -14,12 +14,13 @@ import usePayByCash, {
   useRemoveTenantLineItem,
   useAssignTenant,
   useEndTenancy,
+  useArchiveTenant,
+  useUnarchiveTenant,
   useTenants,
   useUnlinkLinkedPayer,
   useUnreconcileRent,
   useUpdateTenant,
 } from "@/hooks/usetenants";
-import { useReconcileTransaction } from "@/hooks/useTransactions";
 import { getRentEntryPayment, getTenantById } from "@/lib/api/tenantsApi";
 import { autoMatchTransactionsForTenant, getTransactionsMatchingTenant } from "@/lib/api/transactionApi";
 import toast from "react-hot-toast";
@@ -27,7 +28,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuthUser } from "@/redux/useAuthUser";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import DateInput from "@/components/ui/date-input";
-import FirstRentPaymentFields from "@/components/user/first-rent-payment-fields";
 
 export default function TenantsPage() {
   /** True if char is a Unicode letter (works without regex `u` / `\p{L}`). */
@@ -217,6 +217,20 @@ export default function TenantsPage() {
     return 0;
   };
 
+  /** Deposit still available to peel from a combined payment (mirrors auto-reconcile). */
+  const getUnallocatedDepositAmount = (tenant: any) => {
+    const depositAmt = Math.round((Number(tenant?.depositAmount) || 0) * 100) / 100;
+    if (depositAmt <= 0) return 0;
+    if (tenant?.depositTransactionId) return 0;
+    const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
+    for (const h of history) {
+      for (const p of Array.isArray(h?.linkedPayments) ? h.linkedPayments : []) {
+        if ((Number(p?.depositAllocated) || 0) > 0.001) return 0;
+      }
+    }
+    return depositAmt;
+  };
+
   /**
    * Derive display status from rentHistory (detail) or status/currentBalance (list DTO):
    * - Vacant when room has no occupant
@@ -225,9 +239,12 @@ export default function TenantsPage() {
    */
   const getEffectiveStatus = (
     tenant: any
-  ): { key: "Paid" | "Unpaid" | "Partial" | "Vacant"; label: string } => {
+  ): { key: "Paid" | "Unpaid" | "Partial" | "Vacant" | "Archived"; label: string } => {
     if (tenant?.tenancyStatus === "vacant") {
       return { key: "Vacant", label: "Vacant" };
+    }
+    if (tenant?.archived) {
+      return { key: "Archived", label: "Archived" };
     }
 
     const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
@@ -282,6 +299,7 @@ export default function TenantsPage() {
     index: number;
     entry: any;
     cashAmount: string;
+    paymentMethod: "cash" | "bank";
   } | null>(null);
   const [editTenantOpen, setEditTenantOpen] = useState(false);
   const [editTenantNames, setEditTenantNames] = useState<string[]>([]);
@@ -292,9 +310,6 @@ export default function TenantsPage() {
   const [editHasDeposit, setEditHasDeposit] = useState(false);
   const [editDeposit, setEditDeposit] = useState("");
   const [editDepositPaid, setEditDepositPaid] = useState("");
-  const [editFirstPayment, setEditFirstPayment] = useState("");
-  const [editFirstPaymentDate, setEditFirstPaymentDate] = useState("");
-  const [editFirstPaymentMethod, setEditFirstPaymentMethod] = useState<"" | "cash" | "bank">("");
   const [editRent, setEditRent] = useState("");
   const [editRentAdjustments, setEditRentAdjustments] = useState<RentAdjustmentRow[]>([]);
   const [editConfirmationOpen, setEditConfirmationOpen] = useState(false);
@@ -325,9 +340,6 @@ export default function TenantsPage() {
   const [assignHasDeposit, setAssignHasDeposit] = useState(false);
   const [assignDeposit, setAssignDeposit] = useState("");
   const [assignDepositPaid, setAssignDepositPaid] = useState("");
-  const [assignFirstPayment, setAssignFirstPayment] = useState("");
-  const [assignFirstPaymentDate, setAssignFirstPaymentDate] = useState("");
-  const [assignFirstPaymentMethod, setAssignFirstPaymentMethod] = useState<"" | "cash" | "bank">("");
   const [assignRentAdjustments, setAssignRentAdjustments] = useState<RentAdjustmentRow[]>([]);
   const [adjustmentOpen, setAdjustmentOpen] = useState(false);
   const [adjustmentType, setAdjustmentType] = useState<"charge" | "discount" | "refund">("charge");
@@ -342,18 +354,29 @@ export default function TenantsPage() {
     type: "charge" | "discount" | "refund";
     monthLabel: string;
   }>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [removeLineItemConfirm, setRemoveLineItemConfirm] = useState<null | {
+    rentEntryId: string;
+    lineItemId: string;
+    itemType: string;
+    label?: string;
+  }>(null);
 
-  const { data, isLoading, isError } = useTenants();
+  const { data, isLoading, isError } = useTenants({
+    archived: showArchived ? "only" : "exclude",
+  });
   const payByCashMutation = usePayByCash();
   const updateTenantMutation = useUpdateTenant();
   const assignTenantMutation = useAssignTenant();
   const endTenancyMutation = useEndTenancy();
+  const archiveTenantMutation = useArchiveTenant();
+  const unarchiveTenantMutation = useUnarchiveTenant();
   const unreconcileMutation = useUnreconcileRent();
   const unlinkPayerMutation = useUnlinkLinkedPayer();
   const addAdjustmentMutation = useAddTenantAdjustment();
   const updateLineItemMutation = useUpdateTenantLineItem();
   const removeLineItemMutation = useRemoveTenantLineItem();
-  const reconcileMutation = useReconcileTransaction();
   const [applyingLinkedPayers, setApplyingLinkedPayers] = useState(false);
   const qc = useQueryClient();
   const authUser = useAuthUser();
@@ -367,6 +390,7 @@ export default function TenantsPage() {
     Partial: "bg-yellow-900/40 text-yellow-400 border-yellow-700/60",
     Applied: "bg-violet-900/40 text-violet-300 border-violet-700/60",
     Vacant: "bg-amber-900/40 text-amber-300 border-amber-700/60",
+    Archived: "bg-gray-800/60 text-gray-300 border-gray-600",
   };
 
   const toggleTenantSort = (key: TenantSortKey) => {
@@ -395,6 +419,7 @@ export default function TenantsPage() {
       Partial: 1,
       Paid: 2,
       Vacant: 3,
+      Archived: 4,
     };
     const dir = tenantSortDir === "asc" ? 1 : -1;
 
@@ -539,9 +564,6 @@ export default function TenantsPage() {
     const scheduleUi = scheduleFromTenant(selectedTenant);
     setEditRent(scheduleUi.baseRent);
     setEditRentAdjustments(scheduleUi.adjustments);
-    setEditFirstPayment("");
-    setEditFirstPaymentDate("");
-    setEditFirstPaymentMethod("");
     setEditConfirmationOpen(false);
     setEditTenantOpen(true);
     setTransactionModalOpen(false);
@@ -560,9 +582,6 @@ export default function TenantsPage() {
     setAssignHasDeposit(false);
     setAssignDeposit("");
     setAssignDepositPaid("");
-    setAssignFirstPayment("");
-    setAssignFirstPaymentDate("");
-    setAssignFirstPaymentMethod("");
     setAssignRentAdjustments([]);
     setAssignOpen(true);
     setTransactionModalOpen(false);
@@ -577,9 +596,6 @@ export default function TenantsPage() {
     setAssignHasDeposit(false);
     setAssignDeposit("");
     setAssignDepositPaid("");
-    setAssignFirstPayment("");
-    setAssignFirstPaymentDate("");
-    setAssignFirstPaymentMethod("");
     setAssignRentAdjustments([]);
     if (reopenDetails && selectedTenant) {
       setTransactionModalOpen(true);
@@ -613,19 +629,6 @@ export default function TenantsPage() {
         return;
       }
     }
-    const firstPay = Number(assignFirstPayment);
-    if (assignFirstPayment.trim() && (!Number.isFinite(firstPay) || firstPay < 0)) {
-      toast.error("First payment amount must be a non-negative number.");
-      return;
-    }
-    if (firstPay > 0 && !assignFirstPaymentDate) {
-      toast.error("Enter the date of the first rent payment.");
-      return;
-    }
-    if (firstPay > 0 && assignFirstPaymentMethod !== "cash" && assignFirstPaymentMethod !== "bank") {
-      toast.error("Select whether the first rent was paid by cash or bank.");
-      return;
-    }
 
     assignTenantMutation.mutate(
       {
@@ -638,15 +641,6 @@ export default function TenantsPage() {
           depositAmount: assignHasDeposit && Number(assignDeposit) > 0 ? Number(assignDeposit) : 0,
           depositPaidDate:
             assignHasDeposit && Number(assignDeposit) > 0 ? assignDepositPaid || null : null,
-          ...(firstPay > 0
-            ? {
-                firstPaymentAmount: firstPay,
-                firstPaymentDate: assignFirstPaymentDate,
-                ...(assignFirstPaymentMethod === "cash" || assignFirstPaymentMethod === "bank"
-                  ? { firstPaymentMethod: assignFirstPaymentMethod }
-                  : {}),
-              }
-            : {}),
           rentSchedule: buildRentSchedulePayload(assignRentAdjustments),
         },
       },
@@ -676,9 +670,6 @@ export default function TenantsPage() {
     setEditHasDeposit(false);
     setEditDeposit("");
     setEditDepositPaid("");
-    setEditFirstPayment("");
-    setEditFirstPaymentDate("");
-    setEditFirstPaymentMethod("");
     setEditRent("");
     setEditRentAdjustments([]);
 
@@ -731,22 +722,6 @@ export default function TenantsPage() {
       }
     }
 
-    if (!isVacant && canEditScheduleFields(selectedTenant)) {
-      const firstPay = Number(editFirstPayment);
-      if (editFirstPayment.trim() && (!Number.isFinite(firstPay) || firstPay < 0)) {
-        toast.error("First payment amount must be a non-negative number.");
-        return;
-      }
-      if (firstPay > 0 && !editFirstPaymentDate) {
-        toast.error("Enter the date of the first rent payment.");
-        return;
-      }
-      if (firstPay > 0 && editFirstPaymentMethod !== "cash" && editFirstPaymentMethod !== "bank") {
-        toast.error("Select whether the first rent was paid by cash or bank.");
-        return;
-      }
-    }
-
     if (!isVacant) {
       const rentNum = Number(editRent);
       if (!Number.isFinite(rentNum) || rentNum <= 0) {
@@ -781,9 +756,6 @@ export default function TenantsPage() {
       dueOn?: number;
       depositAmount?: number;
       depositPaidDate?: string | null;
-      firstPaymentAmount?: number;
-      firstPaymentDate?: string;
-      firstPaymentMethod?: "cash" | "bank";
       rent?: number;
       rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
     } = {};
@@ -793,14 +765,6 @@ export default function TenantsPage() {
       // Always send so backend can rebuild prorated unpaid schedule (stale history from older rules)
       payload.moveInDate = editMoveIn || null;
       payload.dueOn = editDueOn;
-      const firstPay = Number(editFirstPayment);
-      if (firstPay > 0 && editFirstPaymentDate) {
-        payload.firstPaymentAmount = firstPay;
-        payload.firstPaymentDate = editFirstPaymentDate;
-        if (editFirstPaymentMethod === "cash" || editFirstPaymentMethod === "bank") {
-          payload.firstPaymentMethod = editFirstPaymentMethod;
-        }
-      }
     }
     if (!isVacant) {
       const nextDeposit = editHasDeposit && Number(editDeposit) > 0 ? Number(editDeposit) : 0;
@@ -842,6 +806,57 @@ export default function TenantsPage() {
         },
         onError: () => {
           setEditConfirmationOpen(false);
+        },
+      }
+    );
+  };
+
+  const openArchiveConfirm = () => {
+    if (!selectedTenant || selectedTenant.tenancyStatus === "vacant") return;
+    setArchiveConfirmOpen(true);
+  };
+
+  const confirmArchiveTenant = () => {
+    if (!selectedTenant?._id) return;
+    archiveTenantMutation.mutate(
+      { tenantId: selectedTenant._id },
+      {
+        onSuccess: () => {
+          setArchiveConfirmOpen(false);
+          setTransactionModalOpen(false);
+          setSelectedTenant(null);
+        },
+      }
+    );
+  };
+
+  const confirmRemoveLineItem = () => {
+    if (!selectedTenant?._id || !removeLineItemConfirm) return;
+    const { rentEntryId, lineItemId } = removeLineItemConfirm;
+    removeLineItemMutation.mutate(
+      {
+        tenantId: selectedTenant._id,
+        rentEntryId,
+        lineItemId,
+      },
+      {
+        onSuccess: (res) => {
+          if (res?.data) setSelectedTenant(res.data);
+          setRemoveLineItemConfirm(null);
+        },
+      }
+    );
+  };
+
+  const confirmUnarchiveTenant = () => {
+    if (!selectedTenant?._id) return;
+    unarchiveTenantMutation.mutate(
+      { tenantId: selectedTenant._id },
+      {
+        onSuccess: (res) => {
+          const updated = res?.data;
+          if (updated) setSelectedTenant(updated);
+          else setSelectedTenant((prev: any) => (prev ? { ...prev, archived: false, archivedAt: null } : prev));
         },
       }
     );
@@ -956,7 +971,9 @@ export default function TenantsPage() {
       const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
       const dueMs = toUtcDayMs(entry?.dueDate ?? entry?.month);
       pieces.forEach((piece: any, pieceIndex: number) => {
-        if ((Number(piece?.amount) || 0) <= 0) return;
+        const amt = Number(piece?.amount) || 0;
+        const depositPart = Number(piece?.depositAllocated) || 0;
+        if (amt <= 0 && depositPart <= 0) return;
         const key = getPaymentPieceGroupKey(piece, historyIndex, pieceIndex);
         const list = groups.get(key) || [];
         list.push({
@@ -1007,25 +1024,46 @@ export default function TenantsPage() {
     const history = Array.isArray(rentHistory) ? rentHistory : [];
     const totals = new Map<
       string,
-      { amount: number; paidOn: any; method: string }
+      {
+        amount: number;
+        paidOn: any;
+        method: string;
+        depositAllocated: number;
+        rentApplied: number;
+        hasBankAmount: boolean;
+      }
     >();
 
     history.forEach((entry: any, historyIndex: number) => {
       const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
       pieces.forEach((piece: any, pieceIndex: number) => {
         const amt = Number(piece?.amount) || 0;
-        if (amt <= 0) return;
+        const depositPart = Number(piece?.depositAllocated) || 0;
+        // Include deposit-only pieces (amount 0, depositAllocated > 0)
+        if (amt <= 0 && depositPart <= 0) return;
         const key = getPaymentPieceGroupKey(piece, historyIndex, pieceIndex);
+        const bankAmt = Number(piece?.bankAmount) || 0;
         const prev = totals.get(key);
         if (!prev) {
           totals.set(key, {
-            amount: amt,
+            // Prefer full bank/manual amount so Payment History matches the statement
+            amount: bankAmt > 0 ? bankAmt : Math.round((amt + depositPart) * 100) / 100,
             paidOn: piece.paidOn || null,
             method: String(piece.method || (piece.transactionId ? "bank" : "cash")),
+            depositAllocated: depositPart,
+            rentApplied: amt,
+            hasBankAmount: bankAmt > 0,
           });
           return;
         }
-        prev.amount = Math.round((prev.amount + amt) * 100) / 100;
+        prev.rentApplied = Math.round((prev.rentApplied + amt) * 100) / 100;
+        if (bankAmt > 0) {
+          prev.amount = Math.max(prev.amount, bankAmt);
+          prev.hasBankAmount = true;
+        } else if (!prev.hasBankAmount) {
+          prev.amount = Math.round((prev.rentApplied + Math.max(prev.depositAllocated, depositPart)) * 100) / 100;
+        }
+        if (depositPart > prev.depositAllocated) prev.depositAllocated = depositPart;
         // Keep earliest paidOn
         const prevMs = toUtcDayMs(prev.paidOn);
         const nextMs = toUtcDayMs(piece.paidOn);
@@ -1039,6 +1077,68 @@ export default function TenantsPage() {
   };
 
   /**
+   * Running credit/arrears after each history row (oldest due → newest).
+   * = rent money received from payments that originated on/before this row
+   *   (bank amount − deposit) − dues accrued through this row.
+   * Example: £1000 − £200 deposit − £263.01 first due → £536.99 credit.
+   */
+  const buildRunningBalancesByIndex = (
+    rentHistory: any[],
+    roleMap: Map<string, PaymentPieceRole>,
+    paymentTotals: Map<
+      string,
+      {
+        amount: number;
+        paidOn: any;
+        method: string;
+        depositAllocated: number;
+        rentApplied: number;
+        hasBankAmount: boolean;
+      }
+    >
+  ) => {
+    const history = Array.isArray(rentHistory) ? rentHistory : [];
+    const ordered = history
+      .map((entry: any, index: number) => ({ entry, index }))
+      .sort((a, b) => {
+        const da = toUtcDayMs(a.entry?.dueDate ?? a.entry?.month) ?? Number.POSITIVE_INFINITY;
+        const db = toUtcDayMs(b.entry?.dueDate ?? b.entry?.month) ?? Number.POSITIVE_INFINITY;
+        if (da !== db) return da - db;
+        return a.index - b.index;
+      });
+
+    const balances = new Map<number, number>();
+    const countedPaymentKeys = new Set<string>();
+    let rentIn = 0;
+    let dues = 0;
+
+    for (const { entry, index } of ordered) {
+      const kind = String(entry?.kind || "rent");
+      // Discount/refund audit rows don't change rent balance
+      if (kind !== "discount" && kind !== "refund") {
+        dues = Math.round((dues + (Number(entry?.amountDue) || 0)) * 100) / 100;
+      }
+
+      const originating = getOriginatingPaymentsForMonth(
+        entry,
+        index,
+        roleMap,
+        paymentTotals
+      );
+      for (const row of originating) {
+        if (countedPaymentKeys.has(row.key)) continue;
+        countedPaymentKeys.add(row.key);
+        const bankOrCash = Number(row.amount) || 0;
+        const depositPart = Number(row.depositAllocated) || 0;
+        rentIn = Math.round((rentIn + Math.max(0, bankOrCash - depositPart)) * 100) / 100;
+      }
+
+      balances.set(index, Math.round((rentIn - dues) * 100) / 100);
+    }
+    return balances;
+  };
+
+  /**
    * Payments that *originated* on this month (not leftover credit from an earlier month).
    * Shows full bank/cash amounts so a £870 payment is not shown as £670 + £200.
    */
@@ -1046,7 +1146,17 @@ export default function TenantsPage() {
     entry: any,
     historyIndex: number,
     roleMap: Map<string, PaymentPieceRole>,
-    paymentTotals: Map<string, { amount: number; paidOn: any; method: string }>
+    paymentTotals: Map<
+      string,
+      {
+        amount: number;
+        paidOn: any;
+        method: string;
+        depositAllocated: number;
+        rentApplied: number;
+        hasBankAmount: boolean;
+      }
+    >
   ) => {
     const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
     const byKey = new Map<
@@ -1055,6 +1165,8 @@ export default function TenantsPage() {
         key: string;
         amount: number;
         appliedThisMonth: number;
+        rentAppliedTotal: number;
+        depositAllocated: number;
         paidOn: any;
         method: string;
         role: PaymentPieceRole;
@@ -1064,7 +1176,8 @@ export default function TenantsPage() {
 
     pieces.forEach((piece: any, pieceIndex: number) => {
       const applied = Number(piece?.amount) || 0;
-      if (applied <= 0) return;
+      const depositPart = Number(piece?.depositAllocated) || 0;
+      if (applied <= 0 && depositPart <= 0) return;
       const role = getPaymentPieceRole(roleMap, historyIndex, pieceIndex);
       // Credit = leftover from a payment that already counted on an earlier month
       if (role === "credit") return;
@@ -1079,8 +1192,10 @@ export default function TenantsPage() {
       const totals = paymentTotals.get(key);
       byKey.set(key, {
         key,
-        amount: totals?.amount ?? applied,
+        amount: totals?.amount ?? Math.round((applied + depositPart) * 100) / 100,
         appliedThisMonth: applied,
+        rentAppliedTotal: totals?.rentApplied ?? applied,
+        depositAllocated: totals?.depositAllocated ?? depositPart,
         paidOn: totals?.paidOn ?? piece.paidOn ?? null,
         method: totals?.method ?? String(piece.method || (piece.transactionId ? "bank" : "cash")),
         role,
@@ -1098,6 +1213,11 @@ export default function TenantsPage() {
 
   const paymentPieceRoles = buildPaymentPieceRoleMap(selectedTenant?.rentHistory || []);
   const paymentTotalsByGroup = buildPaymentTotalsByGroup(selectedTenant?.rentHistory || []);
+  const runningBalancesByIndex = buildRunningBalancesByIndex(
+    selectedTenant?.rentHistory || [],
+    paymentPieceRoles,
+    paymentTotalsByGroup
+  );
 
   const openPaymentReview = async (index: number, entry: any) => {
     if (!selectedTenant || !hasRecordedPayment(entry)) return;
@@ -1274,7 +1394,7 @@ export default function TenantsPage() {
         const applied = Number(res?.data?.applied) || 0;
         if (applied > 0) {
           toast.success(
-            `Also applied ${applied} other payment${applied === 1 ? "" : "s"} from linked payer(s)`
+            `Applied ${applied} matched payment${applied === 1 ? "" : "s"} (oldest bank date first)`
           );
           try {
             const fresh = await getTenantById(tenantId);
@@ -1286,7 +1406,7 @@ export default function TenantsPage() {
           qc.invalidateQueries({ queryKey: ["tenants", userId] });
           qc.invalidateQueries({ queryKey: ["unreconciledTransactions"] });
         } else if (!silentEmpty) {
-          toast.success(res?.message || "No other linked-payer payments to apply");
+          toast.success(res?.message || "No matched payments left to apply");
         }
         return { applied };
       } catch (err: any) {
@@ -1299,38 +1419,52 @@ export default function TenantsPage() {
     [applyingLinkedPayers, qc, userId]
   );
 
-  const confirmBankReconcile = () => {
-    if (!selectedTenant || !pendingBankReconcile) return;
-    const transactionId = pendingBankReconcile.transaction?.transactionId || pendingBankReconcile.transactionId;
+  const confirmBankReconcile = async () => {
+    if (!selectedTenant || !pendingBankReconcile || applyingLinkedPayers) return;
+    const transactionId =
+      pendingBankReconcile.transaction?.transactionId || pendingBankReconcile.transactionId;
     if (!transactionId) {
       toast.error("Missing transaction id");
       return;
     }
 
     const tenantId = selectedTenant._id;
-    reconcileMutation.mutate(
-      { tenantId, transactionId },
-      {
-        onSuccess: async (res: any) => {
-          const updatedTenant = res?.data?.tenant || res?.tenant || null;
-          if (updatedTenant) setSelectedTenant(updatedTenant);
-          setPendingBankReconcile(null);
-          qc.invalidateQueries({ queryKey: ["tenants", userId] });
-          toast.success("Transaction reconciled — payer linked");
-          // Same as Auto-Reconcile, but only for this tenant's linked payer(s)
-          await applyLinkedPayerPaymentsForTenant(tenantId, { silentEmpty: true });
-          loadReconcileTxs({
-            tenantId,
-            page: reconcilePage,
-            search: reconcileSearchQuery,
-            showSpinner: false,
-          }).catch(() => {});
-        },
-        onError: (err: any) => {
-          toast.error(err?.response?.data?.message || "Failed to reconcile");
-        },
+    setApplyingLinkedPayers(true);
+    try {
+      // Single oldest→newest pass. Include the clicked tx in that queue so Accepting
+      // September never jumps ahead of an older April/deposit payment.
+      const res = await autoMatchTransactionsForTenant(tenantId, {
+        includeTransactionId: String(transactionId),
+      });
+      const applied = Number(res?.data?.applied) || 0;
+
+      try {
+        const fresh = await getTenantById(tenantId);
+        const tenant = fresh?.data || fresh;
+        if (tenant) setSelectedTenant(tenant);
+      } catch {
+        /* ignore */
       }
-    );
+
+      setPendingBankReconcile(null);
+      qc.invalidateQueries({ queryKey: ["tenants", userId] });
+      qc.invalidateQueries({ queryKey: ["unreconciledTransactions"] });
+      toast.success(
+        applied > 0
+          ? `Applied ${applied} payment${applied === 1 ? "" : "s"} oldest bank date first`
+          : "No payments applied"
+      );
+      loadReconcileTxs({
+        tenantId,
+        page: reconcilePage,
+        search: reconcileSearchQuery,
+        showSpinner: false,
+      }).catch(() => {});
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to reconcile");
+    } finally {
+      setApplyingLinkedPayers(false);
+    }
   };
 
   return (
@@ -1340,24 +1474,44 @@ export default function TenantsPage() {
       </div>
 
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="relative w-full sm:w-72 md:w-96">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search tenants..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-gray-800 bg-[#0c0c0c] py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-          />
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 md:max-w-xl">
+          <div className="relative w-full sm:flex-1">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search tenants..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-lg border border-gray-800 bg-[#0c0c0c] py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setShowArchived((v) => !v);
+              setSelectedTenant(null);
+              setTransactionModalOpen(false);
+            }}
+            className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm transition ${
+              showArchived
+                ? "border-gray-500 bg-gray-800/60 text-gray-100"
+                : "border-[#2A2A2A] text-gray-400 hover:border-gray-600 hover:text-gray-200"
+            }`}
+          >
+            <Archive className="h-4 w-4" />
+            {showArchived ? "Viewing archived" : "Show archived"}
+          </button>
         </div>
 
-        <button
-          onClick={() => setNewTenantOpen(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-full border border-emerald-700 bg-transparent px-4 py-2 text-emerald-400 transition hover:bg-emerald-900/5 sm:w-auto md:ml-auto"
-        >
-          <Plus className="h-4 w-4 text-emerald-400" />
-          <span className="text-sm">Add Tenant</span>
-        </button>
+        {!showArchived && (
+          <button
+            onClick={() => setNewTenantOpen(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-full border border-emerald-700 bg-transparent px-4 py-2 text-emerald-400 transition hover:bg-emerald-900/5 sm:w-auto md:ml-auto"
+          >
+            <Plus className="h-4 w-4 text-emerald-400" />
+            <span className="text-sm">Add Tenant</span>
+          </button>
+        )}
       </div>
 
       <div className="w-full overflow-x-auto rounded-2xl border border-[#1a1a1a] bg-[#0B0B0B]">
@@ -1421,7 +1575,9 @@ export default function TenantsPage() {
 
             {!isLoading && !isError && filtered.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-8 text-center text-gray-400">No tenants found.</td>
+                <td colSpan={5} className="py-8 text-center text-gray-400">
+                  {showArchived ? "No archived tenants." : "No tenants found."}
+                </td>
               </tr>
             )}
 
@@ -1469,6 +1625,12 @@ export default function TenantsPage() {
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            {selectedTenant.archived && (
+              <div className="mb-4 rounded-xl border border-gray-700 bg-gray-900/50 px-4 py-3 text-sm text-gray-300">
+                This tenant is archived — no new rent months will be created until you unarchive them.
+              </div>
+            )}
 
             {selectedTenant.tenancyStatus === "vacant" ? (
               <div className="mb-4 rounded-xl border border-amber-800/50 bg-amber-950/20 px-4 py-4 text-sm text-amber-100/90">
@@ -1603,7 +1765,7 @@ export default function TenantsPage() {
                     }}
                     className="shrink-0 rounded-full border border-sky-800 px-3 py-1 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
                   >
-                    {applyingLinkedPayers ? "Applying…" : "Apply linked payments"}
+                    {applyingLinkedPayers ? "Applying…" : "Apply matched (oldest first)"}
                   </button>
                 </div>
                 <div className="space-y-2">
@@ -1686,6 +1848,7 @@ export default function TenantsPage() {
                     <th className="px-4 py-3 text-xs">Payment history</th>
                     <th className="px-4 py-3 text-xs">Due Date</th>
                     <th className="px-4 py-3 text-xs">Status</th>
+                    <th className="px-4 py-3 text-xs">Balance</th>
                     <th className="px-4 py-3 text-xs">Actions</th>
                   </tr>
                 </thead>
@@ -1694,7 +1857,7 @@ export default function TenantsPage() {
                     if (detailLoading) {
                       return (
                         <tr>
-                          <td colSpan={6} className="py-8 text-center text-gray-400">
+                          <td colSpan={7} className="py-8 text-center text-gray-400">
                             Loading rent history…
                           </td>
                         </tr>
@@ -1730,7 +1893,7 @@ export default function TenantsPage() {
                     if (!visibleHistory.length) {
                       return (
                         <tr>
-                          <td colSpan={6} className="py-8 text-center text-gray-400">
+                          <td colSpan={7} className="py-8 text-center text-gray-400">
                             No rent history found for this tenant.
                           </td>
                         </tr>
@@ -1835,25 +1998,12 @@ export default function TenantsPage() {
                                       className="rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-rose-400 disabled:opacity-50"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        if (
-                                          !window.confirm(
-                                            `Remove this ${itemType}${item?.label ? ` (${item.label})` : ""}?`
-                                          )
-                                        ) {
-                                          return;
-                                        }
-                                        removeLineItemMutation.mutate(
-                                          {
-                                            tenantId: selectedTenant._id,
-                                            rentEntryId,
-                                            lineItemId,
-                                          },
-                                          {
-                                            onSuccess: (res) => {
-                                              if (res?.data) setSelectedTenant(res.data);
-                                            },
-                                          }
-                                        );
+                                        setRemoveLineItemConfirm({
+                                          rentEntryId,
+                                          lineItemId,
+                                          itemType,
+                                          label: item?.label ? String(item.label) : undefined,
+                                        });
                                       }}
                                     >
                                       <Trash2 className="h-3 w-3" />
@@ -1877,8 +2027,6 @@ export default function TenantsPage() {
                             if (isAdjustment) {
                               return <span className="text-sm text-gray-500">—</span>;
                             }
-                            // Show what cleared *this month* (matches Amount Paid / bank-style month view).
-                            // Do not sum full bank transfers that also covered later months.
                             const totalPaid = Number(entry.amountPaid) || 0;
                             const pieces = getPaymentPieces(entry);
                             const originating = getOriginatingPaymentsForMonth(
@@ -1896,6 +2044,22 @@ export default function TenantsPage() {
                               return <span className="text-sm text-gray-500">—</span>;
                             }
 
+                            // Bank-primary: show the bank statement amount when a payment originated here.
+                            const bankDisplay = originating.reduce(
+                              (s, row) => s + (Number(row.amount) || 0),
+                              0
+                            );
+                            const displayAmount =
+                              originating.length > 0 && bankDisplay > 0 ? bankDisplay : totalPaid;
+                            const depositPart = originating.reduce(
+                              (s, row) => s + (Number(row.depositAllocated) || 0),
+                              0
+                            );
+                            const rentFromBank = originating.reduce(
+                              (s, row) => s + (Number(row.appliedThisMonth) || 0),
+                              0
+                            );
+
                             return (
                               <button
                                 type="button"
@@ -1906,16 +2070,30 @@ export default function TenantsPage() {
                                 className={`text-left ${recorded ? "hover:opacity-90" : "cursor-default"}`}
                                 title={
                                   pieces.length >= 1
-                                    ? "Click to see each payment applied to this month"
+                                    ? "Click to see bank payment breakdown"
                                     : recorded
                                       ? "Click for payment details"
                                       : undefined
                                 }
                               >
                                 <span className="block tabular-nums text-sm font-medium text-gray-200">
-                                  {formatMoney(totalPaid)}
+                                  {formatMoney(displayAmount)}
                                 </span>
-                                {pieces.length >= 1 && !creditOnly ? (
+                                {originating.length > 0 && (depositPart > 0.001 || rentFromBank + 0.001 < displayAmount) ? (
+                                  <span className="mt-0.5 block text-[11px] text-sky-400/90">
+                                    {depositPart > 0.001
+                                      ? `${formatMoney(depositPart)} deposit`
+                                      : ""}
+                                    {depositPart > 0.001 && rentFromBank > 0.001 ? " · " : ""}
+                                    {rentFromBank > 0.001
+                                      ? `${formatMoney(rentFromBank)} rent`
+                                      : ""}
+                                    {displayAmount - depositPart - rentFromBank > 0.001
+                                      ? ` · ${formatMoney(displayAmount - depositPart - rentFromBank)} credit`
+                                      : ""}
+                                    {" · view"}
+                                  </span>
+                                ) : pieces.length >= 1 && !creditOnly ? (
                                   <span className="mt-0.5 block text-[11px] text-sky-400/90">
                                     {pieces.length} payment
                                     {pieces.length === 1 ? "" : "s"} · view breakdown
@@ -1938,6 +2116,41 @@ export default function TenantsPage() {
                           <span className={`rounded-full border px-2 py-1 text-xs ${statusColors[statusKey as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
                             {statusKey}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          {(() => {
+                            if (isAdjustment) {
+                              return <span className="text-sm text-gray-500">—</span>;
+                            }
+                            const bal = runningBalancesByIndex.get(index) ?? 0;
+                            if (Math.abs(bal) < 0.005) {
+                              return (
+                                <span className="text-sm text-gray-400">Settled</span>
+                              );
+                            }
+                            if (bal > 0) {
+                              return (
+                                <div>
+                                  <span className="block tabular-nums text-sm font-medium text-emerald-300">
+                                    {formatMoney(bal)}
+                                  </span>
+                                  <span className="mt-0.5 block text-[11px] text-emerald-400/80">
+                                    In credit
+                                  </span>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div>
+                                <span className="block tabular-nums text-sm font-medium text-rose-300">
+                                  {formatMoney(Math.abs(bal))}
+                                </span>
+                                <span className="mt-0.5 block text-[11px] text-rose-400/80">
+                                  Arrears
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3">
                           {isAdjustment ? (
@@ -1963,16 +2176,19 @@ export default function TenantsPage() {
                                     0,
                                     (Number(entry.amountDue) || 0) - (Number(entry.amountPaid) || 0)
                                   );
+                                  const depositOpen = getUnallocatedDepositAmount(selectedTenant);
+                                  const suggested = Math.round((rem + depositOpen) * 100) / 100;
                                   setPendingCash({
                                     index,
                                     entry,
-                                    cashAmount: String(rem),
+                                    cashAmount: String(suggested),
+                                    paymentMethod: "cash",
                                   });
                                 }}
                                 className="flex items-center gap-2 rounded-full border border-amber-700 px-3 py-1 text-xs text-amber-400 hover:bg-amber-900/5"
                               >
                                 <DollarSign className="h-4 w-4" />
-                                Pay By Cash
+                                Record payment
                               </button>
                             </div>
                           ) : recorded && entry.paymentMethod && entry.paymentMethod !== "none" ? (
@@ -2000,7 +2216,7 @@ export default function TenantsPage() {
             </div>
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                 {selectedTenant.tenancyStatus === "vacant" ? (
                   <>
                     <button
@@ -2027,6 +2243,27 @@ export default function TenantsPage() {
                     Edit tenant
                   </button>
                 )}
+                {selectedTenant.tenancyStatus !== "vacant" &&
+                  (selectedTenant.archived ? (
+                    <button
+                      type="button"
+                      onClick={confirmUnarchiveTenant}
+                      disabled={unarchiveTenantMutation.isPending}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-800 px-4 py-2 text-sm text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
+                    >
+                      <ArchiveRestore className="h-4 w-4" />
+                      {unarchiveTenantMutation.isPending ? "Restoring…" : "Unarchive"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={openArchiveConfirm}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-600 px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+                    >
+                      <Archive className="h-4 w-4" />
+                      Archive
+                    </button>
+                  ))}
                 <button
                   onClick={openEndTenancyModal}
                   className="inline-flex items-center justify-center gap-2 rounded-full border border-rose-800 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/40"
@@ -2060,24 +2297,23 @@ export default function TenantsPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {Array.isArray(selectedTenant.linkedPayers) && selectedTenant.linkedPayers.length > 0 && (
-                  <button
-                    type="button"
-                    disabled={applyingLinkedPayers}
-                    onClick={async () => {
-                      await applyLinkedPayerPaymentsForTenant(selectedTenant._id);
-                      loadReconcileTxs({
-                        tenantId: selectedTenant._id,
-                        page: reconcilePage,
-                        search: reconcileSearchQuery,
-                        showSpinner: false,
-                      }).catch(() => {});
-                    }}
-                    className="rounded-full border border-sky-800 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
-                  >
-                    {applyingLinkedPayers ? "Applying…" : "Apply linked payments"}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={applyingLinkedPayers || reconcileLoading}
+                  onClick={async () => {
+                    await applyLinkedPayerPaymentsForTenant(selectedTenant._id);
+                    loadReconcileTxs({
+                      tenantId: selectedTenant._id,
+                      page: reconcilePage,
+                      search: reconcileSearchQuery,
+                      showSpinner: false,
+                    }).catch(() => {});
+                  }}
+                  className="rounded-full border border-sky-800 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
+                  title="Applies all Matched bank payments oldest first (e.g. 05/06 before later months)"
+                >
+                  {applyingLinkedPayers ? "Applying…" : "Apply matched (oldest first)"}
+                </button>
                 <button
                   type="button"
                   onClick={closeReconcilePanel}
@@ -2177,7 +2413,7 @@ export default function TenantsPage() {
                             <button
                               type="button"
                               onClick={() => setPendingBankReconcile(row)}
-                              disabled={reconcileMutation.isPending}
+                              disabled={applyingLinkedPayers}
                               className="inline-flex items-center gap-2 rounded-full border border-emerald-700 bg-transparent px-3 py-1 text-xs text-emerald-400 transition hover:bg-emerald-900/5 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <Check className="h-3 w-3" />
@@ -2258,26 +2494,26 @@ export default function TenantsPage() {
               to <span className="text-gray-200">{getTenantDisplayName(selectedTenant)}</span>?
             </p>
             <p className="mb-4 text-xs text-gray-500">
-              {formatMatchReason(pendingBankReconcile.matchReason)}. Clears oldest unpaid / partial months first;
-              leftover rolls to the next month.
+              {formatMatchReason(pendingBankReconcile.matchReason)}. Any older matched bank payments are applied
+              first (e.g. 05/06 before later dates), then this one; leftover rolls forward.
             </p>
             <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setPendingBankReconcile(null)}
                 className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
-                disabled={reconcileMutation.isPending}
+                disabled={applyingLinkedPayers}
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={confirmBankReconcile}
-                disabled={reconcileMutation.isPending}
+                disabled={applyingLinkedPayers}
                 className="inline-flex items-center gap-2 rounded-full border border-emerald-700 bg-emerald-900/40 px-4 py-2 text-sm text-emerald-200 hover:bg-emerald-900/60 disabled:opacity-60"
               >
                 <Check className="h-3.5 w-3.5" />
-                {reconcileMutation.isPending ? "Applying..." : "Accept"}
+                {applyingLinkedPayers ? "Applying…" : "Accept"}
               </button>
             </div>
           </div>
@@ -2365,9 +2601,9 @@ export default function TenantsPage() {
                       {originating.length > 0 && (
                         <div className="mb-4">
                           <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
-                            Applied to this month
+                            Bank payment breakdown
                           </p>
-                          <ul className="space-y-1.5 rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3">
+                          <ul className="space-y-3 rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3">
                             {originating.map((row) => {
                               const tx = row.transactionId
                                 ? txById.get(String(row.transactionId))
@@ -2377,42 +2613,69 @@ export default function TenantsPage() {
                                 : row.amount;
                               const fullBankAmt = bankAmt > 0 ? bankAmt : row.amount;
                               const appliedAmt = Number(row.appliedThisMonth) || 0;
+                              const depositPart = Number(row.depositAllocated) || 0;
+                              const rentTotal = Number(row.rentAppliedTotal) || appliedAmt;
+                              const leftover = Math.max(
+                                0,
+                                Math.round((fullBankAmt - depositPart - rentTotal) * 100) / 100
+                              );
                               const isCash = String(row.method || "").toLowerCase() === "cash";
                               return (
-                                <li
-                                  key={row.key}
-                                  className="flex flex-col gap-0.5 text-sm sm:flex-row sm:items-center sm:gap-2"
-                                >
-                                  <span className="shrink-0 text-gray-200">
-                                    {formatDateTime(row.paidOn || tx?.date)}
-                                  </span>
-                                  <span className="tabular-nums font-medium text-gray-100">
-                                    {formatMoney(appliedAmt)}
-                                  </span>
-                                  {appliedAmt + 0.001 < fullBankAmt ? (
-                                    <span className="text-[11px] text-gray-500">
-                                      of {formatMoney(fullBankAmt)} bank payment
-                                      {fullBankAmt - appliedAmt > 0.001
-                                        ? ` · ${formatMoney(fullBankAmt - appliedAmt)} to later months / credit`
-                                        : ""}
+                                <li key={row.key} className="space-y-1.5 text-sm">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="shrink-0 text-gray-200">
+                                      {formatDateTime(row.paidOn || tx?.date)}
                                     </span>
-                                  ) : null}
-                                  <span
-                                    className={`sm:ml-auto shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] leading-none ${
-                                      isCash
-                                        ? "border-amber-800/70 bg-amber-950/40 text-amber-300"
-                                        : paymentPieceRoleMeta[row.role].className
-                                    }`}
-                                  >
-                                    {isCash ? "Cash" : "Payment"}
-                                  </span>
+                                    <span className="tabular-nums font-medium text-gray-100">
+                                      {formatMoney(fullBankAmt)}
+                                    </span>
+                                    <span
+                                      className={`sm:ml-auto shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] leading-none ${
+                                        isCash
+                                          ? "border-amber-800/70 bg-amber-950/40 text-amber-300"
+                                          : paymentPieceRoleMeta[row.role].className
+                                      }`}
+                                    >
+                                      {isCash ? "Cash" : "Bank"}
+                                    </span>
+                                  </div>
+                                  <div className="space-y-0.5 pl-0.5 text-[12px] text-gray-400">
+                                    {depositPart > 0.001 && (
+                                      <div className="flex justify-between gap-3">
+                                        <span>Deposit</span>
+                                        <span className="tabular-nums text-gray-300">
+                                          {formatMoney(depositPart)}
+                                        </span>
+                                      </div>
+                                    )}
+                                    <div className="flex justify-between gap-3">
+                                      <span>Rent this month</span>
+                                      <span className="tabular-nums text-gray-300">
+                                        {formatMoney(appliedAmt)}
+                                      </span>
+                                    </div>
+                                    {rentTotal > appliedAmt + 0.001 && (
+                                      <div className="flex justify-between gap-3">
+                                        <span>Rent later months</span>
+                                        <span className="tabular-nums text-gray-300">
+                                          {formatMoney(rentTotal - appliedAmt)}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {leftover > 0.001 && (
+                                      <div className="flex justify-between gap-3 text-emerald-400/90">
+                                        <span>Unallocated credit</span>
+                                        <span className="tabular-nums">{formatMoney(leftover)}</span>
+                                      </div>
+                                    )}
+                                  </div>
                                 </li>
                               );
                             })}
                           </ul>
                           <p className="mt-2 text-[11px] text-gray-500">
-                            Figures are the rent applied to this month only (not deposit). Deposit is
-                            recorded separately above.
+                            Top amount matches the bank statement. Breakdown shows how that payment
+                            was split across deposit, this month&apos;s rent, later months, and credit.
                           </p>
                         </div>
                       )}
@@ -2527,12 +2790,33 @@ export default function TenantsPage() {
         </div>
       )}
 
-      {pendingCash && selectedTenant && (
+      {pendingCash && selectedTenant && (() => {
+        const rentRemaining = Math.max(
+          0,
+          (Number(pendingCash.entry.amountDue) || 0) - (Number(pendingCash.entry.amountPaid) || 0)
+        );
+        const depositOpen = getUnallocatedDepositAmount(selectedTenant);
+        const maxAllowed = Math.round((rentRemaining + depositOpen) * 100) / 100;
+        const entered = Number(pendingCash.cashAmount);
+        const previewDeposit =
+          Number.isFinite(entered) && entered > 0 && depositOpen > 0
+            ? Math.min(depositOpen, Math.round(entered * 100) / 100)
+            : 0;
+        const previewRent =
+          Number.isFinite(entered) && entered > 0
+            ? Math.min(rentRemaining, Math.round((entered - previewDeposit) * 100) / 100)
+            : 0;
+
+        return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
           <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
-            <h3 className="mb-2 text-lg font-semibold">Confirm Cash Payment</h3>
+            <h3 className="mb-2 text-lg font-semibold">Record payment</h3>
             <p className="mb-4 text-sm text-gray-400">
-              Enter how much was paid in <strong>cash</strong> (full remaining or a partial amount).
+              Enter how much was paid (full remaining or a partial amount) and whether it was{" "}
+              <strong>cash</strong> or <strong>bank</strong>.
+              {depositOpen > 0
+                ? " Same as auto-reconcile: deposit is taken first, then rent."
+                : ""}
             </p>
 
             <div className="mb-4 rounded-lg border border-[#111] bg-[#050505] p-3">
@@ -2541,57 +2825,115 @@ export default function TenantsPage() {
                 <div>{formatDate(pendingCash.entry.month)}</div>
               </div>
               <div className="flex justify-between text-sm text-gray-300">
-                <div>Amount Due</div>
-                <div>{formatMoney(Number(pendingCash.entry.amountDue) || 0)}</div>
+                <div>Rent remaining</div>
+                <div>{formatMoney(rentRemaining)}</div>
               </div>
-              <div className="flex justify-between text-sm text-gray-300">
-                <div>Already Paid</div>
-                <div>{formatMoney(Number(pendingCash.entry.amountPaid) || 0)}</div>
-              </div>
-              <div className="mt-1 flex justify-between border-t border-[#1a1a1a] pt-2 text-sm font-medium text-amber-300">
-                <div>Remaining to pay</div>
-                <div>
-                  {formatMoney(
-                    Math.max(
-                      0,
-                      (Number(pendingCash.entry.amountDue) || 0) - (Number(pendingCash.entry.amountPaid) || 0)
-                    )
-                  )}
+              {depositOpen > 0 && (
+                <div className="flex justify-between text-sm text-gray-300">
+                  <div>Unallocated deposit</div>
+                  <div>{formatMoney(depositOpen)}</div>
                 </div>
+              )}
+              <div className="mt-1 flex justify-between border-t border-[#1a1a1a] pt-2 text-sm font-medium text-amber-300">
+                <div>Max for this payment</div>
+                <div>{formatMoney(maxAllowed)}</div>
               </div>
             </div>
 
-            <label className="mb-1 block text-sm text-gray-300">Cash amount</label>
+            <label className="mb-1.5 block text-sm text-gray-300">Payment method</label>
+            <div className="mb-4 flex gap-2">
+              {(["cash", "bank"] as const).map((method) => {
+                const selected = pendingCash.paymentMethod === method;
+                return (
+                  <button
+                    key={method}
+                    type="button"
+                    disabled={payByCashMutation.isPending}
+                    onClick={() =>
+                      setPendingCash((prev) => (prev ? { ...prev, paymentMethod: method } : prev))
+                    }
+                    className={`rounded-full border px-4 py-2 text-sm capitalize transition disabled:opacity-50 ${
+                      selected
+                        ? "border-amber-600 bg-amber-600/15 text-amber-300"
+                        : "border-[#2A2A2A] text-gray-300 hover:bg-white/5"
+                    }`}
+                  >
+                    {method}
+                  </button>
+                );
+              })}
+            </div>
+            {pendingCash.paymentMethod === "bank" && (
+              <p className="mb-4 text-xs text-gray-500">
+                Marks this month as paid by bank without linking a bank feed transaction. Use Reconcile
+                if you want to match a real bank payment instead.
+              </p>
+            )}
+
+            <label className="mb-1 block text-sm text-gray-300">Amount paid (£)</label>
             <input
               type="number"
               min="0.01"
               step="0.01"
               value={pendingCash.cashAmount}
+              disabled={payByCashMutation.isPending}
               onChange={(e) =>
                 setPendingCash((prev) => (prev ? { ...prev, cashAmount: e.target.value } : prev))
               }
-              className="mb-4 w-full rounded-lg border border-gray-800 bg-[#050505] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-700"
+              className="mb-2 w-full rounded-lg border border-gray-800 bg-[#050505] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-700 disabled:opacity-50"
             />
+            {Number.isFinite(entered) && entered > 0 && (previewDeposit > 0.001 || previewRent > 0.001) && (
+              <p className="mb-4 text-xs text-sky-300/90">
+                Will apply:{" "}
+                {previewDeposit > 0.001 && (
+                  <span>{formatMoney(previewDeposit)} deposit</span>
+                )}
+                {previewDeposit > 0.001 && previewRent > 0.001 && <span> · </span>}
+                {previewRent > 0.001 && <span>{formatMoney(previewRent)} rent</span>}
+              </p>
+            )}
+            {!(Number.isFinite(entered) && entered > 0 && (previewDeposit > 0.001 || previewRent > 0.001)) && (
+              <div className="mb-4" />
+            )}
 
             <div className="flex justify-end gap-3">
-              <button onClick={() => setPendingCash(null)} className="rounded-full border px-4 py-2 text-sm text-gray-300 hover:bg-white/5">Cancel</button>
               <button
+                type="button"
+                onClick={() => setPendingCash(null)}
+                disabled={payByCashMutation.isPending}
+                className="rounded-full border px-4 py-2 text-sm text-gray-300 hover:bg-white/5 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={payByCashMutation.isPending}
                 onClick={() => {
-                  const remaining = Math.max(
-                    0,
-                    (Number(pendingCash.entry.amountDue) || 0) - (Number(pendingCash.entry.amountPaid) || 0)
-                  );
+                  if (payByCashMutation.isPending) return;
                   const amount = Number(pendingCash.cashAmount);
                   if (!Number.isFinite(amount) || amount <= 0) {
-                    toast.error("Enter a valid cash amount");
+                    toast.error("Enter a valid payment amount");
                     return;
                   }
-                  if (amount > remaining + 0.001) {
-                    toast.error("Amount cannot exceed remaining due");
+                  if (amount > maxAllowed + 0.001) {
+                    toast.error(
+                      depositOpen > 0
+                        ? `Amount cannot exceed rent remaining (${formatMoney(rentRemaining)}) plus deposit (${formatMoney(depositOpen)})`
+                        : "Amount cannot exceed remaining due"
+                    );
                     return;
                   }
 
-                  const payload: any = { index: pendingCash.index, amount };
+                  const payload: {
+                    index: number;
+                    amount: number;
+                    month?: string;
+                    paymentMethod: "cash" | "bank";
+                  } = {
+                    index: pendingCash.index,
+                    amount,
+                    paymentMethod: pendingCash.paymentMethod,
+                  };
                   if (pendingCash.entry.month) {
                     payload.month = new Date(pendingCash.entry.month).toISOString();
                   }
@@ -2607,9 +2949,91 @@ export default function TenantsPage() {
                     }
                   );
                 }}
-                className="rounded-full bg-amber-600 px-4 py-2 text-sm text-black hover:brightness-105"
+                className="inline-flex min-w-[8.5rem] items-center justify-center rounded-full bg-amber-600 px-4 py-2 text-sm text-black hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Confirm Cash
+                {payByCashMutation.isPending
+                  ? "Recording…"
+                  : pendingCash.paymentMethod === "bank"
+                    ? "Confirm bank"
+                    : "Confirm cash"}
+              </button>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
+
+      {archiveConfirmOpen && selectedTenant && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+            <h3 className="mb-2 text-lg font-semibold">Archive tenant?</h3>
+            <p className="mb-3 text-sm text-gray-400">
+              <span className="text-gray-200">{getTenantDisplayName(selectedTenant)}</span> at{" "}
+              <span className="text-gray-200">{getPropertyDisplay(selectedTenant)}</span> will be
+              moved to the archived list.
+            </p>
+            <ul className="mb-5 list-disc space-y-1.5 pl-5 text-sm text-gray-500">
+              <li>No new rent months will be created.</li>
+              <li>Payment history and bank links are kept.</li>
+              <li>You can restore them anytime from Show archived.</li>
+            </ul>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setArchiveConfirmOpen(false)}
+                disabled={archiveTenantMutation.isPending}
+                className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmArchiveTenant}
+                disabled={archiveTenantMutation.isPending}
+                className="inline-flex items-center gap-2 rounded-full border border-gray-500 bg-gray-800/70 px-4 py-2 text-sm text-gray-100 hover:bg-gray-700/80 disabled:opacity-60"
+              >
+                <Archive className="h-4 w-4" />
+                {archiveTenantMutation.isPending ? "Archiving…" : "Archive tenant"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {removeLineItemConfirm && selectedTenant && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+            <h3 className="mb-2 text-lg font-semibold">
+              Remove {removeLineItemConfirm.itemType}?
+            </h3>
+            <p className="mb-5 text-sm text-gray-400">
+              Are you sure you want to remove this{" "}
+              <span className="text-gray-200">{removeLineItemConfirm.itemType}</span>
+              {removeLineItemConfirm.label ? (
+                <>
+                  {" "}
+                  (<span className="text-gray-200">{removeLineItemConfirm.label}</span>)
+                </>
+              ) : null}
+              ? This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setRemoveLineItemConfirm(null)}
+                disabled={removeLineItemMutation.isPending}
+                className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmRemoveLineItem}
+                disabled={removeLineItemMutation.isPending}
+                className="inline-flex items-center gap-2 rounded-full border border-rose-700 bg-rose-900/40 px-4 py-2 text-sm text-rose-200 hover:bg-rose-900/60 disabled:opacity-60"
+              >
+                <Trash2 className="h-4 w-4" />
+                {removeLineItemMutation.isPending ? "Removing…" : "Remove"}
               </button>
             </div>
           </div>
@@ -2775,22 +3199,6 @@ export default function TenantsPage() {
               )}
             </div>
 
-            <div className="mt-4">
-              <FirstRentPaymentFields
-                monthlyRent={assignRent}
-                moveInDate={assignMoveIn}
-                dueOn={assignDueOn}
-                rentSchedule={buildRentSchedulePayload(assignRentAdjustments)}
-                amount={assignFirstPayment}
-                paymentDate={assignFirstPaymentDate}
-                paymentMethod={assignFirstPaymentMethod}
-                onAmountChange={setAssignFirstPayment}
-                onPaymentDateChange={setAssignFirstPaymentDate}
-                onPaymentMethodChange={setAssignFirstPaymentMethod}
-                amountLabel="Amount paid (£)"
-              />
-            </div>
-
             <div className="mt-5 flex justify-end gap-3">
               <button
                 type="button"
@@ -2946,22 +3354,6 @@ export default function TenantsPage() {
                 />
               )}
 
-              {selectedTenant.tenancyStatus !== "vacant" && canEditScheduleFields(selectedTenant) && (
-                <FirstRentPaymentFields
-                  monthlyRent={editRent}
-                  moveInDate={editMoveIn}
-                  dueOn={editDueOn}
-                  rentSchedule={buildRentSchedulePayload(editRentAdjustments)}
-                  amount={editFirstPayment}
-                  paymentDate={editFirstPaymentDate}
-                  paymentMethod={editFirstPaymentMethod}
-                  onAmountChange={setEditFirstPayment}
-                  onPaymentDateChange={setEditFirstPaymentDate}
-                  onPaymentMethodChange={setEditFirstPaymentMethod}
-                  amountLabel="Amount paid (£)"
-                />
-              )}
-
               {selectedTenant.tenancyStatus !== "vacant" && (
                 <div>
                   <label className="inline-flex cursor-pointer items-center gap-2.5 text-base text-gray-200">
@@ -3065,18 +3457,6 @@ export default function TenantsPage() {
                     <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Due day</p>
                     <p className="text-sm text-gray-200">{editDueOn}</p>
                   </div>
-                  {Number(editFirstPayment) > 0 && (
-                    <div>
-                      <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">
-                        First rent payment (move-in)
-                      </p>
-                      <p className="text-sm text-gray-200">
-                        £{Number(editFirstPayment).toFixed(2)}
-                        {editFirstPaymentDate ? ` on ${editFirstPaymentDate}` : ""}
-                        {editFirstPaymentMethod ? ` · ${editFirstPaymentMethod}` : ""}
-                      </p>
-                    </div>
-                  )}
                 </>
               )}
               {selectedTenant.tenancyStatus !== "vacant" && (

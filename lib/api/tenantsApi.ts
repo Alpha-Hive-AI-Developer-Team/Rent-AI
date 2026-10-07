@@ -6,8 +6,26 @@ export async function getPayerSuggestions() {
   return Array.isArray(payload?.data) ? payload.data : [];
 }
 
-export async function getTenants() {
-  const res = await apiClient.get("/tenants");
+export async function getTenants(params: { archived?: "exclude" | "only" | "include" } = {}) {
+  const archived = params.archived ?? "exclude";
+  const res = await apiClient.get("/tenants", {
+    params:
+      archived === "only"
+        ? { archived: "only" }
+        : archived === "include"
+          ? { archived: "include" }
+          : undefined,
+  });
+  return res.data;
+}
+
+export async function archiveTenant(id: string) {
+  const res = await apiClient.post(`/tenants/${id}/archive`);
+  return res.data;
+}
+
+export async function unarchiveTenant(id: string) {
+  const res = await apiClient.post(`/tenants/${id}/unarchive`);
   return res.data;
 }
 
@@ -134,7 +152,12 @@ export async function getRentDetails(month?: number, year?: number) {
 
 export async function payRentByCash(
   tenantId: string,
-  payload: { index?: number; month?: string; amount?: number } = {}
+  payload: {
+    index?: number;
+    month?: string;
+    amount?: number;
+    paymentMethod?: "cash" | "bank";
+  } = {}
 ) {
   const res = await apiClient.post(`/tenants/${tenantId}/pay/cash`, payload);
   return res.data;
