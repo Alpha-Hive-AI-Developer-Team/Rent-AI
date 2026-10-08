@@ -25,6 +25,7 @@ import usePayByCash, {
   useTenants,
   useUnlinkLinkedPayer,
   useUnreconcileRent,
+  useUnreconcileAllPayments,
   useUpdateTenant,
   useChangeTenantDueDate,
 } from "@/hooks/usetenants";
@@ -376,6 +377,7 @@ export default function TenantsPage() {
   }>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [reverseAllConfirmOpen, setReverseAllConfirmOpen] = useState(false);
   const [removeLineItemConfirm, setRemoveLineItemConfirm] = useState<null | {
     rentEntryId: string;
     lineItemId: string;
@@ -397,6 +399,7 @@ export default function TenantsPage() {
   const archiveTenantMutation = useArchiveTenant();
   const unarchiveTenantMutation = useUnarchiveTenant();
   const unreconcileMutation = useUnreconcileRent();
+  const unreconcileAllMutation = useUnreconcileAllPayments();
   const unlinkPayerMutation = useUnlinkLinkedPayer();
   const addAdjustmentMutation = useAddTenantAdjustment();
   const updateLineItemMutation = useUpdateTenantLineItem();
@@ -498,6 +501,7 @@ export default function TenantsPage() {
     setPendingBankReconcile(null);
     setPaymentReview(null);
     setDepositReview(null);
+    setReverseAllConfirmOpen(false);
   };
 
   const openTenantDetails = async (tenant: any) => {
@@ -555,6 +559,16 @@ export default function TenantsPage() {
       if (h.paymentMethod && h.paymentMethod !== "none") return true;
       return false;
     });
+
+  const tenantHasDepositHeld = (tenant: any) =>
+    (Number(tenant?.depositAmount) || 0) > 0 ||
+    Boolean(tenant?.depositPaidDate || tenant?.depositStartDate) ||
+    Boolean(tenant?.depositTransactionId);
+
+  const tenantCanReverseAllPayments = (tenant: any) =>
+    Boolean(tenant) &&
+    tenant.tenancyStatus !== "vacant" &&
+    (tenantHasPayments(tenant) || tenantHasDepositHeld(tenant) || Boolean(tenant?.lastPayment));
 
   const canEditScheduleFields = (tenant: any) =>
     Boolean(tenant) && tenant.tenancyStatus !== "vacant" && !tenantHasPayments(tenant);
@@ -1352,6 +1366,50 @@ export default function TenantsPage() {
     );
   };
 
+  const confirmReverseAllPayments = () => {
+    if (!selectedTenant?._id || unreconcileAllMutation.isPending) return;
+    const tenantId = selectedTenant._id;
+    unreconcileAllMutation.mutate(
+      { tenantId },
+      {
+        onSuccess: async (res) => {
+          setReverseAllConfirmOpen(false);
+          setPaymentReview(null);
+          setDepositReview(null);
+          const updatedTenant = res?.data?.tenant || null;
+          if (updatedTenant) {
+            setSelectedTenant(updatedTenant);
+            qc.setQueryData(["tenants", userId], (prev: any) => {
+              if (!prev?.data || !Array.isArray(prev.data)) return prev;
+              return {
+                ...prev,
+                data: prev.data.map((row: any) => {
+                  if (String(row?._id || row?.id) !== String(tenantId)) return row;
+                  return {
+                    ...row,
+                    currentBalance: updatedTenant.currentBalance,
+                    status: updatedTenant.status,
+                    lastPayment: updatedTenant.lastPayment ?? null,
+                    depositAmount: updatedTenant.depositAmount ?? 0,
+                    depositPaidDate: updatedTenant.depositPaidDate ?? null,
+                    depositTransactionId: updatedTenant.depositTransactionId ?? null,
+                  };
+                }),
+              };
+            });
+          }
+          try {
+            const fresh = await getTenantById(String(tenantId));
+            const full = fresh?.data ?? fresh;
+            if (full) setSelectedTenant(full);
+          } catch {
+            /* keep mutation response */
+          }
+        },
+      }
+    );
+  };
+
   const loadReconcileTxs = useCallback(
     async ({
       tenantId,
@@ -1806,6 +1864,17 @@ export default function TenantsPage() {
                   <Plus className="h-4 w-4" />
                   Add charge / discount
                 </button>
+                {tenantCanReverseAllPayments(selectedTenant) && (
+                  <button
+                    type="button"
+                    onClick={() => setReverseAllConfirmOpen(true)}
+                    disabled={unreconcileAllMutation.isPending}
+                    className="inline-flex items-center gap-2 rounded-full border border-rose-800 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
+                    title="Reverse all rent and deposit payments and unreconcile linked bank transactions"
+                  >
+                    Reverse all payments
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -3220,6 +3289,43 @@ export default function TenantsPage() {
               >
                 <Archive className="h-4 w-4" />
                 {archiveTenantMutation.isPending ? "Archiving…" : "Archive tenant"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reverseAllConfirmOpen && selectedTenant && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+            <h3 className="mb-2 text-lg font-semibold">Reverse all payments?</h3>
+            <p className="mb-3 text-sm text-gray-400">
+              This clears every payment for{" "}
+              <span className="text-gray-200">{getTenantDisplayName(selectedTenant)}</span> and
+              releases linked bank transactions so you can reconcile again from scratch.
+            </p>
+            <ul className="mb-5 list-disc space-y-1.5 pl-5 text-sm text-gray-500">
+              <li>All rent months go back to unpaid / unsettled.</li>
+              <li>Deposit held is cleared; deposit-linked bank txs are unreconciled.</li>
+              <li>Cash and bank payments are removed; bank txs stay in Transactions.</li>
+              <li>Saved linked payers are kept so you can re-apply matched payments.</li>
+            </ul>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setReverseAllConfirmOpen(false)}
+                disabled={unreconcileAllMutation.isPending}
+                className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmReverseAllPayments}
+                disabled={unreconcileAllMutation.isPending}
+                className="rounded-full border border-rose-700 bg-rose-900/40 px-4 py-2 text-sm text-rose-200 hover:bg-rose-900/60 disabled:opacity-60"
+              >
+                {unreconcileAllMutation.isPending ? "Reversing…" : "Reverse all payments"}
               </button>
             </div>
           </div>

@@ -188,6 +188,12 @@ export async function unreconcileRentEntry(
   return res.data;
 }
 
+/** Reverse all rent + deposit payments and unreconcile linked bank txs. */
+export async function unreconcileAllPayments(tenantId: string) {
+  const res = await apiClient.post(`/tenants/${tenantId}/unreconcile-all`);
+  return res.data;
+}
+
 /** Remove a saved bank payer so future inflows no longer auto-link to this tenant. */
 export async function unlinkLinkedPayer(tenantId: string, payerId: string) {
   const res = await apiClient.delete(`/tenants/${tenantId}/linked-payers/${payerId}`);

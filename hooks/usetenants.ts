@@ -6,6 +6,7 @@ import {
   unarchiveTenant,
   payRentByCash,
   unreconcileRentEntry,
+  unreconcileAllPayments,
   unlinkLinkedPayer,
   updateTenant,
   assignTenantToRoom,
@@ -209,6 +210,26 @@ export function useUnreconcileRent() {
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.message || err?.message || "Failed to reverse payment";
+      toast.error(msg);
+    },
+  });
+}
+
+export function useUnreconcileAllPayments() {
+  const qc = useQueryClient();
+  const authUser = useAuthUser();
+  const userId = authUser?.id || authUser?._id || authUser?.userId;
+
+  return useMutation({
+    mutationFn: ({ tenantId }: { tenantId: string }) => unreconcileAllPayments(tenantId),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["tenants", userId] });
+      qc.invalidateQueries({ queryKey: ["unreconciledTransactions"] });
+      toast.success(res?.message || "All payments reversed");
+    },
+    onError: (err: any) => {
+      const msg =
+        err?.response?.data?.message || err?.message || "Failed to reverse all payments";
       toast.error(msg);
     },
   });
