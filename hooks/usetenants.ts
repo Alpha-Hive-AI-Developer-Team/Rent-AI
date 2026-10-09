@@ -46,6 +46,7 @@ export default function usePayByCash() {
         index?: number;
         month?: string;
         amount?: number;
+        paidOn?: string;
         paymentMethod?: "cash" | "bank";
       };
     }) => payRentByCash(tenantId, payload),

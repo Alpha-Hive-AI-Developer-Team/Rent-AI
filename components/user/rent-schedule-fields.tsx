@@ -50,9 +50,11 @@ type Props = {
   disabled?: boolean;
   labelClass?: string;
   inputClass?: string;
-  /** Hide base rent when parent already renders Monthly rent field */
+  /** Hide base rent when parent already renders Monthly/Weekly rent field */
   hideBaseRent?: boolean;
   baseRentLabel?: string;
+  /** monthly | weekly — affects labels only (schedule still month-keyed) */
+  frequency?: "monthly" | "weekly";
 };
 
 function sanitizeRent(value: string) {
@@ -72,8 +74,12 @@ export default function RentScheduleFields({
   labelClass = "mb-1 block text-sm text-gray-200",
   inputClass = "w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50",
   hideBaseRent = false,
-  baseRentLabel = "Monthly rent (£)",
+  baseRentLabel,
+  frequency = "monthly",
 }: Props) {
+  const weekly = frequency === "weekly";
+  const rentLabel =
+    baseRentLabel || (weekly ? "Weekly rent (£)" : "Monthly rent (£)");
   const addRow = () => {
     const now = new Date();
     const startMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -97,14 +103,14 @@ export default function RentScheduleFields({
     <div className="space-y-3">
       {!hideBaseRent && (
         <div>
-          <label className={labelClass}>{baseRentLabel}</label>
+          <label className={labelClass}>{rentLabel}</label>
           <input
             value={baseRent}
             onChange={(e) => onBaseRentChange(sanitizeRent(e.target.value))}
             disabled={disabled}
             inputMode="decimal"
             className={inputClass}
-            placeholder="e.g. 1000"
+            placeholder={weekly ? "e.g. 150" : "e.g. 1000"}
           />
         </div>
       )}
@@ -124,7 +130,9 @@ export default function RentScheduleFields({
           )}
         </div>
         <p className="mb-2 text-xs text-gray-500">
-          Optional — for a future rent increase or decrease.
+          {weekly
+            ? "Optional — change weekly rent from a month onward (applies to dues in that month and later)."
+            : "Optional — for a future rent increase or decrease."}
         </p>
 
         {adjustments.length === 0 ? (
@@ -160,7 +168,9 @@ export default function RentScheduleFields({
                 </div>
                 <div>
                   {index === 0 && (
-                    <label className="mb-1 block text-xs text-gray-500">New rent (£)</label>
+                    <label className="mb-1 block text-xs text-gray-500">
+                      {weekly ? "New weekly rent (£)" : "New rent (£)"}
+                    </label>
                   )}
                   <input
                     value={row.amount}
@@ -170,7 +180,7 @@ export default function RentScheduleFields({
                     disabled={disabled}
                     inputMode="decimal"
                     className={inputClass}
-                    placeholder="e.g. 1200"
+                    placeholder={weekly ? "e.g. 160" : "e.g. 1200"}
                     aria-label={`New rent ${index + 1}`}
                   />
                 </div>

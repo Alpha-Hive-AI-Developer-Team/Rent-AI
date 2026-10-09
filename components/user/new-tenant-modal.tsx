@@ -28,12 +28,24 @@ interface NewTenantModalProps {
 
 type TenancyType = "single" | "hmo";
 type PropertyMode = "new" | "existing";
+type RentFrequency = "monthly" | "weekly";
+
+const WEEKDAY_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: "Monday" },
+  { value: 2, label: "Tuesday" },
+  { value: 3, label: "Wednesday" },
+  { value: 4, label: "Thursday" },
+  { value: 5, label: "Friday" },
+  { value: 6, label: "Saturday" },
+  { value: 0, label: "Sunday" },
+];
 
 type RoomTenant = {
   id: string;
   tenantName: string;
   rent: string;
   dueOn: number;
+  rentFrequency: RentFrequency;
   moveInDate: string;
   room: string;
   /** Already on this property — shown read-only when adding more rooms */
@@ -98,6 +110,26 @@ function clampDueOn(dueOn: number, moveInDate: string): number {
   return Math.min(max, Math.max(1, Number(dueOn) || 1));
 }
 
+function weekdayFromMoveIn(moveInDate: string): number {
+  if (!moveInDate || !/^\d{4}-\d{2}-\d{2}$/.test(moveInDate)) return 1;
+  const [year, month, day] = moveInDate.split("-").map(Number);
+  if (!year || !month || !day) return 1;
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
+function clampDueOnForFrequency(
+  dueOn: number,
+  moveInDate: string,
+  frequency: RentFrequency
+): number {
+  if (frequency === "weekly") {
+    const day = Number(dueOn);
+    if (Number.isInteger(day) && day >= 0 && day <= 6) return day;
+    return weekdayFromMoveIn(moveInDate);
+  }
+  return clampDueOn(dueOn, moveInDate);
+}
+
 function dueDayOptions(moveInDate: string): number[] {
   const max = daysInMonthForDate(moveInDate);
   return Array.from({ length: max }, (_, i) => i + 1);
@@ -143,6 +175,7 @@ function newRoom(index: number): RoomTenant {
     tenantName: "",
     rent: "",
     dueOn: 1,
+    rentFrequency: "monthly",
     moveInDate: "",
     room: `Room ${index}`,
     isExisting: false,
@@ -162,12 +195,13 @@ function buildExistingRoomsForProperty(address: string, tenants: any[]): RoomTen
   return tenants
     .filter((t) => String(t.property || "").trim().toLowerCase() === key)
     .filter((t) => t.tenancyStatus !== "ended")
-    .map((t, i) => ({
+    .map((t, i): RoomTenant => ({
       id: `existing-${t._id || i}`,
       tenantId: t._id ? String(t._id) : undefined,
       tenantName: formatTenantNames(t.tenantName),
       rent: t.rent != null && t.rent !== "" ? String(t.rent) : "",
       dueOn: Number(t.dueOn) || 1,
+      rentFrequency: t.rentFrequency === "weekly" ? "weekly" : "monthly",
       moveInDate: t.moveInDate ? String(t.moveInDate).slice(0, 10) : "",
       room: t.room ? String(t.room).trim() : "",
       isExisting: true,
@@ -211,6 +245,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     tenantName: "",
     rent: "",
     dueOn: 1,
+    rentFrequency: "monthly" as RentFrequency,
     moveInDate: "",
     hasDeposit: false,
     depositAmount: "",
@@ -306,6 +341,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
       tenantName: "",
       rent: "",
       dueOn: 1,
+      rentFrequency: "monthly",
       moveInDate: "",
       hasDeposit: false,
       depositAmount: "",
@@ -434,7 +470,11 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     }
     const rentNum = Number(room.rent);
     if (!Number.isFinite(rentNum) || rentNum <= 0) {
-      toast.error("Enter a positive monthly rent.");
+      toast.error(
+        room.rentFrequency === "weekly"
+          ? "Enter a positive weekly rent."
+          : "Enter a positive monthly rent."
+      );
       return;
     }
     if (!room.moveInDate) {
@@ -449,15 +489,19 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
       }
     }
 
+    const freq: RentFrequency = room.rentFrequency === "weekly" ? "weekly" : "monthly";
     setAssigningRoomId(room.id);
     try {
       await assignTenantToRoom(room.tenantId, {
         tenantName: [name],
         rent: rentNum,
-        dueOn: clampDueOn(room.dueOn, room.moveInDate),
+        dueOn: clampDueOnForFrequency(room.dueOn, room.moveInDate, freq),
+        rentFrequency: freq,
         moveInDate: room.moveInDate,
-        rentSchedule: buildRentSchedulePayload(room.rentAdjustments || []),
-        dueOnSchedule: buildDueOnSchedulePayload(room.dueOnAdjustments || []),
+        rentSchedule:
+          freq === "weekly" ? [] : buildRentSchedulePayload(room.rentAdjustments || []),
+        dueOnSchedule:
+          freq === "weekly" ? [] : buildDueOnSchedulePayload(room.dueOnAdjustments || []),
         ...depositPayloadFromFields(room),
       });
       setRooms((prev) =>
@@ -489,11 +533,20 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
         // Existing occupied rooms stay read-only; vacant can edit while assigning
         if (r.isExisting && !r.assigning) return r;
         const next = { ...r, ...patch };
+        const freq: RentFrequency =
+          next.rentFrequency === "weekly" ? "weekly" : "monthly";
+        next.rentFrequency = freq;
+        if (Object.prototype.hasOwnProperty.call(patch, "rentFrequency")) {
+          next.dueOn = clampDueOnForFrequency(next.dueOn, next.moveInDate, freq);
+          if (freq === "weekly") {
+            next.dueOnAdjustments = [];
+          }
+        }
         if (Object.prototype.hasOwnProperty.call(patch, "moveInDate")) {
-          next.dueOn = clampDueOn(next.dueOn, next.moveInDate);
+          next.dueOn = clampDueOnForFrequency(next.dueOn, next.moveInDate, freq);
         }
         if (Object.prototype.hasOwnProperty.call(patch, "dueOn")) {
-          next.dueOn = clampDueOn(next.dueOn, next.moveInDate);
+          next.dueOn = clampDueOnForFrequency(next.dueOn, next.moveInDate, freq);
         }
         return next;
       })
@@ -544,26 +597,50 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
             {
               tenantName: singleTenant.tenantName.trim(),
               rent: Number(singleTenant.rent),
-              dueOn: Number(singleTenant.dueOn) || 1,
+              rentFrequency: singleTenant.rentFrequency === "weekly" ? "weekly" : "monthly",
+              dueOn: clampDueOnForFrequency(
+                singleTenant.dueOn,
+                singleTenant.moveInDate,
+                singleTenant.rentFrequency === "weekly" ? "weekly" : "monthly"
+              ),
               moveInDate: singleTenant.moveInDate || undefined,
               ...depositPayloadFromFields(singleTenant),
-              rentSchedule: buildRentSchedulePayload(singleTenant.rentAdjustments || []),
-              dueOnSchedule: buildDueOnSchedulePayload(singleTenant.dueOnAdjustments || []),
+              rentSchedule:
+                singleTenant.rentFrequency === "weekly"
+                  ? []
+                  : buildRentSchedulePayload(singleTenant.rentAdjustments || []),
+              dueOnSchedule:
+                singleTenant.rentFrequency === "weekly"
+                  ? []
+                  : buildDueOnSchedulePayload(singleTenant.dueOnAdjustments || []),
             },
           ]
-        : (addingToExisting ? newRooms : rooms).map((r) => ({
-            tenantName: r.vacant ? [] : r.tenantName.trim(),
-            rent: r.vacant ? (r.rent.trim() === "" ? 0 : Number(r.rent)) : Number(r.rent),
-            dueOn: r.vacant ? undefined : Number(r.dueOn) || 1,
-            moveInDate: r.vacant ? undefined : r.moveInDate || undefined,
-            room: r.room.trim(),
-            vacant: Boolean(r.vacant),
-            ...(r.vacant
-              ? { depositAmount: 0, depositPaidDate: null }
-              : depositPayloadFromFields(r)),
-            rentSchedule: r.vacant ? [] : buildRentSchedulePayload(r.rentAdjustments || []),
-            dueOnSchedule: r.vacant ? [] : buildDueOnSchedulePayload(r.dueOnAdjustments || []),
-          }));
+        : (addingToExisting ? newRooms : rooms).map((r) => {
+            const freq: RentFrequency =
+              r.rentFrequency === "weekly" ? "weekly" : "monthly";
+            return {
+              tenantName: r.vacant ? [] : r.tenantName.trim(),
+              rent: r.vacant ? (r.rent.trim() === "" ? 0 : Number(r.rent)) : Number(r.rent),
+              rentFrequency: r.vacant ? undefined : freq,
+              dueOn: r.vacant
+                ? undefined
+                : clampDueOnForFrequency(r.dueOn, r.moveInDate, freq),
+              moveInDate: r.vacant ? undefined : r.moveInDate || undefined,
+              room: r.room.trim(),
+              vacant: Boolean(r.vacant),
+              ...(r.vacant
+                ? { depositAmount: 0, depositPaidDate: null }
+                : depositPayloadFromFields(r)),
+              rentSchedule:
+                r.vacant || freq === "weekly"
+                  ? []
+                  : buildRentSchedulePayload(r.rentAdjustments || []),
+              dueOnSchedule:
+                r.vacant || freq === "weekly"
+                  ? []
+                  : buildDueOnSchedulePayload(r.dueOnAdjustments || []),
+            };
+          });
 
     createMutation.mutate(
       {
@@ -938,9 +1015,39 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                             className={inputClass}
                           />
                         </div>
-              <div>
-                          <label className={labelClass}>Monthly rent (£)</label>
-                <input
+                        <div>
+                          <label className={labelClass}>Rent frequency</label>
+                          <select
+                            value={singleTenant.rentFrequency}
+                            onChange={(e) => {
+                              const rentFrequency = (
+                                e.target.value === "weekly" ? "weekly" : "monthly"
+                              ) as RentFrequency;
+                              setSingleTenant((s) => ({
+                                ...s,
+                                rentFrequency,
+                                dueOn: clampDueOnForFrequency(s.dueOn, s.moveInDate, rentFrequency),
+                                dueOnAdjustments:
+                                  rentFrequency === "weekly" ? [] : s.dueOnAdjustments,
+                              }));
+                            }}
+                            className={`${inputClass} [color-scheme:dark]`}
+                          >
+                            <option value="monthly" className="bg-[#0a0a0a] text-white">
+                              Monthly
+                            </option>
+                            <option value="weekly" className="bg-[#0a0a0a] text-white">
+                              Weekly
+                            </option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className={labelClass}>
+                            {singleTenant.rentFrequency === "weekly"
+                              ? "Weekly rent (£)"
+                              : "Monthly rent (£)"}
+                          </label>
+                          <input
                             value={singleTenant.rent}
                             onChange={(e) =>
                               setSingleTenant((s) => ({
@@ -948,11 +1055,13 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                 rent: sanitizeRentInput(e.target.value),
                               }))
                             }
-                            placeholder="e.g. 1200"
+                            placeholder={
+                              singleTenant.rentFrequency === "weekly" ? "e.g. 150" : "e.g. 1200"
+                            }
                             className={inputClass}
-                />
-              </div>
-                <div>
+                          />
+                        </div>
+                        <div>
                           <label className={labelClass}>Move-in date</label>
                           <DateInput
                             value={singleTenant.moveInDate}
@@ -960,68 +1069,113 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                               setSingleTenant((s) => ({
                                 ...s,
                                 moveInDate,
-                                dueOn: clampDueOn(s.dueOn, moveInDate),
+                                dueOn: clampDueOnForFrequency(
+                                  s.dueOn,
+                                  moveInDate,
+                                  s.rentFrequency
+                                ),
                               }));
                             }}
                             className={`${inputClass} [color-scheme:dark]`}
                           />
                         </div>
-                <div>
-                          <label className={labelClass}>Due day of month</label>
-                  <select
-                            value={clampDueOn(singleTenant.dueOn, singleTenant.moveInDate)}
-                            onChange={(e) =>
-                              setSingleTenant((s) => ({
-                                ...s,
-                                dueOn: clampDueOn(Number(e.target.value) || 1, s.moveInDate),
-                              }))
-                            }
-                            className={`${inputClass} [color-scheme:dark]`}
-                          >
-                            {dueDayOptions(singleTenant.moveInDate).map((day) => (
-                              <option key={day} value={day} className="bg-[#0a0a0a] text-white">
-                                {day}
-                              </option>
-                            ))}
-                  </select>
-                          {!singleTenant.moveInDate && (
+                        <div>
+                          <label className={labelClass}>
+                            {singleTenant.rentFrequency === "weekly"
+                              ? "Due day of week"
+                              : "Due day of month"}
+                          </label>
+                          {singleTenant.rentFrequency === "weekly" ? (
+                            <select
+                              value={clampDueOnForFrequency(
+                                singleTenant.dueOn,
+                                singleTenant.moveInDate,
+                                "weekly"
+                              )}
+                              onChange={(e) =>
+                                setSingleTenant((s) => ({
+                                  ...s,
+                                  dueOn: clampDueOnForFrequency(
+                                    Number(e.target.value),
+                                    s.moveInDate,
+                                    "weekly"
+                                  ),
+                                }))
+                              }
+                              className={`${inputClass} [color-scheme:dark]`}
+                            >
+                              {WEEKDAY_OPTIONS.map((day) => (
+                                <option
+                                  key={day.value}
+                                  value={day.value}
+                                  className="bg-[#0a0a0a] text-white"
+                                >
+                                  {day.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <select
+                              value={clampDueOn(singleTenant.dueOn, singleTenant.moveInDate)}
+                              onChange={(e) =>
+                                setSingleTenant((s) => ({
+                                  ...s,
+                                  dueOn: clampDueOn(Number(e.target.value) || 1, s.moveInDate),
+                                }))
+                              }
+                              className={`${inputClass} [color-scheme:dark]`}
+                            >
+                              {dueDayOptions(singleTenant.moveInDate).map((day) => (
+                                <option key={day} value={day} className="bg-[#0a0a0a] text-white">
+                                  {day}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          {singleTenant.rentFrequency === "monthly" && !singleTenant.moveInDate && (
                             <p className="mt-1 text-[11px] text-gray-500">
                               Select a move-in date to limit days for that month.
                             </p>
                           )}
-                </div>
-                        <div className="md:col-span-2 xl:col-span-4">
-                          <DueOnScheduleFields
-                            baseDueOn={singleTenant.dueOn}
-                            onBaseDueOnChange={(dueOn) =>
-                              setSingleTenant((s) => ({
-                                ...s,
-                                dueOn: clampDueOn(dueOn, s.moveInDate),
-                              }))
-                            }
-                            adjustments={singleTenant.dueOnAdjustments || []}
-                            onAdjustmentsChange={(dueOnAdjustments) =>
-                              setSingleTenant((s) => ({ ...s, dueOnAdjustments }))
-                            }
-                            hideBaseDueOn
-                            labelClass={labelClass}
-                            inputClass={inputClass}
-                            maxDueDay={dueDayOptions(singleTenant.moveInDate).length}
-                          />
                         </div>
-                        <div className="md:col-span-2 xl:col-span-4">
-                          <RentScheduleFields
-                            baseRent={singleTenant.rent}
-                            onBaseRentChange={(rent) => setSingleTenant((s) => ({ ...s, rent }))}
-                            adjustments={singleTenant.rentAdjustments || []}
-                            onAdjustmentsChange={(rentAdjustments) =>
-                              setSingleTenant((s) => ({ ...s, rentAdjustments }))
-                            }
-                            hideBaseRent
-                            labelClass={labelClass}
-                            inputClass={inputClass}
-                          />
-                        </div>
+                        {singleTenant.rentFrequency === "monthly" && (
+                          <>
+                            <div className="md:col-span-2 xl:col-span-4">
+                              <DueOnScheduleFields
+                                baseDueOn={singleTenant.dueOn}
+                                onBaseDueOnChange={(dueOn) =>
+                                  setSingleTenant((s) => ({
+                                    ...s,
+                                    dueOn: clampDueOn(dueOn, s.moveInDate),
+                                  }))
+                                }
+                                adjustments={singleTenant.dueOnAdjustments || []}
+                                onAdjustmentsChange={(dueOnAdjustments) =>
+                                  setSingleTenant((s) => ({ ...s, dueOnAdjustments }))
+                                }
+                                hideBaseDueOn
+                                labelClass={labelClass}
+                                inputClass={inputClass}
+                                maxDueDay={dueDayOptions(singleTenant.moveInDate).length}
+                              />
+                            </div>
+                            <div className="md:col-span-2 xl:col-span-4">
+                              <RentScheduleFields
+                                baseRent={singleTenant.rent}
+                                onBaseRentChange={(rent) =>
+                                  setSingleTenant((s) => ({ ...s, rent }))
+                                }
+                                adjustments={singleTenant.rentAdjustments || []}
+                                onAdjustmentsChange={(rentAdjustments) =>
+                                  setSingleTenant((s) => ({ ...s, rentAdjustments }))
+                                }
+                                hideBaseRent
+                                labelClass={labelClass}
+                                inputClass={inputClass}
+                              />
+                            </div>
+                          </>
+                        )}
                         <div className="md:col-span-2 xl:col-span-4">
                           <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-300">
                             <input
@@ -1204,11 +1358,36 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                   className={`${inputClass} disabled:cursor-not-allowed disabled:text-gray-400`}
                                 />
                               </div>
+                              {!(isVacant && !isAssigning) && (
+                                <div>
+                                  <label className={labelClass}>Rent frequency</label>
+                                  <select
+                                    value={room.rentFrequency === "weekly" ? "weekly" : "monthly"}
+                                    onChange={(e) =>
+                                      updateRoom(room.id, {
+                                        rentFrequency:
+                                          e.target.value === "weekly" ? "weekly" : "monthly",
+                                      })
+                                    }
+                                    disabled={fieldsLocked}
+                                    className={`${inputClass} [color-scheme:dark] disabled:cursor-not-allowed disabled:text-gray-400`}
+                                  >
+                                    <option value="monthly" className="bg-[#0a0a0a] text-white">
+                                      Monthly
+                                    </option>
+                                    <option value="weekly" className="bg-[#0a0a0a] text-white">
+                                      Weekly
+                                    </option>
+                                  </select>
+                                </div>
+                              )}
                               <div>
                                 <label className={labelClass}>
                                   {isVacant && !isAssigning
                                     ? "Expected rent (£)"
-                                    : "Monthly rent (£)"}
+                                    : room.rentFrequency === "weekly"
+                                      ? "Weekly rent (£)"
+                                      : "Monthly rent (£)"}
                                 </label>
                                 <input
                                   value={room.rent}
@@ -1219,7 +1398,11 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                   }
                                   disabled={isExisting && !isAssigning}
                                   placeholder={
-                                    isVacant && !isAssigning ? "Optional" : "e.g. 650"
+                                    isVacant && !isAssigning
+                                      ? "Optional"
+                                      : room.rentFrequency === "weekly"
+                                        ? "e.g. 150"
+                                        : "e.g. 650"
                                   }
                                   className={`${inputClass} disabled:cursor-not-allowed disabled:text-gray-400`}
                                 />
@@ -1238,30 +1421,69 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                 />
                               </div>
                               <div>
-                                <label className={labelClass}>Due day</label>
-                                <select
-                                  value={clampDueOn(room.dueOn, room.moveInDate)}
-                                  onChange={(e) =>
-                                    updateRoom(room.id, {
-                                      dueOn: Number(e.target.value) || 1,
-                                    })
-                                  }
-                                  disabled={fieldsLocked}
-                                  className={`${inputClass} [color-scheme:dark] disabled:cursor-not-allowed disabled:text-gray-400`}
-                                >
-                                  {dueDayOptions(room.moveInDate).map((day) => (
-                                    <option key={day} value={day} className="bg-[#0a0a0a] text-white">
-                                      {day}
-                                    </option>
-                                  ))}
-                                </select>
-                                {!fieldsLocked && !room.moveInDate && (
+                                <label className={labelClass}>
+                                  {room.rentFrequency === "weekly"
+                                    ? "Due day of week"
+                                    : "Due day"}
+                                </label>
+                                {room.rentFrequency === "weekly" ? (
+                                  <select
+                                    value={clampDueOnForFrequency(
+                                      room.dueOn,
+                                      room.moveInDate,
+                                      "weekly"
+                                    )}
+                                    onChange={(e) =>
+                                      updateRoom(room.id, {
+                                        dueOn: Number(e.target.value),
+                                      })
+                                    }
+                                    disabled={fieldsLocked}
+                                    className={`${inputClass} [color-scheme:dark] disabled:cursor-not-allowed disabled:text-gray-400`}
+                                  >
+                                    {WEEKDAY_OPTIONS.map((day) => (
+                                      <option
+                                        key={day.value}
+                                        value={day.value}
+                                        className="bg-[#0a0a0a] text-white"
+                                      >
+                                        {day.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <select
+                                    value={clampDueOn(room.dueOn, room.moveInDate)}
+                                    onChange={(e) =>
+                                      updateRoom(room.id, {
+                                        dueOn: Number(e.target.value) || 1,
+                                      })
+                                    }
+                                    disabled={fieldsLocked}
+                                    className={`${inputClass} [color-scheme:dark] disabled:cursor-not-allowed disabled:text-gray-400`}
+                                  >
+                                    {dueDayOptions(room.moveInDate).map((day) => (
+                                      <option
+                                        key={day}
+                                        value={day}
+                                        className="bg-[#0a0a0a] text-white"
+                                      >
+                                        {day}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                                {!fieldsLocked &&
+                                  room.rentFrequency !== "weekly" &&
+                                  !room.moveInDate && (
                                   <p className="mt-1 text-[11px] text-gray-500">
                                     Select a move-in date to limit days for that month.
                                   </p>
                                 )}
                               </div>
-                              {!(isExisting && !isAssigning) && !isVacant && (
+                              {!(isExisting && !isAssigning) &&
+                                !isVacant &&
+                                room.rentFrequency !== "weekly" && (
                                 <>
                                   <div className="md:col-span-2 xl:col-span-4">
                                     <DueOnScheduleFields
@@ -1294,7 +1516,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                   </div>
                                 </>
                               )}
-                              {isVacant && isAssigning && (
+                              {isVacant && isAssigning && room.rentFrequency !== "weekly" && (
                                 <>
                                   <div className="md:col-span-2 xl:col-span-4">
                                     <DueOnScheduleFields
