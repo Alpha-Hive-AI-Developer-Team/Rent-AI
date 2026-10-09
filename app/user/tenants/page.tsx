@@ -12,6 +12,8 @@ import DueOnScheduleFields, {
   buildDueOnSchedulePayload,
   dueOnScheduleFromTenant,
   getCurrentDueOnFromTenant,
+  weekdayLabel,
+  WEEKDAY_OPTIONS,
   type DueOnAdjustmentRow,
 } from "@/components/user/due-on-schedule-fields";
 import usePayByCash, {
@@ -312,6 +314,7 @@ export default function TenantsPage() {
     index: number;
     entry: any;
     cashAmount: string;
+    paidOn: string;
     paymentMethod: "cash" | "bank";
   } | null>(null);
   const [editTenantOpen, setEditTenantOpen] = useState(false);
@@ -590,7 +593,6 @@ export default function TenantsPage() {
         ? new Date(selectedTenant.moveInDate).toISOString().slice(0, 10)
         : ""
     );
-    setEditDueOn(Number(selectedTenant.dueOn) || 1);
     const existingDeposit = Number(selectedTenant.depositAmount) || 0;
     setEditHasDeposit(existingDeposit > 0);
     setEditDeposit(existingDeposit > 0 ? String(existingDeposit) : "");
@@ -771,7 +773,11 @@ export default function TenantsPage() {
     if (!isVacant) {
       const rentNum = Number(editRent);
       if (!Number.isFinite(rentNum) || rentNum <= 0) {
-        toast.error("Enter a positive monthly rent.");
+        toast.error(
+          selectedTenant.rentFrequency === "weekly"
+            ? "Enter a positive weekly rent."
+            : "Enter a positive monthly rent."
+        );
         return;
       }
       for (const adj of editRentAdjustments) {
@@ -812,7 +818,10 @@ export default function TenantsPage() {
       // Always send so backend can rebuild prorated unpaid schedule (stale history from older rules)
       payload.moveInDate = editMoveIn || null;
       payload.dueOn = editDueOn;
-      payload.dueOnSchedule = buildDueOnSchedulePayload(editDueOnAdjustments);
+      payload.dueOnSchedule = buildDueOnSchedulePayload(
+        editDueOnAdjustments,
+        selectedTenant.rentFrequency === "weekly" ? "weekly" : "monthly"
+      );
     }
     if (!isVacant) {
       const nextDeposit = editHasDeposit && Number(editDeposit) > 0 ? Number(editDeposit) : 0;
@@ -1778,7 +1787,7 @@ export default function TenantsPage() {
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-400">
                 <p>
-                  Monthly rent{" "}
+                  {selectedTenant.rentFrequency === "weekly" ? "Weekly rent" : "Monthly rent"}{" "}
                   <span className="font-medium text-gray-200">
                     {formatMoney(Number(selectedTenant.rent) || 0)}
                   </span>
@@ -2352,6 +2361,7 @@ export default function TenantsPage() {
                                     index,
                                     entry,
                                     cashAmount: String(suggested),
+                                    paidOn: new Date().toISOString().slice(0, 10),
                                     paymentMethod: "cash",
                                   });
                                 }}
@@ -3107,7 +3117,7 @@ export default function TenantsPage() {
           <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <h3 className="mb-2 text-lg font-semibold">Record payment</h3>
             <p className="mb-4 text-sm text-gray-400">
-              Enter how much was paid (full remaining or a partial amount) and whether it was{" "}
+              Enter how much was paid (full remaining or a partial amount), the date it was paid, and whether it was{" "}
               <strong>cash</strong> or <strong>bank</strong>.
               {depositOpen > 0
                 ? " Same as auto-reconcile: deposit is taken first, then rent."
@@ -3178,7 +3188,7 @@ export default function TenantsPage() {
               className="mb-2 w-full rounded-lg border border-gray-800 bg-[#050505] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-700 disabled:opacity-50"
             />
             {Number.isFinite(entered) && entered > 0 && (previewDeposit > 0.001 || previewRent > 0.001) && (
-              <p className="mb-4 text-xs text-sky-300/90">
+              <p className="mb-3 text-xs text-sky-300/90">
                 Will apply:{" "}
                 {previewDeposit > 0.001 && (
                   <span>{formatMoney(previewDeposit)} deposit</span>
@@ -3187,9 +3197,16 @@ export default function TenantsPage() {
                 {previewRent > 0.001 && <span>{formatMoney(previewRent)} rent</span>}
               </p>
             )}
-            {!(Number.isFinite(entered) && entered > 0 && (previewDeposit > 0.001 || previewRent > 0.001)) && (
-              <div className="mb-4" />
-            )}
+
+            <label className="mb-1 block text-sm text-gray-300">Date paid</label>
+            <DateInput
+              value={pendingCash.paidOn}
+              onChange={(paidOn) =>
+                setPendingCash((prev) => (prev ? { ...prev, paidOn } : prev))
+              }
+              disabled={payByCashMutation.isPending}
+              className="mb-4 w-full rounded-lg border border-gray-800 bg-[#050505] px-3 py-2 text-sm text-white [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-amber-700 disabled:opacity-50"
+            />
 
             <div className="flex justify-end gap-3">
               <button
@@ -3218,15 +3235,21 @@ export default function TenantsPage() {
                     );
                     return;
                   }
+                  if (!pendingCash.paidOn || !/^\d{4}-\d{2}-\d{2}$/.test(pendingCash.paidOn)) {
+                    toast.error("Select the date this payment was made");
+                    return;
+                  }
 
                   const payload: {
                     index: number;
                     amount: number;
                     month?: string;
+                    paidOn: string;
                     paymentMethod: "cash" | "bank";
                   } = {
                     index: pendingCash.index,
                     amount,
+                    paidOn: pendingCash.paidOn,
                     paymentMethod: pendingCash.paymentMethod,
                   };
                   if (pendingCash.entry.month) {
@@ -3653,7 +3676,11 @@ export default function TenantsPage() {
                       value={editMoveIn}
                       onChange={(next) => {
                         setEditMoveIn(next);
-                        if (next && /^\d{4}-\d{2}-\d{2}$/.test(next)) {
+                        if (
+                          selectedTenant.rentFrequency !== "weekly" &&
+                          next &&
+                          /^\d{4}-\d{2}-\d{2}$/.test(next)
+                        ) {
                           const [y, m] = next.split("-").map(Number);
                           const maxDay = new Date(y, m, 0).getDate();
                           setEditDueOn((d) => Math.min(d, maxDay));
@@ -3664,46 +3691,80 @@ export default function TenantsPage() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-base text-gray-200">Rent due day</label>
-                    <select
-                      value={editDueOn}
-                      onChange={(e) => setEditDueOn(Number(e.target.value) || 1)}
-                      disabled={!canEditScheduleFields(selectedTenant)}
-                      className="w-full rounded-lg border border-[#2A2A2A] bg-[#111] px-3 py-2.5 text-base text-gray-100 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {(() => {
-                        let max = 31;
-                        if (editMoveIn && /^\d{4}-\d{2}-\d{2}$/.test(editMoveIn)) {
-                          const [y, m] = editMoveIn.split("-").map(Number);
-                          max = new Date(y, m, 0).getDate();
+                    <label className="mb-1.5 block text-base text-gray-200">
+                      {selectedTenant.rentFrequency === "weekly"
+                        ? "Rent due day of week"
+                        : "Rent due day"}
+                    </label>
+                    {selectedTenant.rentFrequency === "weekly" ? (
+                      <select
+                        value={
+                          Number.isInteger(editDueOn) && editDueOn >= 0 && editDueOn <= 6
+                            ? editDueOn
+                            : 1
                         }
-                        return Array.from({ length: max }, (_, i) => i + 1).map((day) => (
-                          <option key={day} value={day} className="bg-[#111] text-gray-100">
-                            {day}
+                        onChange={(e) => setEditDueOn(Number(e.target.value))}
+                        disabled={!canEditScheduleFields(selectedTenant)}
+                        className="w-full rounded-lg border border-[#2A2A2A] bg-[#111] px-3 py-2.5 text-base text-gray-100 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {WEEKDAY_OPTIONS.map((day) => (
+                          <option key={day.value} value={day.value} className="bg-[#111] text-gray-100">
+                            {day.label}
                           </option>
-                        ));
-                      })()}
-                    </select>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        value={editDueOn}
+                        onChange={(e) => setEditDueOn(Number(e.target.value) || 1)}
+                        disabled={!canEditScheduleFields(selectedTenant)}
+                        className="w-full rounded-lg border border-[#2A2A2A] bg-[#111] px-3 py-2.5 text-base text-gray-100 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {(() => {
+                          let max = 31;
+                          if (editMoveIn && /^\d{4}-\d{2}-\d{2}$/.test(editMoveIn)) {
+                            const [y, m] = editMoveIn.split("-").map(Number);
+                            max = new Date(y, m, 0).getDate();
+                          }
+                          return Array.from({ length: max }, (_, i) => i + 1).map((day) => (
+                            <option key={day} value={day} className="bg-[#111] text-gray-100">
+                              {day}
+                            </option>
+                          ));
+                        })()}
+                      </select>
+                    )}
                   </div>
                   {!canEditScheduleFields(selectedTenant) && (
                     <p className="text-sm text-amber-400 sm:col-span-2">
                       Move-in and due day schedule are locked after payments. Current due day:{" "}
-                      {getCurrentDueOnFromTenant(selectedTenant)}. To switch going forward, use{" "}
-                      <button
-                        type="button"
-                        className="underline hover:text-amber-300"
-                        onClick={() => {
-                          setEditTenantOpen(false);
-                          const currentDue = getCurrentDueOnFromTenant(selectedTenant);
-                          setDueDayNewOn(currentDue === 5 ? 17 : currentDue);
-                          setDueDayEffectiveFrom(defaultEffectiveFromForDueDayChange(selectedTenant));
-                          setDueDayNote("");
-                          setDueDayChangeOpen(true);
-                        }}
-                      >
-                        Change due day
-                      </button>
-                      .
+                      {selectedTenant.rentFrequency === "weekly"
+                        ? weekdayLabel(getCurrentDueOnFromTenant(selectedTenant))
+                        : getCurrentDueOnFromTenant(selectedTenant)}
+                      {selectedTenant.rentFrequency === "weekly" ? (
+                        ". Edit weekday before the first payment is recorded."
+                      ) : (
+                        <>
+                          . To switch going forward, use{" "}
+                          <button
+                            type="button"
+                            className="underline hover:text-amber-300"
+                            onClick={() => {
+                              setEditTenantOpen(false);
+                              const currentDue = getCurrentDueOnFromTenant(selectedTenant);
+                              setDueDayNewOn(currentDue === 5 ? 17 : currentDue);
+                              setDueDayEffectiveFrom(
+                                defaultEffectiveFromForDueDayChange(selectedTenant)
+                              );
+                              setDueDayNote("");
+                              setDueDayChangeOpen(true);
+                            }}
+                          >
+                            Change due day
+                          </button>
+                          .
+                        </>
+                      )}
                     </p>
                   )}
                 </div>
@@ -3716,6 +3777,9 @@ export default function TenantsPage() {
                   adjustments={editDueOnAdjustments}
                   onAdjustmentsChange={setEditDueOnAdjustments}
                   hideBaseDueOn
+                  frequency={
+                    selectedTenant.rentFrequency === "weekly" ? "weekly" : "monthly"
+                  }
                   labelClass="mb-1.5 block text-base text-gray-200"
                   inputClass="w-full rounded-lg border border-[#2A2A2A] bg-[#111] px-3 py-2.5 text-base text-gray-100 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
                   maxDueDay={
@@ -3735,6 +3799,9 @@ export default function TenantsPage() {
                   onBaseRentChange={setEditRent}
                   adjustments={editRentAdjustments}
                   onAdjustmentsChange={setEditRentAdjustments}
+                  frequency={
+                    selectedTenant.rentFrequency === "weekly" ? "weekly" : "monthly"
+                  }
                   labelClass="mb-1.5 block text-base text-gray-200"
                   inputClass="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
                 />
@@ -3840,9 +3907,13 @@ export default function TenantsPage() {
                     <p className="text-sm text-gray-200">{editMoveIn || "—"}</p>
                   </div>
                   <div>
-                    <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Due day</p>
+                    <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">
+                      {selectedTenant.rentFrequency === "weekly" ? "Due weekday" : "Due day"}
+                    </p>
                     <p className="text-sm text-gray-200">
-                      {editDueOn}
+                      {selectedTenant.rentFrequency === "weekly"
+                        ? weekdayLabel(editDueOn)
+                        : editDueOn}
                       {editDueOnAdjustments.length > 0
                         ? ` · ${editDueOnAdjustments.length} change${editDueOnAdjustments.length === 1 ? "" : "s"}`
                         : ""}
@@ -3851,7 +3922,10 @@ export default function TenantsPage() {
                       <ul className="mt-1 space-y-0.5 text-xs text-gray-500">
                         {editDueOnAdjustments.map((a) => (
                           <li key={a.id}>
-                            From {a.startMonth}: day {a.dueOn}
+                            From {a.startMonth}:{" "}
+                            {selectedTenant.rentFrequency === "weekly"
+                              ? weekdayLabel(a.dueOn)
+                              : `day ${a.dueOn}`}
                           </li>
                         ))}
                       </ul>
@@ -3861,7 +3935,9 @@ export default function TenantsPage() {
               )}
               {selectedTenant.tenancyStatus !== "vacant" && (
                 <div>
-                  <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Monthly rent</p>
+                  <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">
+                    {selectedTenant.rentFrequency === "weekly" ? "Weekly rent" : "Monthly rent"}
+                  </p>
                   <p className="text-sm text-gray-200">
                     £{Number(editRent || 0).toFixed(2)}
                     {editRentAdjustments.length > 0
