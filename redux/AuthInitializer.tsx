@@ -31,7 +31,7 @@
 //           queryClient.setQueryData(['authUser'], user);
 //           queryClient.setQueryData(['authToken'], accessToken);
 //           dispatch(initializeAuth({ user, token: accessToken }));
-        
+
 //           console.debug('Auth state restored via refresh-token');
 //           return;
 //         }
@@ -78,7 +78,7 @@
 //         const res = await apiClient.post('/users/refresh-token');
 //         const payload = res?.data?.data || res?.data;
 //         const user = payload?.user;
-    
+
 //         const accessToken = payload?.accessToken || payload?.access_token;
 
 //         if (user && accessToken) {
@@ -90,13 +90,13 @@
 //           queryClient.setQueryData(['Referee-authUser'], user);
 //           queryClient.setQueryData(['Referee-authToken'], accessToken);
 //           dispatch(initializeAuth({ user, token: accessToken }));
-        
-        
+
+
 //           return;
 //         }
 //       } catch (err) {
 //         // refresh failed — fall back to localStorage restore
-       
+
 //         localStorage.removeItem("Referee-authToken");
 //         localStorage.removeItem("Referee-authUser");
 //         // Don't show session-expired toast on the homepage
@@ -135,7 +135,7 @@ export default function AuthInitializer() {
     // LISTENER: This runs automatically whenever Firebase loads or the token refreshes.
     // It works perfectly on iOS Safari because it checks IndexedDB.
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      
+
       if (firebaseUser) {
         try {
           // 1. Get the JWT (forces refresh if needed)
@@ -165,11 +165,11 @@ export default function AuthInitializer() {
       } else {
         // No User Logged In
         const wasLoggedIn = localStorage.getItem('authToken');
-        
+
         // Cleanup
         localStorage.removeItem("authToken");
         localStorage.removeItem("authUser");
-         const isPublicAuthPage =
+        const isPublicAuthPage =
           pathname === '/auth/sign-in' ||
           pathname === '/auth/sign-up' ||
           pathname === '/' ||
@@ -178,10 +178,11 @@ export default function AuthInitializer() {
           pathname === '/auth/accept-admin-invite' ||
           pathname === '/privacy-policy' ||
           pathname === '/terms-and-conditions' ||
+          pathname === '/join' ||
           pathname.startsWith('/auth/forgot-password') ||
           pathname === '/admin/login';
 
-         if (!isPublicAuthPage) {
+        if (!isPublicAuthPage) {
           toast.error("Session expired. Please log in again.");
         }
         dispatch(initializeAuth(null));

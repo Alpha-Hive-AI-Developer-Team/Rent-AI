@@ -18,23 +18,41 @@ export function usePayment() {
 		enterprise: PRICE_ID_MAP.enterprise || process.env.NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE || '',
 	}), []);
 
-	const startCheckout = useCallback(async (plan: PlanKey, applyCredit?: boolean) => {
+	const startCheckout = useCallback(async (
+		plan: PlanKey,
+		options?: boolean | { applyCredit?: boolean; applyCreditCents?: number }
+	) => {
 		setLoading(true);
 		setError(null);
 		try {
 			const priceId = priceMap[plan];
 			if (!priceId) throw new Error(`Missing Stripe price id for plan: ${plan}`);
 			const origin = typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_CLIENT_URL || 'http://localhost:3000';
-			const sessionResult = await createCheckoutSession({
+
+			const opts =
+				typeof options === 'boolean'
+					? { applyCredit: options }
+					: options || {};
+
+			const payload: Parameters<typeof createCheckoutSession>[0] = {
 				priceId,
 				planType: plan,
 				successUrl: `${origin}/user/payment?status=success`,
 				cancelUrl: `${origin}/user/payment?status=cancel`,
-				applyCredit: !!applyCredit,
-			});
+			};
+
+			if (typeof opts.applyCreditCents === 'number' && opts.applyCreditCents > 0) {
+				payload.applyCreditCents = Math.round(opts.applyCreditCents);
+				payload.applyCredit = true;
+			} else if (opts.applyCredit) {
+				payload.applyCredit = true;
+			}
+
+			const sessionResult = await createCheckoutSession(payload);
 
 			if ('upgraded' in sessionResult && sessionResult.upgraded === true) {
 				await qc.invalidateQueries({ queryKey: ['me'] });
+				await qc.invalidateQueries({ queryKey: ['payoutWallet'] });
 				toast.success(
 					sessionResult.message ||
 						'Plan upgraded. You were charged a prorated amount for the rest of your billing period.'
