@@ -94,17 +94,18 @@ export async function acceptAdminInvite(payload: {
   return res.data;
 }
 
-// Social authentication functions
 export async function googleAuth(
   firebaseToken: string,
   role = "landlord",
-  consents?: { acceptedPrivacyPolicy?: boolean; acceptedTerms?: boolean }
+  consents?: { acceptedPrivacyPolicy?: boolean; acceptedTerms?: boolean },
+  referralCode?: string
 ) {
   const res = await apiClient.post("/auth/google", {
     token: firebaseToken,
     role,
     acceptedPrivacyPolicy: consents?.acceptedPrivacyPolicy,
     acceptedTerms: consents?.acceptedTerms,
+    referralCode,
   });
   return res.data;
 }
@@ -127,6 +128,7 @@ export async function getMyDetails() {
 
     // totalDiscountAmount returned in cents from backend
     totalDiscountAmount?: number;
+    pendingDiscountAmount?: number;
     // subscription period end (ISO string or Date) and cancel flag
     currentPeriodEnd?: string | Date | null;
     cancelAtPeriodEnd?: boolean;

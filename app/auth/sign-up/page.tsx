@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import { useSignUp } from "@/hooks/useAuth";
 import toast from "react-hot-toast";
 import VerifyOtpModal from "@/components/auth/verify-otp";
@@ -52,9 +52,27 @@ function SignUp() {
   const signUp = useSignUp();
 
   useEffect(() => {
-    const r = searchParams.get("r");
+    const fromCookie = (() => {
+      if (typeof document === "undefined") return null;
+      const match = document.cookie.match(/(?:^|; )rentai_referral_code=([^;]*)/);
+      return match ? decodeURIComponent(match[1]) : null;
+    })();
+
+    const r =
+      searchParams.get("r") ||
+      searchParams.get("ref") ||
+      searchParams.get("code") ||
+      searchParams.get("referral") ||
+      (typeof window !== "undefined" ? localStorage.getItem("rentai_referral_code") : null) ||
+      fromCookie;
+
     if (r) {
-      setForm((prev) => ({ ...prev, referralCode: r }));
+      const cleanCode = r.trim().toUpperCase();
+      setForm((prev) => ({ ...prev, referralCode: cleanCode }));
+      try {
+        localStorage.setItem("rentai_referral_code", cleanCode);
+        document.cookie = `rentai_referral_code=${encodeURIComponent(cleanCode)}; path=/; max-age=2592000; SameSite=Lax`;
+      } catch {}
     }
   }, [searchParams]);
 
@@ -68,6 +86,7 @@ function SignUp() {
     signUp.mutate(
       {
         ...form,
+        referralCode: form.referralCode ? form.referralCode.trim().toUpperCase() : undefined,
         acceptedPrivacyPolicy: true as const,
         acceptedTerms: true as const,
       },
@@ -99,6 +118,7 @@ function SignUp() {
         role: form.role,
         acceptedPrivacyPolicy: true,
         acceptedTerms: true,
+        referralCode: form.referralCode ? form.referralCode.trim().toUpperCase() : undefined,
       });
     } catch (err: unknown) {
       const error = err as { response?: { data?: { message?: string } }; message?: string };
@@ -150,6 +170,15 @@ function SignUp() {
 
         {/* Form */}
         <form onSubmit={onSubmit} className="flex flex-col gap-4 max-w-md mx-auto text-left">
+          {form.referralCode && (
+            <div className="flex items-center gap-2.5 p-3 rounded-xl bg-[#027A48]/15 border border-emerald-900/50 text-xs text-emerald-300">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <div>
+                <span className="font-semibold text-white">Partner Invitation Applied: {form.referralCode}</span>
+               
+              </div>
+            </div>
+          )}
 
           {/* First & Last Name */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -210,6 +239,37 @@ function SignUp() {
               </button>
             </div>
             <p className="text-gray-500 text-xs mt-1">Minimum 8 characters.</p>
+          </div>
+
+          {/* Referral code — auto-filled from /join?r=CODE, editable otherwise */}
+          <div>
+            <label className="block text-sm mb-1 text-gray-300">
+              Referral code <span className="text-gray-500 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. RBJEUJ75"
+              value={form.referralCode}
+              onChange={(e) => {
+                const cleanCode = e.target.value.trim().toUpperCase();
+                setForm({ ...form, referralCode: cleanCode });
+                try {
+                  if (cleanCode) {
+                    localStorage.setItem("rentai_referral_code", cleanCode);
+                  } else {
+                    localStorage.removeItem("rentai_referral_code");
+                  }
+                } catch {}
+              }}
+              disabled={pending}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              className="w-full bg-transparent border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm font-mono tracking-wider focus:outline-none focus:border-[#0CEB77] disabled:opacity-50 disabled:cursor-not-allowed uppercase"
+            />
+            <p className="text-gray-500 text-xs mt-1">
+              Have a partner invite? Paste their code here — invite links fill this automatically.
+            </p>
           </div>
 
           <div className="space-y-3 rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] p-3">

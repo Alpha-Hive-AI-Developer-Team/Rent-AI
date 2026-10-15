@@ -17,7 +17,10 @@ export default function PaymentPage() {
   const [activePlan, setActivePlan] = useState<string>("free");
   const [currentDiscount, setCurrentDiscount] = useState<number>(0);
   const [availableCredit, setAvailableCredit] = useState<number>(0);
+  const [pendingCredit, setPendingCredit] = useState<number>(0);
   const [applyCredit, setApplyCredit] = useState<boolean>(true);
+  /** Pounds the user wants to apply (capped to available credits). */
+  const [creditAmount, setCreditAmount] = useState<string>("");
 
   const planRank: Record<string, number> = {
     free: 0,
@@ -53,7 +56,16 @@ export default function PaymentPage() {
       setCurrentDiscount(profileResp.data.currentDiscount || 0);
       // Backend returns credits in cents; convert to GBP for display
       const cents = Number(profileResp.data.totalDiscountAmount || 0);
-      setAvailableCredit(Math.max(0, Math.round(cents) / 100));
+      const pounds = Math.max(0, Math.round(cents) / 100);
+      setAvailableCredit(pounds);
+      const pendingCents = Number(profileResp.data.pendingDiscountAmount || 0);
+      setPendingCredit(Math.max(0, Math.round(pendingCents) / 100));
+      setCreditAmount((prev) => {
+        if (prev === "" || prev === "0") return pounds > 0 ? pounds.toFixed(2) : "";
+        const n = Number(prev);
+        if (!Number.isFinite(n)) return pounds > 0 ? pounds.toFixed(2) : "";
+        return Math.min(Math.max(0, n), pounds).toFixed(2);
+      });
       // reflect subscription state
       // profileResp.data.currentPeriodEnd may be an ISO string or Date
       if (profileResp.data.currentPeriodEnd) {
@@ -64,6 +76,7 @@ export default function PaymentPage() {
   const { walletQuery, connectBankAsync, withdraw, manageBankAsync } = usePayout();
   const walletData = walletQuery.data ?? {};
   const walletBalance = typeof walletData.balance === 'number' ? walletData.balance : availableCredit;
+  const pendingHoldBalance = typeof walletData.pendingHold === 'number' ? walletData.pendingHold : pendingCredit;
   const isConnected = !!walletData.isConnected;
   const [connectLoading, setConnectLoading] = useState(false);
   const [manageLoading, setManageLoading] = useState(false);
@@ -73,11 +86,30 @@ export default function PaymentPage() {
   const plans = PLANS;
   const planNumericPrice: Record<string, number> = Object.fromEntries(Object.entries(PLAN_PRICE_CENTS).map(([k, v]) => [k, Math.round((v || 0) / 100)]));
 
+  const creditAmountPounds = (() => {
+    const n = Number(creditAmount);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.min(n, availableCredit);
+  })();
+
+  const creditAmountCents = Math.round(creditAmountPounds * 100);
+
   const getPlanDiscountPercent = (planKey: PlanKey) => {
     const price = planNumericPrice[planKey] || 0;
     if (price <= 0) return 0;
-    const pct = Math.min(100, (availableCredit / price) * 100);
+    const creditForPct = applyCredit ? creditAmountPounds : 0;
+    const pct = Math.min(100, (creditForPct / price) * 100);
     return Math.round(pct);
+  };
+
+  const handleSelectPlan = (planKey: "starter" | "pro" | "enterprise") => {
+    if (applyCredit && creditAmountCents > 0) {
+      startCheckout(planKey, { applyCredit: true, applyCreditCents: creditAmountCents });
+    } else if (applyCredit && availableCredit > 0) {
+      startCheckout(planKey, { applyCredit: true });
+    } else {
+      startCheckout(planKey, { applyCredit: false });
+    }
   };
 
   return (
@@ -225,7 +257,7 @@ export default function PaymentPage() {
                     onClick={() => {
                       if (disabled) return;
                       if (plan.key === 'free') return;
-                      startCheckout(plan.key as 'starter' | 'pro' | 'enterprise', applyCredit);
+                      handleSelectPlan(plan.key as 'starter' | 'pro' | 'enterprise');
                     }}
                     className={`mt-5 w-full rounded-full px-4 py-2 text-sm ${highlight ? 'bg-emerald-600 text-white border-emerald-600' : 'border border-emerald-700 text-emerald-300 hover:bg-[#0b1510]'} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
                   >
@@ -242,15 +274,71 @@ export default function PaymentPage() {
         <div className="mt-6 rounded-2xl border border-[#2A2A2A] bg-transparent p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-sm font-medium text-gray-200">Referral Discount</h3>
-            {/* <p className="text-[13px] text-gray-400 mt-1">Current discount: <span className="font-semibold text-white">{currentDiscount}%</span></p> */}
-            <p className="text-[13px] text-gray-400 mt-1">Available credits: <span className="font-semibold text-white">£{availableCredit.toFixed(2)}</span></p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+              <p className="text-[13px] text-gray-400">
+                Available credits: <span className="font-semibold text-white">£{availableCredit.toFixed(2)}</span>
+              </p>
+              {pendingHoldBalance > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs bg-amber-950/40 border border-amber-800/50 text-amber-300 font-medium" title="Commission from referred subscriptions in 14-day anti-refund hold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  £{pendingHoldBalance.toFixed(2)} on 14-day hold
+                </span>
+              )}
+            </div>
+            {pendingHoldBalance > 0 && (
+              <p className="text-[11px] text-gray-400 mt-1 max-w-md">
+                On-hold referral credits clear automatically after 14 days and can then be used for checkout discounts or bank withdrawals.
+              </p>
+            )}
           </div>
           <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center sm:justify-end gap-3 sm:gap-4 w-full">
-            {/* Apply credits toggle */}
-            <label className="flex items-center gap-2 text-sm text-gray-200 w-full sm:w-auto">
-              <input type="checkbox" className="accent-emerald-600" checked={applyCredit} onChange={(e) => setApplyCredit(e.target.checked)} />
-              Apply available credits at checkout
-            </label>
+            {/* Apply credits: toggle + chosen amount (checkout and plan upgrades) */}
+            <div className="flex flex-col gap-2 w-full sm:w-auto">
+              <label className="flex items-center gap-2 text-sm text-gray-200">
+                <input
+                  type="checkbox"
+                  className="accent-emerald-600"
+                  checked={applyCredit}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setApplyCredit(on);
+                    if (on && (!creditAmount || Number(creditAmount) <= 0) && availableCredit > 0) {
+                      setCreditAmount(availableCredit.toFixed(2));
+                    }
+                  }}
+                />
+                Apply credits at checkout / upgrade
+              </label>
+              {applyCredit && availableCredit > 0 && (
+                <label className="flex items-center gap-2 text-sm text-gray-300">
+                  <span className="whitespace-nowrap">Amount (£)</span>
+                  <input
+                    type="number"
+                    min={0.01}
+                    max={availableCredit}
+                    step={0.01}
+                    value={creditAmount}
+                    onChange={(e) => setCreditAmount(e.target.value)}
+                    onBlur={() => {
+                      const n = Number(creditAmount);
+                      if (!Number.isFinite(n) || n <= 0) {
+                        setCreditAmount(availableCredit > 0 ? availableCredit.toFixed(2) : "");
+                        return;
+                      }
+                      setCreditAmount(Math.min(n, availableCredit).toFixed(2));
+                    }}
+                    className="w-24 rounded-md border border-[#2A2A2A] bg-black px-2 py-1 text-white text-sm"
+                  />
+                  <button
+                    type="button"
+                    className="text-xs text-emerald-400 hover:underline"
+                    onClick={() => setCreditAmount(availableCredit.toFixed(2))}
+                  >
+                    Max
+                  </button>
+                </label>
+              )}
+            </div>
 
             {/* Referral dashboard */}
             <Link href="/user/referrals" className="w-full sm:w-auto">
@@ -302,6 +390,11 @@ export default function PaymentPage() {
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <div className="mt-4 space-y-2">
+                      {pendingHoldBalance > 0 && (
+                        <div className="rounded-lg bg-amber-950/30 border border-amber-800/40 p-2.5 text-xs text-amber-300/90">
+                          ⚠️ <span className="font-semibold">£{pendingHoldBalance.toFixed(2)}</span> is currently in a 14-day anti-refund hold and cannot be withdrawn yet. Only cleared available funds can be paid out.
+                        </div>
+                      )}
                       <label className="text-sm text-gray-200">Amount to withdraw (GBP)</label>
                       <input
                         type="number"
