@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, ChevronDown, X } from "lucide-react";
 import CustomTable from "@/components/admin/custom-table";
+import TenantRentHistoryTable from "@/components/tenants/TenantRentHistoryTable";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -208,12 +209,14 @@ export default function TenantManagement() {
       />
 
       {tenantModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-4xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl max-h-[80vh] overflow-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-6xl bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl max-h-[85vh] overflow-auto">
             <div className="flex items-start justify-between mb-4">
               <div>
-                <h3 className="text-lg font-semibold">{selectedTenantName} — Transactions</h3>
-                <p className="text-sm text-gray-400">Recent transaction history for this tenant</p>
+                <h3 className="text-lg font-semibold">{selectedTenantName} — Rent history</h3>
+                <p className="text-sm text-gray-400">
+                  Same payment view as the landlord portal (read-only)
+                </p>
               </div>
               <div>
                 <button onClick={() => { setTenantModalOpen(false); setSelectedTenantId(null); setSelectedTenantName(null); }} className="text-gray-400 hover:text-white">
@@ -222,64 +225,17 @@ export default function TenantManagement() {
               </div>
             </div>
 
-                {tenantLoading ? (
-                  <div className="p-6 text-center text-gray-400">Loading transactions…</div>
-                ) : tenantError ? (
-                  <div className="p-6 text-center text-rose-400">Failed to load transactions.</div>
-                ) : (
-                  <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515] p-3">
-                    {Array.isArray(tenantDetails?.rentHistory) && tenantDetails.rentHistory.length > 0 ? (
-                      <table className="min-w-full text-sm">
-                        <thead>
-                          <tr className="text-gray-400 text-left">
-                            <th className="py-2 px-3 text-xs">Month</th>
-                            <th className="py-2 px-3 text-xs">Rent</th>
-                            <th className="py-2 px-3 text-xs">Amount Paid</th>
-                            <th className="py-2 px-3 text-xs">Payment history</th>
-                            <th className="py-2 px-3 text-xs">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {tenantDetails.rentHistory.map((tr: any, i: number) => {
-                            const pieces = Array.isArray(tr.linkedPayments)
-                              ? tr.linkedPayments.filter((p: any) => (Number(p?.amount) || 0) > 0)
-                              : [];
-                            return (
-                            <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
-                              <td className="py-2 px-3 text-gray-300">{formatDate(tr.month)}</td>
-                              <td className="py-2 px-3 text-gray-300">{typeof tr.rent === 'number' ? `£${tr.rent}` : tr.rent}</td>
-                              <td className={`py-2 px-3 ${tr.status === 'unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{typeof tr.amountPaid === 'number' ? `£${tr.amountPaid}` : tr.amountPaid ?? '—'}</td>
-                              <td className="py-2 px-3 text-gray-300">
-                                {pieces.length > 0 ? (
-                                  <div className="flex flex-col gap-0.5 text-xs">
-                                    {pieces.map((p: any, pi: number) => (
-                                      <div key={pi}>
-                                        {p.paidOn ? formatDate(p.paidOn) : "—"}
-                                        {" · "}
-                                        £{Number(p.amount || 0).toFixed(2)}
-                                        {p.method ? ` · ${p.method}` : ""}
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : tr.paidOn ? (
-                                  formatDate(tr.paidOn)
-                                ) : (
-                                  "—"
-                                )}
-                              </td>
-                              <td className="py-2 px-3">
-                                <span className={`px-2 py-1 text-xs rounded-full border ${tr.status === 'paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : tr.status === 'partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700'}`}>{tr.status?.charAt(0).toUpperCase() + tr.status?.slice(1)}</span>
-                              </td>
-                            </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="p-6 text-center text-gray-400">No transactions for this tenant right now</div>
-                    )}
-                  </div>
-                )}
+            {tenantError ? (
+              <div className="p-6 text-center text-rose-400">Failed to load rent history.</div>
+            ) : (
+              <TenantRentHistoryTable
+                tenantId={selectedTenantId}
+                tenant={tenantDetails}
+                rentHistory={tenantDetails?.rentHistory}
+                loading={tenantLoading}
+                readOnly
+              />
+            )}
 
             <div className="mt-4 flex items-center justify-end">
               <button onClick={() => { setTenantModalOpen(false); setSelectedTenantId(null); setSelectedTenantName(null); }} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Close</button>
