@@ -13,14 +13,29 @@ import { toast } from "react-hot-toast";
 import { formatDate } from "@/lib/utils";
 
 export default function PaymentPage() {
-  const { startCheckout, cancelSubscription, cancelMutation, loading, error } = usePayment();
+  const {
+    startCheckout,
+    cancelSubscription,
+    cancelMutation,
+    loading,
+    error,
+    nextCreditQuery,
+    applyCreditsToNextRenewal,
+    applyNextCreditMutation,
+  } = usePayment();
   const [activePlan, setActivePlan] = useState<string>("free");
   const [currentDiscount, setCurrentDiscount] = useState<number>(0);
   const [availableCredit, setAvailableCredit] = useState<number>(0);
   const [pendingCredit, setPendingCredit] = useState<number>(0);
-  const [applyCredit, setApplyCredit] = useState<boolean>(true);
-  /** Pounds the user wants to apply (capped to available credits). */
-  const [creditAmount, setCreditAmount] = useState<string>("");
+  const [applyCredit, setApplyCredit] = useState<boolean>(false);
+  /** Pounds the user wants to apply (capped to available credits). Default 0 so credits are not used by accident. */
+  const [creditAmount, setCreditAmount] = useState<string>("0");
+  /** Pounds to reserve for the next auto-renewal. Default 0 so credits are not reserved by accident. */
+  const [nextRenewalCreditAmount, setNextRenewalCreditAmount] = useState<string>("0");
+  /** Pending mid-cycle upgrade (proration) awaiting confirmation — not used for new checkout. */
+  const [upgradeConfirmPlan, setUpgradeConfirmPlan] = useState<
+    "starter" | "pro" | "enterprise" | null
+  >(null);
 
   const planRank: Record<string, number> = {
     free: 0,
@@ -60,17 +75,17 @@ export default function PaymentPage() {
       setAvailableCredit(pounds);
       const pendingCents = Number(profileResp.data.pendingDiscountAmount || 0);
       setPendingCredit(Math.max(0, Math.round(pendingCents) / 100));
+      // Keep chosen credit amounts; only clamp if they exceed newly loaded wallet balance.
       setCreditAmount((prev) => {
-        if (prev === "" || prev === "0") return pounds > 0 ? pounds.toFixed(2) : "";
         const n = Number(prev);
-        if (!Number.isFinite(n)) return pounds > 0 ? pounds.toFixed(2) : "";
-        return Math.min(Math.max(0, n), pounds).toFixed(2);
+        if (!Number.isFinite(n) || n <= 0) return "0";
+        return Math.min(n, pounds).toFixed(2);
       });
-      // reflect subscription state
-      // profileResp.data.currentPeriodEnd may be an ISO string or Date
-      if (profileResp.data.currentPeriodEnd) {
-        setTimeout(() => {}, 0); // noop to hint re-render if needed
-      }
+      setNextRenewalCreditAmount((prev) => {
+        const n = Number(prev);
+        if (!Number.isFinite(n) || n <= 0) return "0";
+        return Math.min(n, pounds).toFixed(2);
+      });
     }
   }, [profileResp]);
   const { walletQuery, connectBankAsync, withdraw, manageBankAsync } = usePayout();
@@ -94,6 +109,41 @@ export default function PaymentPage() {
 
   const creditAmountCents = Math.round(creditAmountPounds * 100);
 
+  const nextCreditPreview = nextCreditQuery.data;
+  const nextPlanPounds = Math.max(0, Number(nextCreditPreview?.nextPlanAmountCents || 0) / 100);
+  const stripeReservedPounds = Math.max(0, Number(nextCreditPreview?.stripeCreditCents || 0) / 100);
+  const estimatedNextChargePounds = Math.max(
+    0,
+    Number(nextCreditPreview?.estimatedNextChargeCents || 0) / 100
+  );
+  const canReserveForNext =
+    !!nextCreditPreview?.canApply && availableCredit > 0 && nextPlanPounds > 0;
+
+  const nextRenewalCreditPounds = (() => {
+    const n = Number(nextRenewalCreditAmount);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.min(n, availableCredit);
+  })();
+
+  const previewNextChargeAfterReserve = Math.max(
+    0,
+    Math.round((estimatedNextChargePounds - nextRenewalCreditPounds) * 100) / 100
+  );
+
+  const handleReserveNextRenewalCredit = async () => {
+    const cents = Math.round(nextRenewalCreditPounds * 100);
+    if (!(cents > 0)) {
+      toast.error("Enter a credit amount greater than £0");
+      return;
+    }
+    try {
+      await applyCreditsToNextRenewal(cents);
+      setNextRenewalCreditAmount("0");
+    } catch {
+      // toast handled in mutation
+    }
+  };
+
   const getPlanDiscountPercent = (planKey: PlanKey) => {
     const price = planNumericPrice[planKey] || 0;
     if (price <= 0) return 0;
@@ -102,15 +152,47 @@ export default function PaymentPage() {
     return Math.round(pct);
   };
 
-  const handleSelectPlan = (planKey: "starter" | "pro" | "enterprise") => {
+  const hasActivePaidSubscription =
+    (planRank[activePlan] ?? 0) > 0 &&
+    profileResp?.data?.subscriptionStatus === "active" &&
+    !profileResp?.data?.cancelAtPeriodEnd;
+
+  const runPlanCheckout = (planKey: "starter" | "pro" | "enterprise") => {
+    // Only apply credits when explicitly enabled AND amount > 0 (default amount is 0).
     if (applyCredit && creditAmountCents > 0) {
       startCheckout(planKey, { applyCredit: true, applyCreditCents: creditAmountCents });
-    } else if (applyCredit && availableCredit > 0) {
-      startCheckout(planKey, { applyCredit: true });
     } else {
       startCheckout(planKey, { applyCredit: false });
     }
   };
+
+  const handleSelectPlan = (planKey: "starter" | "pro" | "enterprise") => {
+    const currentRank = planRank[activePlan] ?? 0;
+    const targetRank = planRank[planKey] ?? 0;
+    // Mid-cycle upgrade / proration — ask for confirmation (not new Stripe Checkout).
+    if (hasActivePaidSubscription && targetRank > currentRank) {
+      setUpgradeConfirmPlan(planKey);
+      return;
+    }
+    runPlanCheckout(planKey);
+  };
+
+  const confirmUpgradePlan = () => {
+    if (!upgradeConfirmPlan) return;
+    const plan = upgradeConfirmPlan;
+    setUpgradeConfirmPlan(null);
+    runPlanCheckout(plan);
+  };
+
+  const upgradePlanLabel = upgradeConfirmPlan
+    ? PLANS.find((p) => p.key === upgradeConfirmPlan)?.title || upgradeConfirmPlan
+    : "";
+  const currentPlanLabel =
+    PLANS.find((p) => p.key === activePlan)?.title || activePlan || "current plan";
+  const upgradeCreditNote =
+    applyCredit && creditAmountCents > 0
+      ? ` £${creditAmountPounds.toFixed(2)} in credits will be applied to this upgrade invoice.`
+      : " No credits will be applied unless you enable them above.";
 
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8 max-w-screen-xl mx-auto">
@@ -270,217 +352,406 @@ export default function PaymentPage() {
           ))}
         </div>
 
-        {/* Referral discount bar (below plans) */}
-        <div className="mt-6 rounded-2xl border border-[#2A2A2A] bg-transparent p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h3 className="text-sm font-medium text-gray-200">Referral Discount</h3>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-              <p className="text-[13px] text-gray-400">
-                Available credits: <span className="font-semibold text-white">£{availableCredit.toFixed(2)}</span>
-              </p>
-              {pendingHoldBalance > 0 && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs bg-amber-950/40 border border-amber-800/50 text-amber-300 font-medium" title="Commission from referred subscriptions in 14-day anti-refund hold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                  £{pendingHoldBalance.toFixed(2)} on 14-day hold
-                </span>
-              )}
-            </div>
-            {pendingHoldBalance > 0 && (
-              <p className="text-[11px] text-gray-400 mt-1 max-w-md">
-                On-hold referral credits clear automatically after 14 days and can then be used for checkout discounts or bank withdrawals.
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center sm:justify-end gap-3 sm:gap-4 w-full">
-            {/* Apply credits: toggle + chosen amount (checkout and plan upgrades) */}
-            <div className="flex flex-col gap-2 w-full sm:w-auto">
-              <label className="flex items-center gap-2 text-sm text-gray-200">
-                <input
-                  type="checkbox"
-                  className="accent-emerald-600"
-                  checked={applyCredit}
-                  onChange={(e) => {
-                    const on = e.target.checked;
-                    setApplyCredit(on);
-                    if (on && (!creditAmount || Number(creditAmount) <= 0) && availableCredit > 0) {
-                      setCreditAmount(availableCredit.toFixed(2));
-                    }
-                  }}
-                />
-                Apply credits at checkout / upgrade
-              </label>
-              {applyCredit && availableCredit > 0 && (
-                <label className="flex items-center gap-2 text-sm text-gray-300">
-                  <span className="whitespace-nowrap">Amount (£)</span>
-                  <input
-                    type="number"
-                    min={0.01}
-                    max={availableCredit}
-                    step={0.01}
-                    value={creditAmount}
-                    onChange={(e) => setCreditAmount(e.target.value)}
-                    onBlur={() => {
-                      const n = Number(creditAmount);
-                      if (!Number.isFinite(n) || n <= 0) {
-                        setCreditAmount(availableCredit > 0 ? availableCredit.toFixed(2) : "");
-                        return;
+        {/* Confirm mid-cycle plan upgrade (proration) — not shown for new checkout */}
+        <AlertDialog
+          open={!!upgradeConfirmPlan}
+          onOpenChange={(open) => {
+            if (!open) setUpgradeConfirmPlan(null);
+          }}
+        >
+          <AlertDialogContent className="bg-[#0c0c0c] text-white border border-[#222]">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Upgrade to {upgradePlanLabel}?</AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-400">
+                You are on <span className="text-gray-200">{currentPlanLabel}</span>. Upgrading to{" "}
+                <span className="text-gray-200">{upgradePlanLabel}</span> will prorate the change
+                for the rest of your current billing period and charge the difference now. Your next
+                renewal will be the full {upgradePlanLabel} price.
+                {upgradeCreditNote}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="border-[#2A2A2A] bg-transparent text-gray-300 hover:bg-white/5">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmUpgradePlan}
+                disabled={loading}
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                {loading ? "Upgrading…" : "Confirm upgrade"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Credits & wallet */}
+        <div className="mt-8 space-y-5 pb-8">
+          <div className="rounded-2xl border border-[#1f1f1f] bg-[#0b0b0b] p-5 sm:p-6">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Referral wallet</p>
+                <div className="mt-2 flex flex-wrap items-end gap-3">
+                  <p className="text-3xl font-semibold tabular-nums text-white">
+                    £{availableCredit.toFixed(2)}
+                  </p>
+                  <p className="pb-1 text-sm text-gray-400">available credits</p>
+                </div>
+                {pendingHoldBalance > 0 && (
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-800/50 bg-amber-950/30 px-3 py-1 text-xs font-medium text-amber-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                    £{pendingHoldBalance.toFixed(2)} on 14-day hold
+                  </div>
+                )}
+                {pendingHoldBalance > 0 && (
+                  <p className="mt-2 max-w-md text-[12px] text-gray-500">
+                    On-hold referral credits clear automatically after 14 days, then can be used for
+                    upgrades, next renewal, or withdrawals.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                <Link href="/user/referrals">
+                  <button
+                    type="button"
+                    className="inline-flex w-full items-center justify-center rounded-full border border-emerald-800/80 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510] sm:w-auto"
+                  >
+                    Referral dashboard
+                  </button>
+                </Link>
+                {!isConnected ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setConnectLoading(true);
+                      try {
+                        toast.loading("Redirecting to Stripe onboarding...", { id: "onboard" });
+                        await connectBankAsync();
+                        toast.dismiss("onboard");
+                      } catch (e: any) {
+                        toast.dismiss("onboard");
+                        toast.error(e?.message || "Connect failed");
+                      } finally {
+                        setConnectLoading(false);
                       }
-                      setCreditAmount(Math.min(n, availableCredit).toFixed(2));
                     }}
-                    className="w-24 rounded-md border border-[#2A2A2A] bg-black px-2 py-1 text-white text-sm"
+                    disabled={connectLoading}
+                    className="inline-flex w-full items-center justify-center rounded-full border border-emerald-800/80 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510] sm:w-auto"
+                  >
+                    {connectLoading ? "Connecting..." : "Connect bank"}
+                  </button>
+                ) : (
+                  <>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <button
+                          type="button"
+                          disabled={withdrawLoading || (walletBalance || 0) <= 0}
+                          className={`inline-flex w-full items-center justify-center rounded-full px-4 py-2 text-sm text-white sm:w-auto ${
+                            withdrawLoading || (walletBalance || 0) <= 0
+                              ? "cursor-not-allowed bg-gray-700"
+                              : "bg-emerald-600 hover:bg-emerald-700"
+                          }`}
+                        >
+                          {withdrawLoading ? "Withdrawing..." : "Withdraw"}
+                        </button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent className="w-full max-w-lg rounded-2xl bg-[#07120b] p-6 text-white">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle className="text-lg">Confirm Withdrawal</AlertDialogTitle>
+                          <AlertDialogDescription className="text-sm text-gray-300">
+                            Available balance: £{(walletBalance || 0).toFixed(2)}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <div className="mt-4 space-y-2">
+                          {pendingHoldBalance > 0 && (
+                            <div className="rounded-lg border border-amber-800/40 bg-amber-950/30 p-2.5 text-xs text-amber-300/90">
+                              £{pendingHoldBalance.toFixed(2)} is in a 14-day hold and cannot be
+                              withdrawn yet.
+                            </div>
+                          )}
+                          <label className="text-sm text-gray-200">Amount to withdraw (GBP)</label>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            step={0.01}
+                            placeholder={(walletBalance || 0).toFixed(2)}
+                            value={withdrawAmount === "" ? "" : withdrawAmount}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const num = Number(val);
+                              if (val === "") {
+                                setWithdrawAmount("");
+                                setWithdrawError("");
+                                return;
+                              }
+                              if (Number.isNaN(num) || num <= 0) {
+                                setWithdrawError("Enter a valid amount greater than 0");
+                              } else if (num > (walletBalance || 0)) {
+                                setWithdrawError("Amount exceeds available balance");
+                              } else {
+                                setWithdrawError("");
+                              }
+                              setWithdrawAmount(num);
+                            }}
+                            className="w-full rounded-lg border border-[#24302a] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:border-emerald-600 focus:outline-none"
+                          />
+                          {withdrawError && (
+                            <div className="text-xs text-rose-400">{withdrawError}</div>
+                          )}
+                        </div>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel className="text-sm text-gray-700">Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={async () => {
+                              const amountToWithdraw =
+                                typeof withdrawAmount === "number" && withdrawAmount > 0
+                                  ? withdrawAmount
+                                  : walletBalance || 0;
+                              if (amountToWithdraw <= 0 || withdrawError) return;
+                              setWithdrawLoading(true);
+                              try {
+                                toast.loading("Submitting withdrawal...", { id: "withdraw" });
+                                await withdraw(amountToWithdraw);
+                                toast.success(
+                                  "Amount Successfully transferred to your connected account",
+                                  { id: "withdraw", duration: 2000 }
+                                );
+                                setTimeout(() => window.location.reload(), 2000);
+                              } catch (e: any) {
+                                toast.error(e?.message || "Withdraw failed", { id: "withdraw" });
+                              } finally {
+                                setWithdrawLoading(false);
+                              }
+                            }}
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                            disabled={
+                              withdrawLoading ||
+                              !!withdrawError ||
+                              (walletBalance || 0) <= 0
+                            }
+                          >
+                            Confirm Withdraw
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setManageLoading(true);
+                        try {
+                          toast.loading("Opening bank dashboard...", { id: "manage" });
+                          await manageBankAsync();
+                          toast.dismiss("manage");
+                        } catch (e: any) {
+                          toast.dismiss("manage");
+                          toast.error(e?.message || "Failed to open bank dashboard");
+                        } finally {
+                          setManageLoading(false);
+                        }
+                      }}
+                      disabled={manageLoading}
+                      className={`inline-flex w-full items-center justify-center rounded-full border px-4 py-2 text-sm sm:w-auto ${
+                        manageLoading
+                          ? "cursor-not-allowed border-gray-700 text-gray-500"
+                          : "border-emerald-800/80 text-emerald-300 hover:bg-[#0b1510]"
+                      }`}
+                    >
+                      {manageLoading ? "Opening..." : "Manage bank"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 border-t border-[#1a1a1a] pt-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-200">Use at checkout / upgrade</p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Off by default. Turn on and enter an amount only when you want credits applied.
+                  </p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-200">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-emerald-600"
+                    checked={applyCredit}
+                    onChange={(e) => setApplyCredit(e.target.checked)}
                   />
+                  Apply credits
+                </label>
+              </div>
+              {applyCredit && availableCredit > 0 && (
+                <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-[#1f1f1f] bg-[#080808] px-4 py-3">
+                  <label className="flex items-center gap-2 text-sm text-gray-300">
+                    <span className="text-gray-500">Amount</span>
+                    <span className="text-gray-400">£</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={availableCredit}
+                      step={0.01}
+                      value={creditAmount}
+                      onChange={(e) => setCreditAmount(e.target.value)}
+                      onBlur={() => {
+                        const n = Number(creditAmount);
+                        if (!Number.isFinite(n) || n <= 0) {
+                          setCreditAmount("0");
+                          return;
+                        }
+                        setCreditAmount(Math.min(n, availableCredit).toFixed(2));
+                      }}
+                      className="w-24 rounded-lg border border-[#2A2A2A] bg-black px-2 py-1.5 text-sm text-white"
+                    />
+                  </label>
                   <button
                     type="button"
                     className="text-xs text-emerald-400 hover:underline"
                     onClick={() => setCreditAmount(availableCredit.toFixed(2))}
                   >
-                    Max
+                    Use max (£{availableCredit.toFixed(2)})
                   </button>
-                </label>
+                </div>
               )}
             </div>
+          </div>
 
-            {/* Referral dashboard */}
-            <Link href="/user/referrals" className="w-full sm:w-auto">
-              <button className="inline-flex w-full sm:w-auto items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510]">
-                View Referral Dashboard
-              </button>
-            </Link>
+          {canReserveForNext && (
+            <div className="rounded-2xl border border-[#1f1f1f] bg-[#0b0b0b] p-5 sm:p-6">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 className="text-base font-medium text-gray-100">
+                    Apply credits to next payment
+                  </h3>
+                  <p className="mt-1 max-w-xl text-sm text-gray-500">
+                    Reserve wallet credits for your next auto-renewal. Amount defaults to £0 so
+                    nothing is reserved unless you choose it.
+                  </p>
+                </div>
+                {profileResp?.data?.currentPeriodEnd && (
+                  <div className="mt-2 shrink-0 rounded-full border border-[#222] bg-[#080808] px-3 py-1 text-xs text-gray-400 sm:mt-0">
+                    Next charge {formatDate(profileResp.data.currentPeriodEnd)}
+                  </div>
+                )}
+              </div>
 
-            {/* Cancel subscription at period end */}
-           
+              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-[#1a1a1a] bg-[#080808] px-4 py-3">
+                  <p className="text-xs text-gray-500">Plan renewal</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-gray-100">
+                    £{nextPlanPounds.toFixed(2)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[#1a1a1a] bg-[#080808] px-4 py-3">
+                  <p className="text-xs text-gray-500">Already reserved</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-sky-300">
+                    £{stripeReservedPounds.toFixed(2)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/20 px-4 py-3">
+                  <p className="text-xs text-emerald-500/80">Estimated next charge</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-300">
+                    £{estimatedNextChargePounds.toFixed(2)}
+                  </p>
+                </div>
+              </div>
 
-            {/* Payout / Bank actions now inline */}
-            {!isConnected ? (
-              <button
-                onClick={async () => {
-                  setConnectLoading(true);
-                  try {
-                    toast.loading('Redirecting to Stripe onboarding...', { id: 'onboard' });
-                    await connectBankAsync();
-                    toast.dismiss('onboard');
-                  } catch (e: any) {
-                    toast.dismiss('onboard');
-                    toast.error(e?.message || 'Connect failed');
-                  } finally {
-                    setConnectLoading(false);
-                  }
-                }}
-                disabled={connectLoading}
-                className="inline-flex w-full sm:w-auto items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-5 py-2 text-sm hover:bg-[#0b1510]"
-              >
-                {connectLoading ? 'Connecting...' : 'Connect Bank Account'}
-              </button>
-            ) : (
-              <div className="inline-flex w-full sm:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="mt-5 flex flex-col gap-4 border-t border-[#1a1a1a] pt-5 lg:flex-row lg:items-end lg:justify-between">
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="flex flex-col gap-1.5 text-sm text-gray-300">
+                    <span className="text-xs text-gray-500">Amount to reserve (£)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={availableCredit}
+                      step={0.01}
+                      value={nextRenewalCreditAmount}
+                      onChange={(e) => setNextRenewalCreditAmount(e.target.value)}
+                      onBlur={() => {
+                        const n = Number(nextRenewalCreditAmount);
+                        if (!Number.isFinite(n) || n <= 0) {
+                          setNextRenewalCreditAmount("0");
+                          return;
+                        }
+                        setNextRenewalCreditAmount(Math.min(n, availableCredit).toFixed(2));
+                      }}
+                      className="w-32 rounded-lg border border-[#2A2A2A] bg-black px-3 py-2 text-sm text-white"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="mb-2 text-xs text-emerald-400 hover:underline"
+                    onClick={() =>
+                      setNextRenewalCreditAmount(
+                        Math.min(
+                          availableCredit,
+                          estimatedNextChargePounds || availableCredit
+                        ).toFixed(2)
+                      )
+                    }
+                  >
+                    Max
+                  </button>
+                  <div className="mb-2 min-w-[10rem] text-sm text-gray-500">
+                    {nextRenewalCreditPounds > 0 ? (
+                      <>
+                        After reserve:{" "}
+                        <span className="font-medium text-emerald-300">
+                          £{nextPlanPounds.toFixed(2)} → £{previewNextChargeAfterReserve.toFixed(2)}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-gray-600">Enter an amount to preview</span>
+                    )}
+                  </div>
+                </div>
+
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <button
-                      disabled={withdrawLoading || (walletBalance || 0) <= 0}
-                      className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm text-white w-full sm:w-auto ${withdrawLoading || (walletBalance || 0) <= 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                      type="button"
+                      disabled={
+                        applyNextCreditMutation.isPending || !(nextRenewalCreditPounds > 0)
+                      }
+                      className="inline-flex items-center justify-center rounded-full bg-sky-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-[#1a1a1a] disabled:text-gray-500"
                     >
-                      {withdrawLoading ? 'Withdrawing...' : 'Withdraw'}
+                      {applyNextCreditMutation.isPending
+                        ? "Reserving…"
+                        : "Reserve for next payment"}
                     </button>
                   </AlertDialogTrigger>
-                  <AlertDialogContent className="bg-[#07120b] text-white rounded-2xl p-6 w-full max-w-lg">
+                  <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle className="text-lg">Confirm Withdrawal</AlertDialogTitle>
-                      <AlertDialogDescription className="text-sm text-gray-300">
-                        Available balance: £{(walletBalance || 0).toFixed(2)}
+                      <AlertDialogTitle>Reserve credits for next renewal?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This deducts £{nextRenewalCreditPounds.toFixed(2)} from your wallet now and
+                        applies it to your next Stripe renewal
+                        {nextPlanPounds > 0 && (
+                          <>
+                            {" "}
+                            (£{nextPlanPounds.toFixed(2)} → about £
+                            {previewNextChargeAfterReserve.toFixed(2)})
+                          </>
+                        )}
+                        . Reserved credits leave your withdrawable wallet immediately.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <div className="mt-4 space-y-2">
-                      {pendingHoldBalance > 0 && (
-                        <div className="rounded-lg bg-amber-950/30 border border-amber-800/40 p-2.5 text-xs text-amber-300/90">
-                          ⚠️ <span className="font-semibold">£{pendingHoldBalance.toFixed(2)}</span> is currently in a 14-day anti-refund hold and cannot be withdrawn yet. Only cleared available funds can be paid out.
-                        </div>
-                      )}
-                      <label className="text-sm text-gray-200">Amount to withdraw (GBP)</label>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        step={0.01}
-                        placeholder={(walletBalance || 0).toFixed(2)}
-                        value={withdrawAmount === "" ? "" : withdrawAmount}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          const num = Number(val);
-                          if (val === "") {
-                            setWithdrawAmount("");
-                            setWithdrawError("");
-                            return;
-                          }
-                          if (Number.isNaN(num) || num <= 0) {
-                            setWithdrawError("Enter a valid amount greater than 0");
-                          } else if (num > (walletBalance || 0)) {
-                            setWithdrawError("Amount exceeds available balance");
-                          } else {
-                            setWithdrawError("");
-                          }
-                          setWithdrawAmount(num);
-                        }}
-                        className="w-full bg-transparent border border-[#24302a] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-emerald-600"
-                      />
-                      {withdrawError && (
-                        <div className="text-xs text-rose-400">{withdrawError}</div>
-                      )}
-                      <div className="text-xs text-gray-400">
-                        Note: You can withdraw up to your available balance. Confirming will initiate a bank transfer to your connected account.
-                      </div>
-                    </div>
                     <AlertDialogFooter>
-                      <AlertDialogCancel className="text-sm text-gray-700">Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={async () => {
-                          const amountToWithdraw = typeof withdrawAmount === 'number' && withdrawAmount > 0 ? withdrawAmount : (walletBalance || 0);
-                          if (amountToWithdraw <= 0 || withdrawError) return;
-                          setWithdrawLoading(true);
-                          try {
-                            toast.loading('Submitting withdrawal...', { id: 'withdraw' });
-                            await withdraw(amountToWithdraw);
-                            toast.success('Amount Successfully transferred to your connected account', { id: 'withdraw', duration: 2000 });
-                            setTimeout(() => window.location.reload(), 2000);
-                          } catch (e: any) {
-                            toast.error(e?.message || 'Withdraw failed', { id: 'withdraw' });
-                          } finally {
-                            setWithdrawLoading(false);
-                          }
-                        }}
-                        className="bg-emerald-600 hover:bg-emerald-700"
-                        disabled={withdrawLoading || !!withdrawError || ((walletBalance || 0) <= 0)}
-                      >
-                        Confirm Withdraw
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleReserveNextRenewalCredit}>
+                        Confirm reserve
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-
-                <button
-                  onClick={async () => {
-                    setManageLoading(true);
-                    try {
-                      toast.loading('Opening bank dashboard...', { id: 'manage' });
-                      await manageBankAsync();
-                      toast.dismiss('manage');
-                    } catch (e: any) {
-                      toast.dismiss('manage');
-                      toast.error(e?.message || 'Failed to open bank dashboard');
-                    } finally {
-                      setManageLoading(false);
-                    }
-                  }}
-                  disabled={manageLoading}
-                  className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm text-white w-full sm:w-auto ${manageLoading ? 'bg-gray-500 cursor-not-allowed' : 'bg-transparent border border-emerald-700 text-emerald-300 hover:bg-[#0b1510]'}`}
-                >
-                  {manageLoading ? 'Opening...' : 'Manage bank details'}
-                </button>
               </div>
-            )}
-          </div>
-          
+            </div>
+          )}
         </div>
-         
       </section>
       {/* Add Card Section */}
       {/* <section>

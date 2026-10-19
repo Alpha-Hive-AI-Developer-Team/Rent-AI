@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown, Search, Plus, X, ChevronLeft } from "lucide-react";
 import CustomTable from "@/components/admin/custom-table";
+import TenantRentHistoryTable from "@/components/tenants/TenantRentHistoryTable";
 import { formatDate } from "@/lib/utils";
 
 export default function LandlordManagement() {
@@ -334,10 +335,16 @@ export default function LandlordManagement() {
 
       {/* Landlord details modal */}
       {selectedLandlord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-4xl bg-[#0b0b0b] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">{selectedLandlord.name} — Addresses</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-6">
+          <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-800 bg-[#0b0b0b] text-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[#151515] px-5 py-4 sm:px-6">
+              <div className="min-w-0">
+                <h3 className="truncate text-lg font-semibold">{selectedLandlord.name}</h3>
+                <p className="mt-0.5 truncate text-sm text-gray-400">
+                  {selectedLandlord.email || "Landlord details"}
+                  {selectedLandlord.plan ? ` · ${String(selectedLandlord.plan)}` : ""}
+                </p>
+              </div>
               <button
                 onClick={() => {
                   setSelectedLandlord(null);
@@ -346,96 +353,177 @@ export default function LandlordManagement() {
                   setSelectedTenantId(null);
                   setSelectedTenantName(null);
                 }}
-                className="text-gray-400 hover:text-white"
+                className="shrink-0 rounded-full p-1.5 text-gray-400 hover:bg-white/5 hover:text-white"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="md:col-span-1">
-                <h4 className="text-sm text-gray-400 mb-2">Addresses</h4>
-                <div className="space-y-2">
-                  {modalAddresses.map((addr: any, i: number) => (
-                    <button
-                      key={addr.id || `${i}`}
-                      onClick={() => setSelectedAddressIndex(i)}
-                      className={`w-full text-left px-3 py-2 rounded-lg border ${
-                        selectedAddressIndex === i ? "border-emerald-600 bg-emerald-900/10" : "border-gray-800"
-                      }`}
-                    >
-                      <div className="text-sm text-gray-200">{addr.address || addr.property}</div>
-                      <div className="text-xs text-gray-400">{(addr.tenants || []).length} tenants</div>
-                    </button>
-                  ))}
+            <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-12">
+              {modalView === "landlord" && (
+                <div className="border-b border-[#151515] md:col-span-4 md:border-b-0 md:border-r md:border-[#151515]">
+                  <div className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Addresses
+                  </div>
+                  <div className="max-h-[28vh] space-y-2 overflow-y-auto px-3 pb-10 md:max-h-[calc(92vh-7rem)] md:pb-12">
+                    {tenantsLoading ? (
+                      <div className="px-2 py-6 text-center text-sm text-gray-500">Loading…</div>
+                    ) : modalAddresses.length === 0 ? (
+                      <div className="px-2 py-6 text-center text-sm text-gray-500">No addresses</div>
+                    ) : (
+                      <>
+                        {modalAddresses.map((addr: any, i: number) => (
+                          <button
+                            key={addr.id || `${i}`}
+                            onClick={() => setSelectedAddressIndex(i)}
+                            className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                              selectedAddressIndex === i
+                                ? "border-emerald-600 bg-emerald-950/30"
+                                : "border-gray-800 bg-[#080808] hover:border-gray-700"
+                            }`}
+                          >
+                            <div className="text-sm font-medium text-gray-100">
+                              {addr.address || addr.property}
+                            </div>
+                            <div className="mt-1 text-xs text-gray-500">
+                              {(addr.tenants || []).length} tenant
+                              {(addr.tenants || []).length === 1 ? "" : "s"}
+                            </div>
+                          </button>
+                        ))}
+                        <div className="h-4 shrink-0" aria-hidden />
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="md:col-span-2">
-                {/* Render either landlord's tenants list or tenant transactions inside same modal */}
+              <div
+                className={`min-h-0 overflow-y-auto px-4 pt-4 pb-12 sm:px-6 sm:pb-14 ${
+                  modalView === "landlord" ? "md:col-span-8" : "md:col-span-12"
+                }`}
+              >
                 {modalView === "landlord" ? (
                   <>
-                    <h4 className="text-sm text-gray-400 mb-3">Tenants</h4>
+                    <div className="mb-4">
+                      <h4 className="text-base font-medium text-gray-100">
+                        {currentAddress || "Tenants"}
+                      </h4>
+                      <p className="text-xs text-gray-500">
+                        Click a tenant to open rent history (read-only)
+                      </p>
+                    </div>
+
                     {modalAddresses.length === 0 ? (
-                      <div className="p-6 text-center text-gray-400">No tenants found</div>
+                      <div className="rounded-xl border border-[#1a1a1a] px-4 py-10 text-center text-gray-400">
+                        No tenants found
+                      </div>
                     ) : currentTenants.length === 0 ? (
-                      <div className="p-6 text-center text-gray-400">No tenants found for this property</div>
+                      <div className="rounded-xl border border-[#1a1a1a] px-4 py-10 text-center text-gray-400">
+                        No tenants found for this property
+                      </div>
                     ) : (
-                      <div className="w-full overflow-x-auto rounded-lg bg-[#0B0B0B] border border-[#1a1a1a]">
+                      <div className="w-full overflow-x-auto rounded-xl border border-[#1a1a1a] bg-[#0B0B0B]">
                         <table className="min-w-full text-sm">
                           <thead>
-                            <tr className="text-gray-400 text-left bg-[#0f0f0f] border-b border-[#151515]">
-                              <th className="py-3 px-4 text-xs">Tenant Name</th>
-                              <th className="py-3 px-4 text-xs">Rent</th>
-                              <th className="py-3 px-4 text-xs">Status</th>
-                              <th className="py-3 px-4 text-xs">Last Payment</th>
+                            <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
+                              <th className="px-4 py-3 text-xs">Tenant Name</th>
+                              <th className="px-4 py-3 text-xs">Rent</th>
+                              <th className="px-4 py-3 text-xs">Status</th>
+                              <th className="px-4 py-3 text-xs">Last Payment</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {currentTenants.map((t: any) => (
-                              <tr
-                                key={t._id || t.id}
-                                onClick={() => openTenant(t)}
-                                className="border-t border-[#151515] hover:bg-[#0e0e0e] cursor-pointer"
-                              >
-                                <td className="py-3 px-4 text-gray-300">{Array.isArray(t.tenantName) ? t.tenantName.join(" ") : t.name || t.tenantName}</td>
-                                <td className="py-3 px-4 text-gray-300">{typeof t.rent === 'number' ? `£${t.rent}` : t.rent}</td>
-                                <td className="py-3 px-4 text-gray-300">{t.status || (t.rentHistory && t.rentHistory[0] ? t.rentHistory[0].status : "-")}</td>
-                                <td className="py-3 px-4 text-gray-300">{formatDate(t.lastPayment)}</td>
-                              </tr>
-                            ))}
+                            {currentTenants.map((t: any) => {
+                              const statusRaw = String(
+                                t.status ||
+                                  (t.rentHistory && t.rentHistory[0] ? t.rentHistory[0].status : "") ||
+                                  ""
+                              ).toLowerCase();
+                              const statusLabel = statusRaw
+                                ? statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1)
+                                : "—";
+                              const statusClass =
+                                statusRaw === "paid"
+                                  ? "border-green-700/60 bg-green-900/40 text-green-400"
+                                  : statusRaw === "partial"
+                                    ? "border-yellow-700/60 bg-yellow-900/40 text-yellow-400"
+                                    : statusRaw === "unpaid"
+                                      ? "border-red-700/60 bg-red-900/40 text-red-400"
+                                      : "border-gray-700 bg-gray-800 text-gray-400";
+                              const rentVal = Number(t.rent) || 0;
+                              return (
+                                <tr
+                                  key={t._id || t.id}
+                                  onClick={() => openTenant(t)}
+                                  className="cursor-pointer border-t border-[#151515] hover:bg-[#0e0e0e]"
+                                >
+                                  <td className="px-4 py-3 text-gray-200">
+                                    {Array.isArray(t.tenantName)
+                                      ? t.tenantName.join(" ")
+                                      : t.name || t.tenantName}
+                                  </td>
+                                  <td className="px-4 py-3 tabular-nums text-gray-300">
+                                    {rentVal
+                                      ? `£${rentVal.toLocaleString(undefined, {
+                                          minimumFractionDigits: 0,
+                                          maximumFractionDigits: 2,
+                                        })}`
+                                      : "—"}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span
+                                      className={`rounded-full border px-2.5 py-0.5 text-xs ${statusClass}`}
+                                    >
+                                      {statusLabel}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-400">
+                                    {formatDate(t.lastPayment)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
                     )}
 
-                    {/* Totals + Expenses */}
-                    <div className="mt-4 p-4 rounded-lg border border-gray-800 bg-[#080808]">
+                    <div className="mt-5 mb-2 rounded-xl border border-gray-800 bg-[#080808] p-4 pb-6">
                       {(() => {
                         const gross = Number(incomeSummaryResp?.data?.grossIncome || 0);
                         const totalExpenses = Number(incomeSummaryResp?.data?.totalExpenses || 0);
-                        const net = Number(incomeSummaryResp?.data?.netIncome || (gross - totalExpenses));
-                        const fmt = (n: number) => `£${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+                        const net = Number(
+                          incomeSummaryResp?.data?.netIncome || gross - totalExpenses
+                        );
+                        const fmt = (n: number) =>
+                          `£${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
                         return (
                           <div>
-                            <div className="grid grid-cols-3 gap-4 text-sm text-gray-200">
-                              <div>
-                                <div className="text-xs text-gray-400">Total Gross</div>
-                                <div className="font-medium mt-1">{fmt(gross)}</div>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                              <div className="rounded-lg border border-[#151515] bg-[#0b0b0b] px-3 py-3">
+                                <div className="text-xs text-gray-500">Total Gross</div>
+                                <div className="mt-1 text-sm font-medium text-gray-100">{fmt(gross)}</div>
                               </div>
-                              <div>
-                                <div className="text-xs text-gray-400">Total Expenses</div>
-                                <div className="font-medium mt-1 text-rose-400">{fmt(totalExpenses)}</div>
+                              <div className="rounded-lg border border-[#151515] bg-[#0b0b0b] px-3 py-3">
+                                <div className="text-xs text-gray-500">Total Expenses</div>
+                                <div className="mt-1 text-sm font-medium text-rose-400">
+                                  {fmt(totalExpenses)}
+                                </div>
                               </div>
-                              <div>
-                                <div className="text-xs text-gray-400">Net Income</div>
-                                <div className="font-medium mt-1 text-emerald-300">{fmt(net)}</div>
+                              <div className="rounded-lg border border-[#151515] bg-[#0b0b0b] px-3 py-3">
+                                <div className="text-xs text-gray-500">Net Income</div>
+                                <div className="mt-1 text-sm font-medium text-emerald-300">
+                                  {fmt(net)}
+                                </div>
                               </div>
                             </div>
 
                             <div className="mt-4 border-t border-[#151515] pt-4">
-                              <div className="text-xs text-gray-400 mb-2">Add Expense</div>
-                              <div className="flex gap-2">
+                              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                                Add Expense
+                              </div>
+                              <div className="flex flex-col gap-2 sm:flex-row">
                                 <Input
                                   placeholder="Description"
                                   value={newExpenseDesc}
@@ -446,19 +534,29 @@ export default function LandlordManagement() {
                                   placeholder="Amount (e.g. 120.00)"
                                   value={newExpenseAmount}
                                   onChange={(e) => setNewExpenseAmount(e.target.value)}
-                                  className="w-40 bg-[#0b0b0b] border border-gray-800 text-white"
+                                  className="w-full bg-[#0b0b0b] border border-gray-800 text-white sm:w-40"
                                 />
-                                <Button onClick={addExpense} className="bg-[#111] border border-gray-800 text-gray-300">Add</Button>
+                                <Button
+                                  onClick={addExpense}
+                                  className="bg-[#111] border border-gray-800 text-gray-300"
+                                >
+                                  Add
+                                </Button>
                               </div>
 
                               {Array.isArray(expensesResp?.data) && expensesResp!.data.length > 0 && (
                                 <div className="mt-3">
-                                  <div className="text-xs text-gray-400 mb-2">Manual Expenses</div>
+                                  <div className="mb-2 text-xs text-gray-500">Manual Expenses</div>
                                   <div className="space-y-2">
                                     {expensesResp!.data.map((ex: any, i: number) => (
-                                      <div key={ex._id || i} className="flex justify-between items-center bg-[#0b0b0b] p-2 rounded border border-[#151515] text-sm">
+                                      <div
+                                        key={ex._id || i}
+                                        className="flex items-center justify-between rounded-lg border border-[#151515] bg-[#0b0b0b] px-3 py-2 text-sm"
+                                      >
                                         <div className="text-gray-200">{ex.description}</div>
-                                        <div className="text-rose-400">{fmt(Number(ex.amount || 0))}</div>
+                                        <div className="tabular-nums text-rose-400">
+                                          {fmt(Number(ex.amount || 0))}
+                                        </div>
                                       </div>
                                     ))}
                                   </div>
@@ -471,83 +569,41 @@ export default function LandlordManagement() {
                     </div>
                   </>
                 ) : (
-                  // Tenant transactions view (API-driven)
                   <>
-                    <div className="flex items-center justify-between mb-2">
-                      <button
-                        onClick={() => setModalView("landlord")}
-                        className="flex items-center gap-2 text-sm text-gray-300 hover:underline"
-                      >
-                        <ChevronLeft className="w-4 h-4" /> Back
-                      </button>
-                    </div>
-                    <h4 className="text-sm text-gray-400 mb-3">{selectedTenantName} — Transactions</h4>
-
-                    {tenantLoading ? (
-                      <div className="p-6 text-center text-gray-400">Loading transactions…</div>
-                    ) : tenantError ? (
-                      <div className="p-6 text-center text-rose-400">Failed to load transactions.</div>
-                    ) : (
-                      <div className="w-full overflow-x-auto rounded-lg bg-[#070707] border border-[#151515] p-3">
-                        {Array.isArray(tenantDetails?.rentHistory) && tenantDetails!.rentHistory.length > 0 ? (
-                          <table className="min-w-full text-sm">
-                            <thead>
-                              <tr className="text-gray-400 text-left">
-                                <th className="py-2 px-3 text-xs">Month</th>
-                                <th className="py-2 px-3 text-xs">Rent</th>
-                                <th className="py-2 px-3 text-xs">Amount Paid</th>
-                                <th className="py-2 px-3 text-xs">Payment history</th>
-                                <th className="py-2 px-3 text-xs">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {tenantDetails!.rentHistory.map((tr: any, i: number) => {
-                                const statusLabel = tr.status ? String(tr.status).charAt(0).toUpperCase() + String(tr.status).slice(1) : "-";
-                                const statusClass = statusLabel === 'Paid' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700' : statusLabel === 'Partial' ? 'bg-yellow-900/20 text-yellow-400 border-yellow-700' : 'bg-gray-800 text-gray-400 border-gray-700';
-                                const fmtCurrency = (n: number) => `£${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                                const pieces = Array.isArray(tr.linkedPayments)
-                                  ? tr.linkedPayments.filter((p: any) => (Number(p?.amount) || 0) > 0)
-                                  : [];
-                                return (
-                                  <tr key={i} className="border-t border-[#111] hover:bg-[#0e0e0e]">
-                                    <td className="py-2 px-3 text-gray-300">{formatDate(tr.month)}</td>
-                                    <td className="py-2 px-3 text-gray-300">{fmtCurrency(tr.rent)}</td>
-                                    <td className={`py-2 px-3 ${statusLabel === 'Unpaid' ? 'text-rose-400' : 'text-gray-300'}`}>{fmtCurrency(tr.amountPaid || 0)}</td>
-                                    <td className="py-2 px-3 text-gray-300">
-                                      {pieces.length > 0 ? (
-                                        <div className="flex flex-col gap-0.5 text-xs">
-                                          {pieces.map((p: any, pi: number) => (
-                                            <div key={pi}>
-                                              {p.paidOn ? formatDate(p.paidOn) : "—"}
-                                              {" · "}
-                                              {fmtCurrency(Number(p.amount) || 0)}
-                                              {p.method ? ` · ${p.method}` : ""}
-                                            </div>
-                                          ))}
-                                        </div>
-                                      ) : tr.paidOn ? (
-                                        formatDate(tr.paidOn)
-                                      ) : (
-                                        "—"
-                                      )}
-                                    </td>
-                                    <td className="py-2 px-3">
-                                      <span className={`px-2 py-1 text-xs rounded-full border ${statusClass}`}>{statusLabel}</span>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        ) : (
-                          <div className="p-6 text-center text-gray-400">No transactions for this tenant right now</div>
-                        )}
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <button
+                          onClick={() => {
+                            setModalView("landlord");
+                            setSelectedTenantId(null);
+                            setSelectedTenantName(null);
+                          }}
+                          className="mb-2 inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200"
+                        >
+                          <ChevronLeft className="h-4 w-4" /> Back to tenants
+                        </button>
+                        <h4 className="text-base font-medium text-gray-100">
+                          {selectedTenantName} — Rent history
+                        </h4>
+                        {currentAddress ? (
+                          <p className="text-xs text-gray-500">{currentAddress}</p>
+                        ) : null}
                       </div>
-                    )}
-
-                    <div className="mt-4 flex items-center justify-end">
-                      <button onClick={() => { setModalView("landlord"); }} className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5">Back</button>
                     </div>
+
+                    {tenantError ? (
+                      <div className="rounded-xl border border-rose-900/50 px-4 py-10 text-center text-rose-400">
+                        Failed to load rent history.
+                      </div>
+                    ) : (
+                      <TenantRentHistoryTable
+                        tenantId={selectedTenantId}
+                        tenant={tenantDetails}
+                        rentHistory={tenantDetails?.rentHistory}
+                        loading={tenantLoading}
+                        readOnly
+                      />
+                    )}
                   </>
                 )}
               </div>
