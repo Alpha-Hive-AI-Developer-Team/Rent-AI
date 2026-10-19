@@ -1,6 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createCheckoutSession, cancelSubscription as apiCancelSubscription } from '../lib/api/payment';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+	createCheckoutSession,
+	cancelSubscription as apiCancelSubscription,
+	getNextRenewalCreditPreview,
+	applyCreditsToNextRenewal as apiApplyCreditsToNextRenewal,
+} from '../lib/api/payment';
 import { loadStripe } from '@stripe/stripe-js';
 import { PRICE_ID_MAP } from '@/lib/plans';
 import toast from 'react-hot-toast';
@@ -11,6 +16,15 @@ export function usePayment() {
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const qc = useQueryClient();
+
+	const nextCreditQuery = useQuery({
+		queryKey: ['nextRenewalCredit'],
+		queryFn: async () => {
+			const res = await getNextRenewalCreditPreview();
+			return res.data;
+		},
+		staleTime: 30_000,
+	});
 
 	const priceMap = useMemo(() => ({
 		starter: PRICE_ID_MAP.starter || process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER || '',
@@ -109,5 +123,41 @@ export function usePayment() {
 		return cancelMutation.mutateAsync();
 	}, [cancelMutation]);
 
-	return { startCheckout, cancelSubscription, loading, error, cancelMutation };
+	const applyNextCreditMutation = useMutation({
+		mutationFn: async (applyCreditCents: number) => {
+			return apiApplyCreditsToNextRenewal({
+				applyCredit: true,
+				applyCreditCents: Math.round(applyCreditCents),
+			});
+		},
+		onSuccess: async (res) => {
+			toast.success(res.message || 'Credits reserved for your next renewal');
+			await qc.invalidateQueries({ queryKey: ['me'] });
+			await qc.invalidateQueries({ queryKey: ['payoutWallet'] });
+			await qc.invalidateQueries({ queryKey: ['nextRenewalCredit'] });
+		},
+		onError: (err: any) => {
+			toast.error(
+				err?.response?.data?.message || err?.message || 'Failed to reserve credits'
+			);
+		},
+	});
+
+	const applyCreditsToNextRenewal = useCallback(
+		async (applyCreditCents: number) => {
+			return applyNextCreditMutation.mutateAsync(applyCreditCents);
+		},
+		[applyNextCreditMutation]
+	);
+
+	return {
+		startCheckout,
+		cancelSubscription,
+		loading,
+		error,
+		cancelMutation,
+		nextCreditQuery,
+		applyCreditsToNextRenewal,
+		applyNextCreditMutation,
+	};
 }

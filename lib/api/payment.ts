@@ -32,3 +32,35 @@ export async function cancelSubscription() {
   const res = await apiClient.post('/payments/cancel');
   return res.data as { success: boolean; message?: string; data?: any };
 }
+
+export type NextRenewalCreditPreview = {
+	availableWalletCents: number;
+	stripeCreditCents: number;
+	nextPlanAmountCents: number;
+	estimatedNextChargeCents: number;
+	planType?: string;
+	currentPeriodEnd?: string | null;
+	subscriptionStatus?: string | null;
+	cancelAtPeriodEnd?: boolean;
+	canApply?: boolean;
+};
+
+export async function getNextRenewalCreditPreview() {
+	const res = await apiClient.get('/payments/next-credit');
+	return res.data as { success: boolean; data: NextRenewalCreditPreview };
+}
+
+export async function applyCreditsToNextRenewal(payload: {
+	applyCreditCents?: number;
+	applyCredit?: boolean;
+}) {
+	const res = await apiClient.post('/payments/apply-next-credit', payload);
+	return res.data as {
+		success: boolean;
+		message?: string;
+		data: NextRenewalCreditPreview & {
+			appliedCreditCents: number;
+			balanceTransactionId?: string | null;
+		};
+	};
+}
