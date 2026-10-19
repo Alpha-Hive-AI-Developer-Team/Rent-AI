@@ -107,7 +107,9 @@ export async function exchangePlaidPublicToken(payload: {
   return res.data;
 }
 
-export async function getPlaidTransactions(params: { accountId?: string } = {}) {
+export async function getPlaidTransactions(
+  params: { accountId?: string; full?: boolean | string } = {}
+) {
   const res = await apiClient.get(`/transactions/plaid`, { params });
   return res.data;
 }
