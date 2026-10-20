@@ -64,6 +64,8 @@ export default function TenantRentHistoryTable({
     depositAmount: number;
     depositPaidDate: any;
     transaction: any | null;
+    transactions?: any[];
+    allocatedTotal?: number;
     error?: string | null;
   } | null>(null);
 
@@ -106,6 +108,7 @@ export default function TenantRentHistoryTable({
       depositAmount,
       depositPaidDate,
       transaction: null,
+      transactions: [],
       error: null,
     });
     if (!tenantId) {
@@ -117,11 +120,18 @@ export default function TenantRentHistoryTable({
     try {
       const res = await getDepositPayment(tenantId);
       const data = res?.data || {};
+      const txs = Array.isArray(data.transactions)
+        ? data.transactions
+        : data.transaction
+          ? [data.transaction]
+          : [];
       setDepositReview({
         loading: false,
         depositAmount: Number(data.depositAmount) || depositAmount,
         depositPaidDate: data.depositPaidDate || depositPaidDate,
-        transaction: data.transaction || null,
+        transaction: txs[0] || null,
+        transactions: txs,
+        allocatedTotal: Number(data.allocatedTotal) || undefined,
         error: null,
       });
     } catch (err: any) {
@@ -133,6 +143,7 @@ export default function TenantRentHistoryTable({
         depositAmount,
         depositPaidDate,
         transaction: null,
+        transactions: [],
         error: msg,
       });
     }
@@ -619,47 +630,47 @@ export default function TenantRentHistoryTable({
 
             {depositReview.loading ? (
               <p className="mb-4 text-sm text-gray-500">Loading linked bank transaction…</p>
-            ) : depositReview.transaction ? (
+            ) : (depositReview.transactions?.length || depositReview.transaction) ? (
               <div className="mb-4">
                 <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
                   Linked bank transaction
+                  {(depositReview.transactions?.length || 0) > 1 ? "s" : ""}
                 </p>
-                <div className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3 text-sm">
-                  <div className="flex justify-between gap-3 text-gray-200">
-                    <span className="font-medium">
-                      {depositReview.transaction.payerName ||
-                        depositReview.transaction.description ||
-                        "Bank payment"}
-                    </span>
-                    <span className="tabular-nums">
-                      {formatRentMoney(
-                        Math.abs(
-                          Number(
-                            depositReview.transaction.bankAmount ??
-                              depositReview.transaction.amount
-                          ) || 0
-                        )
-                      )}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {formatDateTime(depositReview.transaction.date)}
-                    {depositReview.transaction.description
-                      ? ` · ${depositReview.transaction.description}`
-                      : ""}
-                    {depositReview.transaction.reference
-                      ? ` · Ref ${depositReview.transaction.reference}`
-                      : ""}
-                  </div>
-                  <div className="mt-2 flex justify-between gap-3 text-[12px] text-gray-400">
-                    <span>Applied to deposit</span>
-                    <span className="tabular-nums text-sky-300">
-                      {formatRentMoney(
-                        Number(depositReview.transaction.allocatedAmount) ||
-                          depositReview.depositAmount
-                      )}
-                    </span>
-                  </div>
+                <div className="space-y-2">
+                  {(depositReview.transactions?.length
+                    ? depositReview.transactions
+                    : [depositReview.transaction]
+                  ).map((tx: any, i: number) => (
+                    <div
+                      key={String(tx?._id || i)}
+                      className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3 text-sm"
+                    >
+                      <div className="flex justify-between gap-3 text-gray-200">
+                        <span className="font-medium">
+                          {tx?.payerName || tx?.description || "Bank payment"}
+                        </span>
+                        <span className="tabular-nums">
+                          {formatRentMoney(
+                            Math.abs(Number(tx?.bankAmount ?? tx?.amount) || 0)
+                          )}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {formatDateTime(tx?.date)}
+                        {tx?.description ? ` · ${tx.description}` : ""}
+                        {tx?.reference ? ` · Ref ${tx.reference}` : ""}
+                      </div>
+                      <div className="mt-2 flex justify-between gap-3 text-[12px] text-gray-400">
+                        <span>Applied to deposit</span>
+                        <span className="tabular-nums text-sky-300">
+                          {formatRentMoney(
+                            Number(tx?.allocatedAmount) ||
+                              Math.abs(Number(tx?.bankAmount ?? tx?.amount) || 0)
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : (
