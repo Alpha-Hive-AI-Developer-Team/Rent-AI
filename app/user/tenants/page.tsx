@@ -232,18 +232,30 @@ export default function TenantsPage() {
     return 0;
   };
 
-  /** Deposit still available to peel from a combined payment (mirrors auto-reconcile). */
+  /** Deposit still available to peel from a combined payment (mirrors auto-reconcile / partial deposits). */
   const getUnallocatedDepositAmount = (tenant: any) => {
     const depositAmt = Math.round((Number(tenant?.depositAmount) || 0) * 100) / 100;
     if (depositAmt <= 0) return 0;
-    if (tenant?.depositTransactionId) return 0;
+    let allocated = 0;
+    const seenTx = new Map<string, number>();
     const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
     for (const h of history) {
       for (const p of Array.isArray(h?.linkedPayments) ? h.linkedPayments : []) {
-        if ((Number(p?.depositAllocated) || 0) > 0.001) return 0;
+        const dep = Math.round((Number(p?.depositAllocated) || 0) * 100) / 100;
+        if (!(dep > 0.001)) continue;
+        const txKey = p?.transactionId ? String(p.transactionId) : "";
+        if (txKey) {
+          const prev = seenTx.get(txKey) || 0;
+          if (dep > prev) {
+            allocated = Math.round((allocated - prev + dep) * 100) / 100;
+            seenTx.set(txKey, dep);
+          }
+        } else {
+          allocated = Math.round((allocated + dep) * 100) / 100;
+        }
       }
     }
-    return depositAmt;
+    return Math.max(0, Math.round((depositAmt - allocated) * 100) / 100);
   };
 
   /**
@@ -344,6 +356,8 @@ export default function TenantsPage() {
     depositAmount: number;
     depositPaidDate: string | null;
     transaction: any | null;
+    transactions?: any[];
+    allocatedTotal?: number;
   } | null>(null);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [reconcileLoading, setReconcileLoading] = useState(false);
@@ -1312,10 +1326,16 @@ export default function TenantsPage() {
       depositAmount: Number(selectedTenant.depositAmount) || 0,
       depositPaidDate: selectedTenant.depositPaidDate || selectedTenant.depositStartDate || null,
       transaction: null,
+      transactions: [],
     });
     try {
       const res = await getDepositPayment(selectedTenant._id);
       const data = res?.data || {};
+      const txs = Array.isArray(data.transactions)
+        ? data.transactions
+        : data.transaction
+          ? [data.transaction]
+          : [];
       setDepositReview({
         loading: false,
         depositAmount: Number(data.depositAmount) || Number(selectedTenant.depositAmount) || 0,
@@ -1324,7 +1344,9 @@ export default function TenantsPage() {
           selectedTenant.depositPaidDate ||
           selectedTenant.depositStartDate ||
           null,
-        transaction: data.transaction || null,
+        transaction: txs[0] || null,
+        transactions: txs,
+        allocatedTotal: Number(data.allocatedTotal) || undefined,
       });
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Could not load deposit bank payment");
@@ -2733,51 +2755,49 @@ export default function TenantsPage() {
 
             {depositReview.loading ? (
               <p className="mb-4 text-sm text-gray-500">Loading linked bank transaction…</p>
-            ) : depositReview.transaction ? (
+            ) : (depositReview.transactions?.length || depositReview.transaction) ? (
               <div className="mb-4">
                 <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
                   Linked bank transaction
+                  {(depositReview.transactions?.length || 0) > 1 ? "s" : ""}
                 </p>
-                <div className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3 text-sm">
-                  <div className="flex justify-between gap-3 text-gray-200">
-                    <span className="font-medium">
-                      {depositReview.transaction.payerName ||
-                        depositReview.transaction.description ||
-                        "Bank payment"}
-                    </span>
-                    <span className="tabular-nums">
-                      {formatMoney(
-                        Math.abs(
-                          Number(
-                            depositReview.transaction.bankAmount ??
-                              depositReview.transaction.amount
-                          ) || 0
-                        )
-                      )}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {formatDateTime(depositReview.transaction.date)}
-                    {depositReview.transaction.description
-                      ? ` · ${depositReview.transaction.description}`
-                      : ""}
-                    {depositReview.transaction.reference
-                      ? ` · Ref ${depositReview.transaction.reference}`
-                      : ""}
-                  </div>
-                  <div className="mt-2 flex justify-between gap-3 text-[12px] text-gray-400">
-                    <span>Applied to deposit</span>
-                    <span className="tabular-nums text-gray-300">
-                      {formatMoney(
-                        Number(depositReview.transaction.allocatedAmount) ||
-                          depositReview.depositAmount
-                      )}
-                    </span>
-                  </div>
+                <div className="space-y-2">
+                  {(depositReview.transactions?.length
+                    ? depositReview.transactions
+                    : [depositReview.transaction]
+                  ).map((tx: any, i: number) => (
+                    <div
+                      key={String(tx?._id || i)}
+                      className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-3 text-sm"
+                    >
+                      <div className="flex justify-between gap-3 text-gray-200">
+                        <span className="font-medium">
+                          {tx?.payerName || tx?.description || "Bank payment"}
+                        </span>
+                        <span className="tabular-nums">
+                          {formatMoney(Math.abs(Number(tx?.bankAmount ?? tx?.amount) || 0))}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {formatDateTime(tx?.date)}
+                        {tx?.description ? ` · ${tx.description}` : ""}
+                        {tx?.reference ? ` · Ref ${tx.reference}` : ""}
+                      </div>
+                      <div className="mt-2 flex justify-between gap-3 text-[12px] text-gray-400">
+                        <span>Applied to deposit</span>
+                        <span className="tabular-nums text-gray-300">
+                          {formatMoney(
+                            Number(tx?.allocatedAmount) ||
+                              Math.abs(Number(tx?.bankAmount ?? tx?.amount) || 0)
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
                 <p className="mt-2 text-[11px] text-gray-500">
                   Deposit-only bank payments are kept off the rent table. Clearing the deposit
-                  restores this transaction to the rent reconcile queue.
+                  restores linked deposit transactions to the rent reconcile queue.
                 </p>
               </div>
             ) : (
