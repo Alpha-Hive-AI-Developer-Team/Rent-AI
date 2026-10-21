@@ -326,4 +326,90 @@ export function getVisibleRentHistory(rentHistory: any[]) {
     });
 }
 
+/** Last visible rent/charge row index (skips discount/refund audit rows). */
+export function getLastVisibleRentHistoryIndex(
+  visibleHistory: { entry: any; index: number }[]
+): number | null {
+  for (let i = visibleHistory.length - 1; i >= 0; i--) {
+    const kind = String(visibleHistory[i]?.entry?.kind || "rent");
+    if (kind !== "discount" && kind !== "refund") {
+      return visibleHistory[i].index;
+    }
+  }
+  return null;
+}
+
+/**
+ * Banner / landlord-facing balance from history + optional stored currentBalance
+ * (which may include unallocated reconciled bank leftovers).
+ */
+export function computeLandlordDisplayBalance(tenant: any): number {
+  const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
+  if (history.length === 0) return Number(tenant?.currentBalance) || 0;
+
+  const now = new Date();
+  const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+
+  let dueUnpaid = 0;
+  let dueThroughToday = 0;
+  let paidVisible = 0;
+  let futurePrepaid = 0;
+
+  history.forEach((entry: any) => {
+    const due = Number(entry?.amountDue ?? entry?.rent) || 0;
+    const paid = Number(entry?.amountPaid) || 0;
+    const dueMs = toUtcDayMs(entry?.dueDate ?? entry?.month);
+    const isFuture = dueMs != null && dueMs > todayMs;
+    if (isFuture) {
+      futurePrepaid += paid;
+      return;
+    }
+    dueThroughToday += due;
+    dueUnpaid += Math.max(0, due - paid);
+    paidVisible += paid;
+  });
+  dueUnpaid = Math.round(dueUnpaid * 100) / 100;
+  paidVisible = Math.round(paidVisible * 100) / 100;
+  futurePrepaid = Math.round(futurePrepaid * 100) / 100;
+  const historyCredit =
+    Math.round((paidVisible - dueThroughToday + futurePrepaid) * 100) / 100;
+
+  const stored = Number(tenant?.currentBalance);
+
+  if (dueUnpaid > 0) {
+    const netFromHistory = Math.round((-dueUnpaid + futurePrepaid) * 100) / 100;
+    if (Number.isFinite(stored) && stored > netFromHistory + 0.001) {
+      return Math.round(stored * 100) / 100;
+    }
+    return netFromHistory;
+  }
+
+  if (Number.isFinite(stored) && stored > historyCredit + 0.001) {
+    return Math.round(stored * 100) / 100;
+  }
+
+  return historyCredit > 0 ? historyCredit : 0;
+}
+
+/**
+ * Balance column value for a rent row.
+ * Intermediate rows keep the running month balance.
+ * The last visible rent row parks the full remaining credit (unallocated bank
+ * leftovers + prepaid on hidden future months) so surplus isn't stuck only in
+ * the banner when only a few months exist on the ledger.
+ */
+export function resolveRowDisplayBalance(
+  runningBalance: number,
+  options: {
+    isLastVisibleRentRow: boolean;
+    overallBalance: number;
+  }
+): number {
+  const running = Math.round((Number(runningBalance) || 0) * 100) / 100;
+  if (!options.isLastVisibleRentRow) return running;
+  const overall = Math.round((Number(options.overallBalance) || 0) * 100) / 100;
+  if (overall > running + 0.001) return overall;
+  return running;
+}
+
 export { isDueDayChangeLineItem };
