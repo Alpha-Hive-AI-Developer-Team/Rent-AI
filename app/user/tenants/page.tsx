@@ -2505,7 +2505,7 @@ export default function TenantsPage() {
                       className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-600 px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
                     >
                       <Archive className="h-4 w-4" />
-                      Archive
+                      End tenancy and archive
                     </button>
                   ))}
                 <button
@@ -3352,7 +3352,7 @@ export default function TenantsPage() {
       {archiveConfirmOpen && selectedTenant && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
-            <h3 className="mb-2 text-lg font-semibold">Archive tenant?</h3>
+            <h3 className="mb-2 text-lg font-semibold">End tenancy and archive?</h3>
             <p className="mb-3 text-sm text-gray-400">
               <span className="text-gray-200">{getTenantDisplayName(selectedTenant)}</span> at{" "}
               <span className="text-gray-200">{getPropertyDisplay(selectedTenant)}</span> will be
@@ -3379,7 +3379,7 @@ export default function TenantsPage() {
                 className="inline-flex items-center gap-2 rounded-full border border-gray-500 bg-gray-800/70 px-4 py-2 text-sm text-gray-100 hover:bg-gray-700/80 disabled:opacity-60"
               >
                 <Archive className="h-4 w-4" />
-                {archiveTenantMutation.isPending ? "Archiving…" : "Archive tenant"}
+                {archiveTenantMutation.isPending ? "Archiving…" : "End tenancy and archive"}
               </button>
             </div>
           </div>
