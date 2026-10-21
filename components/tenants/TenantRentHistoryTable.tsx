@@ -9,13 +9,16 @@ import {
   buildPaymentPieceRoleMap,
   buildPaymentTotalsByGroup,
   buildRunningBalancesByIndex,
+  computeLandlordDisplayBalance,
   formatRentMoney,
+  getLastVisibleRentHistoryIndex,
   getOriginatingPaymentsForMonth,
   getPaymentPieces,
   getVisibleRentHistory,
   hasRecordedPayment,
   isDueDayChangeLineItem,
   isFirstMoveInPaymentEntry,
+  resolveRowDisplayBalance,
 } from "@/lib/rentHistoryDisplay";
 
 type Props = {
@@ -215,6 +218,9 @@ export default function TenantRentHistoryTable({
                   );
                 }
 
+                const lastVisibleRentIndex = getLastVisibleRentHistoryIndex(visibleHistory);
+                const overallBalance = computeLandlordDisplayBalance(tenant || { rentHistory: history });
+
                 return visibleHistory.map(({ entry, index }: { entry: any; index: number }) => {
                   const kind = String(entry?.kind || "rent");
                   const isAdjustment = kind === "discount" || kind === "refund";
@@ -389,7 +395,13 @@ export default function TenantRentHistoryTable({
                           if (isAdjustment) {
                             return <span className="text-sm text-gray-500">—</span>;
                           }
-                          const bal = runningBalancesByIndex.get(index) ?? 0;
+                          const bal = resolveRowDisplayBalance(
+                            runningBalancesByIndex.get(index) ?? 0,
+                            {
+                              isLastVisibleRentRow: index === lastVisibleRentIndex,
+                              overallBalance,
+                            }
+                          );
                           if (Math.abs(bal) < 0.005) {
                             return <span className="text-sm text-gray-400">Settled</span>;
                           }

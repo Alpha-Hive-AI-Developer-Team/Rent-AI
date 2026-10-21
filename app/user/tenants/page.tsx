@@ -43,6 +43,10 @@ import {
   defaultEffectiveFromForDueDayChange,
   isDueDayChangeLineItem,
 } from "@/lib/dueDayChange";
+import {
+  getLastVisibleRentHistoryIndex,
+  resolveRowDisplayBalance,
+} from "@/lib/rentHistoryDisplay";
 
 export default function TenantsPage() {
   /** True if char is a Unicode letter (works without regex `u` / `\p{L}`). */
@@ -838,13 +842,31 @@ export default function TenantsPage() {
     if (!isVacant) payload.tenantName = finalEditNames;
     if (showRoomEditField(selectedTenant)) payload.room = editRoom.trim();
     if (canEditScheduleFields(selectedTenant)) {
-      // Always send so backend can rebuild prorated unpaid schedule (stale history from older rules)
-      payload.moveInDate = editMoveIn || null;
-      payload.dueOn = editDueOn;
-      payload.dueOnSchedule = buildDueOnSchedulePayload(
+      // Only send schedule fields when they actually change — otherwise a deposit-only
+      // edit rebuilds rentHistory and wipes recorded charges/discounts.
+      const prevMoveIn = selectedTenant.moveInDate
+        ? new Date(selectedTenant.moveInDate).toISOString().slice(0, 10)
+        : "";
+      const nextMoveIn = editMoveIn || "";
+      const prevDueOn = Number(selectedTenant.dueOn);
+      const nextDueOnSched = buildDueOnSchedulePayload(
         editDueOnAdjustments,
         selectedTenant.rentFrequency === "weekly" ? "weekly" : "monthly"
       );
+      const prevDueOnSched = buildDueOnSchedulePayload(
+        dueOnScheduleFromTenant(selectedTenant).adjustments,
+        selectedTenant.rentFrequency === "weekly" ? "weekly" : "monthly"
+      );
+      if (nextMoveIn !== prevMoveIn) {
+        payload.moveInDate = editMoveIn || null;
+      }
+      if (Number(editDueOn) !== prevDueOn) {
+        payload.dueOn = editDueOn;
+      }
+      if (JSON.stringify(nextDueOnSched) !== JSON.stringify(prevDueOnSched)) {
+        payload.dueOnSchedule = nextDueOnSched;
+        if (payload.dueOn === undefined) payload.dueOn = editDueOn;
+      }
     }
     if (!isVacant) {
       const nextDeposit = editHasDeposit && Number(editDeposit) > 0 ? Number(editDeposit) : 0;
@@ -2100,6 +2122,9 @@ export default function TenantsPage() {
                       );
                     }
 
+                    const lastVisibleRentIndex = getLastVisibleRentHistoryIndex(visibleHistory);
+                    const overallBalance = getLandlordDisplayBalance(selectedTenant);
+
                     return visibleHistory.map(({ entry, index }: { entry: any; index: number }) => {
                       const kind = String(entry?.kind || "rent");
                       const isAdjustment = kind === "discount" || kind === "refund";
@@ -2334,7 +2359,13 @@ export default function TenantsPage() {
                             if (isAdjustment) {
                               return <span className="text-sm text-gray-500">—</span>;
                             }
-                            const bal = runningBalancesByIndex.get(index) ?? 0;
+                            const bal = resolveRowDisplayBalance(
+                              runningBalancesByIndex.get(index) ?? 0,
+                              {
+                                isLastVisibleRentRow: index === lastVisibleRentIndex,
+                                overallBalance,
+                              }
+                            );
                             if (Math.abs(bal) < 0.005) {
                               return (
                                 <span className="text-sm text-gray-400">Settled</span>
@@ -2474,7 +2505,7 @@ export default function TenantsPage() {
                       className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-600 px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
                     >
                       <Archive className="h-4 w-4" />
-                      Archive
+                      End tenancy and archive
                     </button>
                   ))}
                 <button
@@ -3321,7 +3352,7 @@ export default function TenantsPage() {
       {archiveConfirmOpen && selectedTenant && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
-            <h3 className="mb-2 text-lg font-semibold">Archive tenant?</h3>
+            <h3 className="mb-2 text-lg font-semibold">End tenancy and archive?</h3>
             <p className="mb-3 text-sm text-gray-400">
               <span className="text-gray-200">{getTenantDisplayName(selectedTenant)}</span> at{" "}
               <span className="text-gray-200">{getPropertyDisplay(selectedTenant)}</span> will be
@@ -3348,7 +3379,7 @@ export default function TenantsPage() {
                 className="inline-flex items-center gap-2 rounded-full border border-gray-500 bg-gray-800/70 px-4 py-2 text-sm text-gray-100 hover:bg-gray-700/80 disabled:opacity-60"
               >
                 <Archive className="h-4 w-4" />
-                {archiveTenantMutation.isPending ? "Archiving…" : "Archive tenant"}
+                {archiveTenantMutation.isPending ? "Archiving…" : "End tenancy and archive"}
               </button>
             </div>
           </div>
