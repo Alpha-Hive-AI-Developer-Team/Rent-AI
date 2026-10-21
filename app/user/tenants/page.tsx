@@ -157,8 +157,6 @@ export default function TenantsPage() {
       paidVisible += paid;
     });
     dueUnpaid = Math.round(dueUnpaid * 100) / 100;
-    if (dueUnpaid > 0) return -dueUnpaid;
-
     paidVisible = Math.round(paidVisible * 100) / 100;
     futurePrepaid = Math.round(futurePrepaid * 100) / 100;
     const historyCredit =
@@ -167,6 +165,17 @@ export default function TenantsPage() {
     // Backend currentBalance may include unallocated reconciled bank leftovers
     // (money paid but not yet attached because the next due row did not exist yet).
     const stored = Number(tenant?.currentBalance);
+
+    if (dueUnpaid > 0) {
+      // Net arrears against prepaid on future months + any stored floating credit.
+      // (A charge added to absorb In-credit should not flip the banner to Underpaid.)
+      const netFromHistory = Math.round((-dueUnpaid + futurePrepaid) * 100) / 100;
+      if (Number.isFinite(stored) && stored > netFromHistory + 0.001) {
+        return Math.round(stored * 100) / 100;
+      }
+      return netFromHistory;
+    }
+
     if (Number.isFinite(stored) && stored > historyCredit + 0.001) {
       return Math.round(stored * 100) / 100;
     }
@@ -1016,11 +1025,13 @@ export default function TenantsPage() {
     },
   };
 
-  /** Stable key so the same bank payment can be tracked across months. */
+  /** Stable key so the same bank/manual payment can be tracked across months. */
   const getPaymentPieceGroupKey = (piece: any, historyIndex: number, pieceIndex: number) => {
     const txId = piece?.transactionId;
     if (txId != null && String(txId).trim() !== "") return `tx:${String(txId)}`;
-    // Cash / legacy rows without a bank id are one-off (not split across months).
+    const groupId = piece?.paymentGroupId;
+    if (groupId != null && String(groupId).trim() !== "") return `grp:${String(groupId)}`;
+    // Legacy cash rows without a group id are one-off (not split across months).
     return `solo:${historyIndex}:${pieceIndex}`;
   };
 
@@ -3121,7 +3132,9 @@ export default function TenantsPage() {
           (Number(pendingCash.entry.amountDue) || 0) - (Number(pendingCash.entry.amountPaid) || 0)
         );
         const depositOpen = getUnallocatedDepositAmount(selectedTenant);
-        const maxAllowed = Math.round((rentRemaining + depositOpen) * 100) / 100;
+        // Match banner / arrears: only months due through today (exclude future horizon rows).
+        const totalOpenRent = Math.round(getRemainingAmount(selectedTenant) * 100) / 100;
+        const openCoverHint = Math.round((totalOpenRent + depositOpen) * 100) / 100;
         const entered = Number(pendingCash.cashAmount);
         const previewDeposit =
           Number.isFinite(entered) && entered > 0 && depositOpen > 0
@@ -3129,29 +3142,35 @@ export default function TenantsPage() {
             : 0;
         const previewRent =
           Number.isFinite(entered) && entered > 0
-            ? Math.min(rentRemaining, Math.round((entered - previewDeposit) * 100) / 100)
+            ? Math.max(0, Math.round((entered - previewDeposit) * 100) / 100)
             : 0;
+        const coversMultipleMonths =
+          previewRent > rentRemaining + 0.001 && totalOpenRent > rentRemaining + 0.001;
 
         return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
           <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
             <h3 className="mb-2 text-lg font-semibold">Record payment</h3>
             <p className="mb-4 text-sm text-gray-400">
-              Enter how much was paid (full remaining or a partial amount), the date it was paid, and whether it was{" "}
-              <strong>cash</strong> or <strong>bank</strong>.
+              Enter how much was paid. Larger amounts clear open months oldest-first (FIFO), and any
+              surplus prepays upcoming rent — same as bank reconcile.
               {depositOpen > 0
-                ? " Same as auto-reconcile: deposit is taken first, then rent."
+                ? " Deposit is taken first, then rent."
                 : ""}
             </p>
 
             <div className="mb-4 rounded-lg border border-[#111] bg-[#050505] p-3">
               <div className="flex justify-between text-sm text-gray-300">
-                <div>Month</div>
+                <div>Starting month</div>
                 <div>{formatDate(pendingCash.entry.month)}</div>
               </div>
               <div className="flex justify-between text-sm text-gray-300">
-                <div>Rent remaining</div>
+                <div>This month remaining</div>
                 <div>{formatMoney(rentRemaining)}</div>
+              </div>
+              <div className="flex justify-between text-sm text-gray-300">
+                <div>Total open rent</div>
+                <div>{formatMoney(totalOpenRent)}</div>
               </div>
               {depositOpen > 0 && (
                 <div className="flex justify-between text-sm text-gray-300">
@@ -3160,8 +3179,8 @@ export default function TenantsPage() {
                 </div>
               )}
               <div className="mt-1 flex justify-between border-t border-[#1a1a1a] pt-2 text-sm font-medium text-amber-300">
-                <div>Max for this payment</div>
-                <div>{formatMoney(maxAllowed)}</div>
+                <div>Covers open dues</div>
+                <div>{formatMoney(openCoverHint)}</div>
               </div>
             </div>
 
@@ -3215,6 +3234,12 @@ export default function TenantsPage() {
                 )}
                 {previewDeposit > 0.001 && previewRent > 0.001 && <span> · </span>}
                 {previewRent > 0.001 && <span>{formatMoney(previewRent)} rent</span>}
+                {coversMultipleMonths && (
+                  <span> across open months (oldest first)</span>
+                )}
+                {previewRent > totalOpenRent + 0.001 && (
+                  <span>; surplus prepays upcoming months</span>
+                )}
               </p>
             )}
 
@@ -3245,14 +3270,6 @@ export default function TenantsPage() {
                   const amount = Number(pendingCash.cashAmount);
                   if (!Number.isFinite(amount) || amount <= 0) {
                     toast.error("Enter a valid payment amount");
-                    return;
-                  }
-                  if (amount > maxAllowed + 0.001) {
-                    toast.error(
-                      depositOpen > 0
-                        ? `Amount cannot exceed rent remaining (${formatMoney(rentRemaining)}) plus deposit (${formatMoney(depositOpen)})`
-                        : "Amount cannot exceed remaining due"
-                    );
                     return;
                   }
                   if (!pendingCash.paidOn || !/^\d{4}-\d{2}-\d{2}$/.test(pendingCash.paidOn)) {

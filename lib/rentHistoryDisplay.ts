@@ -68,6 +68,9 @@ export function isFirstMoveInPaymentEntry(entry: any, tenant?: any) {
 export function getPaymentPieceGroupKey(piece: any, historyIndex: number, pieceIndex: number) {
   const txId = piece?.transactionId;
   if (txId != null && String(txId).trim() !== "") return `tx:${String(txId)}`;
+  // Manual cash/bank payment split across months (same id on every piece).
+  const groupId = piece?.paymentGroupId;
+  if (groupId != null && String(groupId).trim() !== "") return `grp:${String(groupId)}`;
   return `solo:${historyIndex}:${pieceIndex}`;
 }
 
