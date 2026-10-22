@@ -51,7 +51,7 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
     return (
       <>
         <aside
-          className={`fixed top-0 left-0 h-screen bg-[#0A0A0A] text-gray-400 flex flex-col border-r border-gray-900/60 transition-all duration-300 z-50
+          className={`fixed inset-y-0 left-0 h-dvh max-h-dvh bg-[#0A0A0A] text-gray-400 flex flex-col border-r border-gray-900/60 transition-all duration-300 z-50
             ${isDesktop ? "w-72" : "w-20"}
             ${!isDesktop ? "hidden" : ""}
           `}
@@ -80,8 +80,8 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
         </div>
       )}
 
-      {/* 📋 Navigation */}
-      <nav className="flex-1 px-3 py-4">
+      {/* 📋 Navigation — min-h-0 so Safari/Mac flex doesn't push Logout below the fold */}
+      <nav className="flex-1 min-h-0 px-3 py-4 overflow-y-auto">
         {/* {isDesktop && (
           <div className="text-xs text-gray-400 px-2 pb-2">Main</div>
         )} */}
@@ -109,8 +109,8 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
         </div>
       </nav>
 
-      {/* Logout */}
-      <div className="p-4">
+      {/* Logout — shrink-0 + safe-area so it stays visible on Mac (dock / 100vh quirk) */}
+      <div className="shrink-0 border-t border-gray-900/60 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <button
           onClick={() => setLogoutOpen(true)}
           disabled={logoutPending}
@@ -181,8 +181,8 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
         {!isDesktop && mobileOpen && (
           <div className="fixed inset-0 z-40 flex">
             <div className="absolute inset-0 bg-black/60" onClick={() => onClose?.()} />
-            <aside className="relative w-72 h-full bg-[#0A0A0A] text-gray-400 flex flex-col border-r border-gray-900/60 transition-transform duration-200">
-              <div className="flex items-center justify-start gap-3 p-6">
+            <aside className="relative w-72 h-dvh max-h-dvh bg-[#0A0A0A] text-gray-400 flex flex-col border-r border-gray-900/60 transition-transform duration-200">
+              <div className="flex items-center justify-start gap-3 p-6 shrink-0">
                 <Image
                   src="/images/logo-transparent.png"
                   alt="logo"
@@ -196,7 +196,7 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
                 </button>
               </div>
 
-              <nav className="flex-1 px-3 py-4 overflow-y-auto">
+              <nav className="flex-1 min-h-0 px-3 py-4 overflow-y-auto">
                 <div className="bg-transparent p-2 space-y-3">
                   {renderMenuItems.map(({ name, path, Icon }) => {
                     const isActive = pathname === path || (pathname === "" && path === "/");
@@ -219,7 +219,7 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
                 </div>
               </nav>
 
-              <div className="p-4">
+              <div className="shrink-0 border-t border-gray-900/60 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
                 <button
                   onClick={() => setLogoutOpen(true)}
                   disabled={logoutPending}
