@@ -161,7 +161,13 @@ export function useArchiveTenant() {
   const userId = authUser?.id || authUser?._id || authUser?.userId;
 
   return useMutation({
-    mutationFn: ({ tenantId }: { tenantId: string }) => archiveTenant(tenantId),
+    mutationFn: ({
+      tenantId,
+      moveOutDate,
+    }: {
+      tenantId: string;
+      moveOutDate?: string;
+    }) => archiveTenant(tenantId, moveOutDate ? { moveOutDate } : undefined),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["tenants", userId] });
       toast.success(res?.message || "Tenant archived");

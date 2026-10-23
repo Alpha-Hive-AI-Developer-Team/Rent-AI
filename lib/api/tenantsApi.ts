@@ -19,8 +19,15 @@ export async function getTenants(params: { archived?: "exclude" | "only" | "incl
   return res.data;
 }
 
-export async function archiveTenant(id: string) {
-  const res = await apiClient.post(`/tenants/${id}/archive`);
+export async function archiveTenant(
+  id: string,
+  payload?: { moveOutDate?: string; tenancyEndDate?: string }
+) {
+  const body =
+    payload?.moveOutDate || payload?.tenancyEndDate
+      ? { moveOutDate: payload.moveOutDate || payload.tenancyEndDate }
+      : {};
+  const res = await apiClient.post(`/tenants/${id}/archive`, body);
   return res.data;
 }
 

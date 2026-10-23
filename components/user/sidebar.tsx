@@ -183,70 +183,17 @@ export default function Sidebar({ mobileOpen, onClose }: SidebarProps) {
         </button>
       </div>
 
-      {/* Logout confirmation modal */}
-      {logoutOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-sm bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Confirm logout</h3>
-              <button
-                onClick={() => setLogoutOpen(false)}
-                disabled={logoutPending}
-                className="text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <p className="text-sm text-gray-300 mb-4">Are you sure you want to logout? You will be redirected to the sign-in page.</p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setLogoutOpen(false)}
-                disabled={logoutPending}
-                className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  setLogoutPending(true);
-                  try {
-                    await signOut(auth);
-                    logout.mutate(undefined, {
-                      onSettled: () => {
-                        setLogoutPending(false);
-                        setLogoutOpen(false);
-                      },
-                    });
-                  } catch {
-                    setLogoutPending(false);
-                  }
-                }}
-                disabled={logoutPending}
-                className="px-4 py-2 rounded-full border border-rose-600 text-sm text-rose-300 bg-transparent hover:bg-rose-900/5 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {logoutPending ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="inline-block w-4 h-4 border-2 border-t-transparent border-rose-300 rounded-full animate-spin" />
-                    Logging out...
-                  </span>
-                ) : (
-                  "Logout"
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
         </aside>
 
         {/* Mobile overlay panel (renders on top of content when toggled) */}
         {!isDesktop && mobileOpen && (
-          <div className="fixed inset-0 z-40 flex">
+          <div className="fixed inset-0 z-50 flex">
             <div
               className="absolute inset-0 bg-black/60"
               onClick={() => onClose?.()}
+              aria-hidden
             />
-            <aside className="relative w-72 h-dvh max-h-dvh bg-[#0A0A0A] text-gray-400 flex flex-col border-r border-gray-900/60 transition-transform duration-200">
+            <aside className="relative z-10 w-72 h-dvh max-h-dvh bg-[#0A0A0A] text-gray-400 flex flex-col border-r border-gray-900/60 transition-transform duration-200 pointer-events-auto">
               <div className="flex items-center justify-start gap-1 p-6 shrink-0">
                 <Image
                   src="/images/logo-transparent.png"
@@ -321,17 +268,85 @@ export default function Sidebar({ mobileOpen, onClose }: SidebarProps) {
                 </div>
               </nav>
 
-              <div className="shrink-0 border-t border-gray-900/60 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              <div className="shrink-0 border-t border-gray-900/60 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] relative z-20">
                 <button
-                  onClick={() => setLogoutOpen(true)}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLogoutOpen(true);
+                  }}
                   disabled={logoutPending}
-                  className="group relative flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm transition border text-gray-300 border-[#2A2A2A] hover:text-white hover:border-emerald-700/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="group relative z-20 flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm transition border text-gray-300 border-[#2A2A2A] hover:text-white hover:border-emerald-700/60 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <LogOut className="w-4 h-4 text-gray-400 group-hover:text-rose-400" />
                   <span>{logoutPending ? "Logging out..." : "Logout"}</span>
                 </button>
               </div>
             </aside>
+          </div>
+        )}
+
+        {/* Logout modal — outside sidebars so it works on mobile (desktop aside is hidden) */}
+        {logoutOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div
+              className="w-full max-w-sm bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Confirm logout</h3>
+                <button
+                  type="button"
+                  onClick={() => setLogoutOpen(false)}
+                  disabled={logoutPending}
+                  className="text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-sm text-gray-300 mb-4">
+                Are you sure you want to logout? You will be redirected to the sign-in page.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setLogoutOpen(false)}
+                  disabled={logoutPending}
+                  className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setLogoutPending(true);
+                    try {
+                      await signOut(auth);
+                      logout.mutate(undefined, {
+                        onSettled: () => {
+                          setLogoutPending(false);
+                          setLogoutOpen(false);
+                          onClose?.();
+                        },
+                      });
+                    } catch {
+                      setLogoutPending(false);
+                    }
+                  }}
+                  disabled={logoutPending}
+                  className="px-4 py-2 rounded-full border border-rose-600 text-sm text-rose-300 bg-transparent hover:bg-rose-900/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {logoutPending ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="inline-block w-4 h-4 border-2 border-t-transparent border-rose-300 rounded-full animate-spin" />
+                      Logging out...
+                    </span>
+                  ) : (
+                    "Logout"
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </>

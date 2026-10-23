@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Archive, ArchiveRestore, CalendarClock } from "lucide-react";
+import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Archive, ArchiveRestore, CalendarClock, Users } from "lucide-react";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import NewTenantModal from "@/components/user/new-tenant-modal";
 import RentScheduleFields, {
@@ -339,6 +339,8 @@ export default function TenantsPage() {
 
   type TenantSortKey = "name" | "property" | "rent" | "status" | "lastPayment";
   const [search, setSearch] = useState("");
+  const [listPage, setListPage] = useState(1);
+  const listPageSize = 20;
   /** When on: addresses sidebar (unique properties) + tenants for selected address. */
   const [showAddress, setShowAddress] = useState(false);
   const [selectedAddressKey, setSelectedAddressKey] = useState<string | null>(null);
@@ -420,6 +422,7 @@ export default function TenantsPage() {
   }>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [archiveEndDate, setArchiveEndDate] = useState("");
   const [reverseAllConfirmOpen, setReverseAllConfirmOpen] = useState(false);
   const [removeLineItemConfirm, setRemoveLineItemConfirm] = useState<null | {
     rentEntryId: string;
@@ -456,11 +459,11 @@ export default function TenantsPage() {
   const tenantsFromApi = data?.data ?? [];
 
   const statusColors: Record<string, string> = {
-    Paid: "bg-green-900/40 text-green-400 border-green-700/60",
-    Unpaid: "bg-red-900/40 text-red-400 border-red-700/60",
-    Partial: "bg-yellow-900/40 text-yellow-400 border-yellow-700/60",
-    Applied: "bg-violet-900/40 text-violet-300 border-violet-700/60",
-    Vacant: "bg-amber-900/40 text-amber-300 border-amber-700/60",
+    Paid: "bg-emerald-950/40 text-emerald-400 border-emerald-700/40",
+    Unpaid: "bg-rose-950/40 text-rose-400 border-rose-800/40",
+    Partial: "bg-amber-950/40 text-amber-400 border-amber-700/40",
+    Applied: "bg-violet-950/40 text-violet-300 border-violet-700/40",
+    Vacant: "bg-sky-950/40 text-sky-300 border-sky-700/40",
     Archived: "bg-gray-800/60 text-gray-300 border-gray-600",
   };
 
@@ -538,6 +541,23 @@ export default function TenantsPage() {
     return sortTenants(rows);
   }, [activeTenants, search, sortTenants]);
 
+  // Reset list page when search / archive / sort / address grouping changes
+  useEffect(() => {
+    setListPage(1);
+  }, [search, showArchived, tenantSortBy, tenantSortDir, showAddress, selectedAddressKey]);
+
+  const listTotalPages = Math.max(1, Math.ceil(filtered.length / listPageSize));
+  const safeListPage = Math.min(Math.max(1, listPage), listTotalPages);
+
+  useEffect(() => {
+    if (listPage !== safeListPage) setListPage(safeListPage);
+  }, [listPage, safeListPage]);
+
+  const paginatedFiltered = useMemo(() => {
+    const start = (safeListPage - 1) * listPageSize;
+    return filtered.slice(start, start + listPageSize);
+  }, [filtered, safeListPage, listPageSize]);
+
   /** Unique addresses + tenants — used when Show address is on. */
   const addressGroups = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -593,6 +613,55 @@ export default function TenantsPage() {
       setSelectedAddressKey(selectedAddressGroup.address);
     }
   }, [showAddress, selectedAddressGroup, selectedAddressKey]);
+
+  const addressTenantsAll = selectedAddressGroup?.tenants ?? [];
+  const addressTotalPages = Math.max(1, Math.ceil(addressTenantsAll.length / listPageSize));
+  const safeAddressPage = Math.min(listPage, addressTotalPages);
+  const paginatedAddressTenants = useMemo(() => {
+    const start = (safeAddressPage - 1) * listPageSize;
+    return addressTenantsAll.slice(start, start + listPageSize);
+  }, [addressTenantsAll, safeAddressPage, listPageSize]);
+
+  const renderTenantListPagination = (
+    total: number,
+    page: number,
+    totalPages: number,
+    onPage: (p: number) => void
+  ) => {
+    if (total <= 0) return null;
+    const start = Math.min((page - 1) * listPageSize + 1, total);
+    const end = Math.min(page * listPageSize, total);
+    return (
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-3">
+        <p className="text-xs sm:text-sm text-gray-400">
+          Showing {start} to {end} of {total} tenants
+        </p>
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => onPage(Math.max(1, page - 1))}
+            disabled={page <= 1}
+            className="inline-flex items-center gap-1.5 rounded-full border border-gray-800 px-4 py-2 text-xs sm:text-sm text-gray-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </button>
+          <span className="text-xs sm:text-sm text-gray-400 px-1">
+            Page <span className="text-white font-medium">{page}</span> of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => onPage(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
+            className="inline-flex items-center gap-1.5 rounded-full border border-gray-800 px-4 py-2 text-xs sm:text-sm text-gray-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const closeTransactionModal = () => {
     setTransactionModalOpen(false);
@@ -989,16 +1058,30 @@ export default function TenantsPage() {
 
   const openArchiveConfirm = () => {
     if (!selectedTenant || selectedTenant.tenancyStatus === "vacant") return;
+    const today = new Date().toISOString().slice(0, 10);
+    setArchiveEndDate(today);
     setArchiveConfirmOpen(true);
   };
 
   const confirmArchiveTenant = () => {
     if (!selectedTenant?._id) return;
+    if (!archiveEndDate || !/^\d{4}-\d{2}-\d{2}$/.test(archiveEndDate)) {
+      toast.error("Enter a valid tenancy end date");
+      return;
+    }
+    const moveIn = selectedTenant.moveInDate
+      ? new Date(selectedTenant.moveInDate).toISOString().slice(0, 10)
+      : null;
+    if (moveIn && archiveEndDate < moveIn) {
+      toast.error("Tenancy end date cannot be before move-in date");
+      return;
+    }
     archiveTenantMutation.mutate(
-      { tenantId: selectedTenant._id },
+      { tenantId: selectedTenant._id, moveOutDate: archiveEndDate },
       {
         onSuccess: () => {
           setArchiveConfirmOpen(false);
+          setArchiveEndDate("");
           setTransactionModalOpen(false);
           setSelectedTenant(null);
         },
@@ -1032,7 +1115,10 @@ export default function TenantsPage() {
         onSuccess: (res) => {
           const updated = res?.data;
           if (updated) setSelectedTenant(updated);
-          else setSelectedTenant((prev: any) => (prev ? { ...prev, archived: false, archivedAt: null } : prev));
+          else
+            setSelectedTenant((prev: any) =>
+              prev ? { ...prev, archived: false, archivedAt: null, moveOutDate: null } : prev
+            );
         },
       }
     );
@@ -1728,40 +1814,76 @@ export default function TenantsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <h1 className="text-xl font-semibold">Tenants</h1>
+    <div className="min-h-screen bg-black text-white p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-2 border-b border-gray-800/60">
+        <div className="flex items-start gap-3">
+          <div className="p-2.5 rounded-xl bg-[#027A48]/10 border border-[#027A48]/20 text-emerald-400 hidden sm:flex items-center justify-center">
+            <Users className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+              Tenants Portfolio
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-400 mt-1">
+              Manage leases, rent schedules, arrears tracking, and bank reconciliation
+            </p>
+          </div>
+        </div>
+
+        {!showArchived && (
+          <button
+            onClick={() => setNewTenantOpen(true)}
+            className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-[#027A48] hover:bg-[#02653d] px-4 py-2.5 text-white font-medium text-xs sm:text-sm shadow-sm transition active:scale-95"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Tenant</span>
+          </button>
+        )}
       </div>
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 md:max-w-2xl">
-          <div className="relative w-full sm:flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder={showAddress ? "Search tenants or address..." : "Search tenants..."}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-gray-800 bg-[#0c0c0c] py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-            />
-          </div>
-          <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-[#2A2A2A] px-3 py-2 text-sm text-gray-300 hover:border-gray-600">
-            <input
-              type="checkbox"
-              checked={showAddress}
-              onChange={(e) => {
-                const on = e.target.checked;
-                setShowAddress(on);
-                setSelectedAddressKey(null);
-                if (!on && tenantSortBy === "property") {
-                  setTenantSortBy("name");
-                  setTenantSortDir("asc");
-                }
-              }}
-              className="h-3.5 w-3.5 rounded border-gray-600 bg-[#0c0c0c] text-emerald-500 focus:ring-emerald-600 focus:ring-offset-0"
-            />
-            Show address
-          </label>
+      {/* Search & Controls Row */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#111] border border-gray-800/80 rounded-2xl p-3 sm:p-4 shadow-md">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder={showAddress ? "Search tenants or address..." : "Search tenants..."}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-xl border border-gray-800 bg-[#161616] py-2.5 pl-10 pr-9 text-xs sm:text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const on = !showAddress;
+              setShowAddress(on);
+              setSelectedAddressKey(null);
+              if (!on && tenantSortBy === "property") {
+                setTenantSortBy("name");
+                setTenantSortDir("asc");
+              }
+            }}
+            className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs sm:text-sm font-medium transition ${
+              showAddress
+                ? "border-[#027A48] bg-[#027A48]/15 text-emerald-300 shadow-sm"
+                : "border-gray-800 bg-[#161616] text-gray-300 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            <span>Group by address</span>
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -1769,36 +1891,26 @@ export default function TenantsPage() {
               setSelectedTenant(null);
               setTransactionModalOpen(false);
             }}
-            className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm transition ${
+            className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs sm:text-sm font-medium transition ${
               showArchived
-                ? "border-gray-500 bg-gray-800/60 text-gray-100"
-                : "border-[#2A2A2A] text-gray-400 hover:border-gray-600 hover:text-gray-200"
+                ? "border-gray-600 bg-gray-800 text-white shadow-sm"
+                : "border-gray-800 bg-[#161616] text-gray-300 hover:text-white hover:bg-white/5"
             }`}
           >
-            <Archive className="h-4 w-4" />
-            {showArchived ? "Viewing archived" : "Show archived"}
+            <Archive className="h-3.5 w-3.5" />
+            <span>{showArchived ? "Archived" : "Show archived"}</span>
           </button>
         </div>
-
-        {!showArchived && (
-          <button
-            onClick={() => setNewTenantOpen(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-full border border-emerald-700 bg-transparent px-4 py-2 text-emerald-400 transition hover:bg-emerald-900/5 sm:w-auto md:ml-auto"
-          >
-            <Plus className="h-4 w-4 text-emerald-400" />
-            <span className="text-sm">Add Tenant</span>
-          </button>
-        )}
       </div>
 
       {showAddress ? (
-        <div className="grid min-h-[28rem] overflow-hidden rounded-2xl border border-[#1a1a1a] bg-[#0B0B0B] md:grid-cols-12">
-          <div className="border-b border-[#151515] md:col-span-4 md:border-b-0 md:border-r md:border-[#151515]">
-            <div className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-gray-500">
-              Addresses
+        <div className="grid min-h-[28rem] overflow-hidden rounded-2xl border border-gray-800/80 bg-[#111] md:grid-cols-12 shadow-xl">
+          <div className="border-b border-gray-800/80 md:col-span-4 md:border-b-0 md:border-r md:border-gray-800/80">
+            <div className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 bg-[#0c0c0c] border-b border-gray-800/60">
+              Portfolio Addresses
             </div>
             <div
-              className="max-h-[40vh] space-y-2 overflow-y-auto px-3 pb-4 md:max-h-[min(70vh,36rem)] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+              className="max-h-[35vh] space-y-2 overflow-y-auto px-3 py-3 md:max-h-[min(70vh,36rem)] no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             >
               {isLoading ? (
                 <div className="px-2 py-8 text-center text-sm text-gray-500">Loading…</div>
@@ -1819,12 +1931,12 @@ export default function TenantsPage() {
                       onClick={() => setSelectedAddressKey(group.address)}
                       className={`w-full rounded-xl border px-3 py-3 text-left transition ${
                         selected
-                          ? "border-emerald-600 bg-emerald-950/30"
-                          : "border-gray-800 bg-[#080808] hover:border-gray-700"
+                          ? "border-[#027A48] bg-[#027A48]/15 text-white"
+                          : "border-gray-800/80 bg-[#161616] text-gray-300 hover:border-gray-700 hover:text-white"
                       }`}
                     >
-                      <div className="text-sm font-medium text-gray-100">{group.address}</div>
-                      <div className="mt-1 text-xs text-gray-500">
+                      <div className="text-xs sm:text-sm font-medium text-gray-100 truncate">{group.address}</div>
+                      <div className="mt-1 text-xs text-gray-400">
                         {count} tenant{count === 1 ? "" : "s"}
                       </div>
                     </button>
@@ -1834,207 +1946,342 @@ export default function TenantsPage() {
             </div>
           </div>
 
-          <div className="min-h-0 overflow-y-auto px-4 py-4 sm:px-6 md:col-span-8 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <div className="mb-4">
-              <h4 className="text-base font-medium text-gray-100">
+          <div className="min-h-0 overflow-y-auto px-4 py-4 sm:px-6 md:col-span-8 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="mb-4 pb-2 border-b border-gray-800/60">
+              <h4 className="text-base font-semibold text-gray-100 truncate">
                 {selectedAddressGroup?.address || "Tenants"}
               </h4>
-              <p className="text-xs text-gray-500">
-                Click a tenant to open rent history
+              <p className="text-xs text-gray-400 mt-0.5">
+                Click a tenant row to open their payment ledger and details
               </p>
             </div>
 
             {isLoading ? (
-              <div className="rounded-xl border border-[#1a1a1a] px-4 py-10 text-center text-gray-400">
+              <div className="rounded-xl border border-gray-800 bg-[#161616] px-4 py-10 text-center text-gray-400 text-sm">
                 Loading tenants…
               </div>
             ) : !selectedAddressGroup ? (
-              <div className="rounded-xl border border-[#1a1a1a] px-4 py-10 text-center text-gray-400">
-                {showArchived ? "No archived tenants." : "No tenants found."}
+              <div className="rounded-xl border border-gray-800 bg-[#161616] px-4 py-10 text-center text-gray-400 text-sm">
+                {showArchived ? "No archived tenants." : "Select an address from the left column."}
               </div>
             ) : selectedAddressGroup.tenants.length === 0 ? (
-              <div className="rounded-xl border border-[#1a1a1a] px-4 py-10 text-center text-gray-400">
+              <div className="rounded-xl border border-gray-800 bg-[#161616] px-4 py-10 text-center text-gray-400 text-sm">
                 No tenants found for this property
               </div>
             ) : (
-              <div className="w-full overflow-x-auto rounded-xl border border-[#1a1a1a] bg-[#0B0B0B]">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
-                      {(
-                        [
-                          { key: "name" as TenantSortKey, label: "Tenant Name" },
-                          { key: "rent" as TenantSortKey, label: "Rent" },
-                          { key: "status" as TenantSortKey, label: "Status" },
-                          { key: "lastPayment" as TenantSortKey, label: "Last Payment" },
-                        ] as const
-                      ).map((col) => {
-                        const active = tenantSortBy === col.key;
-                        return (
-                          <th key={col.key} className="px-4 py-3 text-xs whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => toggleTenantSort(col.key)}
-                              className={`inline-flex items-center gap-1.5 transition hover:text-gray-200 ${
-                                active ? "text-gray-100" : "text-gray-400"
-                              }`}
-                              aria-label={`Sort by ${col.label}`}
-                            >
-                              {col.label}
-                              {active ? (
-                                tenantSortDir === "asc" ? (
-                                  <ArrowUp className="h-3.5 w-3.5" />
-                                ) : (
-                                  <ArrowDown className="h-3.5 w-3.5" />
-                                )
-                              ) : (
-                                <span className="inline-flex flex-col leading-none opacity-40">
-                                  <ArrowUp className="h-2.5 w-2.5" />
-                                  <ArrowDown className="-mt-0.5 h-2.5 w-2.5" />
-                                </span>
-                              )}
-                            </button>
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedAddressGroup.tenants.map((tenant: any) => (
-                      <tr
-                        key={tenant._id}
-                        onClick={() => openTenantDetails(tenant)}
-                        className="cursor-pointer border-t border-[#151515] transition hover:bg-[#0e0e0e]"
-                      >
-                        <td className="px-4 py-3 text-sm text-gray-200">
-                          {getTenantDisplayName(tenant)}
+              <>
+                {/* Mobile Cards (screens < sm) */}
+                <div className="sm:hidden space-y-3">
+                  {paginatedAddressTenants.map((tenant: any) => (
+                    <div
+                      key={tenant._id}
+                      onClick={() => openTenantDetails(tenant)}
+                      className="bg-[#161616] border border-gray-800/80 hover:border-gray-700/80 rounded-xl p-3.5 transition-all active:scale-[0.99] cursor-pointer shadow-sm space-y-2.5"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-white text-sm truncate">
+                            {getTenantDisplayName(tenant)}
+                          </div>
                           {tenant.room ? (
-                            <span className="mt-0.5 block text-[11px] text-gray-500">
+                            <div className="text-[11px] text-gray-400 truncate mt-0.5">
                               {tenant.room}
-                            </span>
+                            </div>
                           ) : null}
-                        </td>
-                        <td className="px-4 py-3 text-sm tabular-nums text-gray-300">
-                          {formatMoney(effectiveRentAmount(tenant))}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          <span
-                            className={`rounded-full border px-2.5 py-1 text-xs ${
-                              statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] ||
-                              "bg-gray-800 text-gray-400"
-                            }`}
-                          >
-                            {getStatusLabel(tenant)}
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium inline-flex items-center gap-1.5 ${
+                            statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] ||
+                            "bg-gray-800 text-gray-400"
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                          {getStatusLabel(tenant)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pt-2 border-t border-gray-800/60 text-gray-400">
+                        <div>Rent: <span className="font-semibold text-white">{formatMoney(effectiveRentAmount(tenant))}</span></div>
+                        <div>
+                          {showArchived ? "Ended" : "Last"}:{" "}
+                          <span className="text-gray-300">
+                            {showArchived
+                              ? formatDate(tenant.moveOutDate || tenant.archivedAt)
+                              : formatDate(tenant.lastPayment)}
                           </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-400">
-                          {formatDate(tenant.lastPayment)}
-                        </td>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table (screens >= sm) */}
+                <div className="hidden sm:block w-full overflow-x-auto rounded-xl border border-gray-800/80 bg-[#0c0c0c] no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  <table className="min-w-full text-xs sm:text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-800/70 bg-[#080808] text-left text-gray-400">
+                        {(
+                          [
+                            { key: "name" as TenantSortKey, label: "Tenant Name" },
+                            { key: "rent" as TenantSortKey, label: "Rent" },
+                            { key: "status" as TenantSortKey, label: "Status" },
+                            {
+                              key: "lastPayment" as TenantSortKey,
+                              label: showArchived ? "Tenancy ended" : "Last Payment",
+                            },
+                          ] as const
+                        ).map((col) => {
+                          const active = tenantSortBy === col.key;
+                          return (
+                            <th key={col.key} className="px-4 py-3 text-xs whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => toggleTenantSort(col.key)}
+                                className={`inline-flex items-center gap-1.5 transition hover:text-gray-200 ${
+                                  active ? "text-gray-100" : "text-gray-400"
+                                }`}
+                                aria-label={`Sort by ${col.label}`}
+                              >
+                                {col.label}
+                                {active ? (
+                                  tenantSortDir === "asc" ? (
+                                    <ArrowUp className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <ArrowDown className="h-3.5 w-3.5" />
+                                  )
+                                ) : (
+                                  <span className="inline-flex flex-col leading-none opacity-40">
+                                    <ArrowUp className="h-2.5 w-2.5" />
+                                    <ArrowDown className="-mt-0.5 h-2.5 w-2.5" />
+                                  </span>
+                                )}
+                              </button>
+                            </th>
+                          );
+                        })}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {paginatedAddressTenants.map((tenant: any) => (
+                        <tr
+                          key={tenant._id}
+                          onClick={() => openTenantDetails(tenant)}
+                          className="cursor-pointer border-t border-gray-800/60 transition hover:bg-[#141414]"
+                        >
+                          <td className="px-4 py-3.5 text-xs sm:text-sm text-gray-200">
+                            {getTenantDisplayName(tenant)}
+                            {tenant.room ? (
+                              <span className="mt-0.5 block text-[11px] text-gray-500">
+                                {tenant.room}
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3.5 text-xs sm:text-sm tabular-nums text-gray-300">
+                            {formatMoney(effectiveRentAmount(tenant))}
+                          </td>
+                          <td className="px-4 py-3.5 text-xs sm:text-sm">
+                            <span
+                              className={`rounded-full border px-2.5 py-1 text-xs inline-flex items-center gap-1.5 ${
+                                statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] ||
+                                "bg-gray-800 text-gray-400"
+                              }`}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                              {getStatusLabel(tenant)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 text-xs sm:text-sm text-gray-400">
+                            {showArchived
+                              ? formatDate(tenant.moveOutDate || tenant.archivedAt)
+                              : formatDate(tenant.lastPayment)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {renderTenantListPagination(
+                  addressTenantsAll.length,
+                  safeAddressPage,
+                  addressTotalPages,
+                  setListPage
+                )}
+              </>
             )}
           </div>
         </div>
       ) : (
-        <div className="w-full overflow-x-auto rounded-2xl border border-[#1a1a1a] bg-[#0B0B0B]">
-          <table className="min-w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
-                {(
-                  [
-                    { key: "name" as TenantSortKey, label: "Tenant Name", className: "rounded-tl-2xl" },
-                    { key: "rent" as TenantSortKey, label: "Rent", className: "" },
-                    { key: "status" as TenantSortKey, label: "Status", className: "" },
-                    {
-                      key: "lastPayment" as TenantSortKey,
-                      label: "Last Payment",
-                      className: "rounded-tr-2xl",
-                    },
-                  ] as { key: TenantSortKey; label: string; className: string }[]
-                ).map((col) => {
-                  const active = tenantSortBy === col.key;
-                  return (
-                    <th
-                      key={col.key}
-                      className={`px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm ${col.className}`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleTenantSort(col.key)}
-                        className={`inline-flex items-center gap-1.5 transition hover:text-gray-200 ${
-                          active ? "text-gray-100" : "text-gray-400"
-                        }`}
-                        aria-label={`Sort by ${col.label}`}
-                      >
-                        {col.label}
-                        {active ? (
-                          tenantSortDir === "asc" ? (
-                            <ArrowUp className="h-3.5 w-3.5" />
-                          ) : (
-                            <ArrowDown className="h-3.5 w-3.5" />
-                          )
-                        ) : (
-                          <span className="inline-flex flex-col leading-none opacity-40">
-                            <ArrowUp className="h-2.5 w-2.5" />
-                            <ArrowDown className="-mt-0.5 h-2.5 w-2.5" />
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading && (
-                <tr>
-                  <td colSpan={4} className="py-8 text-center text-gray-400">Loading tenants...</td>
-                </tr>
-              )}
+        <>
+          {/* Mobile Cards (screens < sm) */}
+          <div className="sm:hidden space-y-3">
+            {isLoading && (
+              <div className="p-8 text-center text-sm text-gray-400 rounded-2xl border border-gray-800/80 bg-[#111]">
+                Loading tenants...
+              </div>
+            )}
 
-              {isError && (
-                <tr>
-                  <td colSpan={4} className="py-8 text-center text-rose-400">Failed to load tenants.</td>
-                </tr>
-              )}
+            {isError && (
+              <div className="p-8 text-center text-sm text-rose-400 rounded-2xl border border-rose-900/50 bg-rose-950/20">
+                Failed to load tenants.
+              </div>
+            )}
 
-              {!isLoading && !isError && filtered.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="py-8 text-center text-gray-400">
-                    {showArchived ? "No archived tenants." : "No tenants found."}
-                  </td>
-                </tr>
-              )}
+            {!isLoading && !isError && filtered.length === 0 && (
+              <div className="p-8 text-center text-sm text-gray-400 rounded-2xl border border-gray-800/80 bg-[#111]">
+                {showArchived ? "No archived tenants." : "No tenants found."}
+              </div>
+            )}
 
-              {!isLoading && !isError && filtered.map((tenant: any) => (
-                <tr
-                  key={tenant._id}
-                  onClick={() => openTenantDetails(tenant)}
-                  className="cursor-pointer border-t border-[#151515] transition hover:bg-[#0e0e0e]"
-                >
-                  <td className="px-6 py-4 text-sm text-gray-300">{getTenantDisplayName(tenant)}</td>
-                  <td className="px-6 py-4 text-sm text-gray-300">{formatMoney(effectiveRentAmount(tenant))}</td>
-                  <td className="px-6 py-4 text-sm text-gray-300">
-                    <span className={`rounded-full border px-2.5 py-1 text-xs ${statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
-                      {getStatusLabel(tenant)}
+            {!isLoading && !isError && paginatedFiltered.map((tenant: any) => (
+              <div
+                key={tenant._id}
+                onClick={() => openTenantDetails(tenant)}
+                className="bg-[#111] border border-gray-800/80 hover:border-gray-700/80 rounded-2xl p-4 transition-all active:scale-[0.99] cursor-pointer shadow-md space-y-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-white text-sm truncate">
+                      {getTenantDisplayName(tenant)}
+                    </div>
+                    {tenant.property ? (
+                      <div className="text-xs text-gray-400 truncate mt-0.5">
+                        {tenant.property}
+                      </div>
+                    ) : null}
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium inline-flex items-center gap-1.5 ${
+                      statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] ||
+                      "bg-gray-800 text-gray-400"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                    {getStatusLabel(tenant)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs pt-2 border-t border-gray-800/60 text-gray-400">
+                  <div>Rent: <span className="font-semibold text-white">{formatMoney(effectiveRentAmount(tenant))}</span></div>
+                  <div>
+                    {showArchived ? "Ended" : "Last"}:{" "}
+                    <span className="text-gray-300">
+                      {showArchived
+                        ? formatDate(tenant.moveOutDate || tenant.archivedAt)
+                        : formatDate(tenant.lastPayment)}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-300">{formatDate(tenant.lastPayment)}</td>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table (screens >= sm) */}
+          <div className="hidden sm:block w-full overflow-x-auto rounded-2xl border border-gray-800/80 bg-[#111] shadow-xl no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <table className="min-w-full border-collapse text-xs sm:text-sm text-gray-300">
+              <thead>
+                <tr className="border-b border-gray-800/70 bg-[#0c0c0c] text-left text-gray-400 uppercase tracking-wider font-medium text-[11px] sm:text-xs">
+                  {(
+                    [
+                      { key: "name" as TenantSortKey, label: "Tenant Name", className: "" },
+                      { key: "rent" as TenantSortKey, label: "Rent", className: "" },
+                      { key: "status" as TenantSortKey, label: "Status", className: "" },
+                      {
+                        key: "lastPayment" as TenantSortKey,
+                        label: showArchived ? "Tenancy ended" : "Last Payment",
+                        className: "",
+                      },
+                    ] as { key: TenantSortKey; label: string; className: string }[]
+                  ).map((col) => {
+                    const active = tenantSortBy === col.key;
+                    return (
+                      <th
+                        key={col.key}
+                        className={`px-6 py-4 text-xs font-medium whitespace-nowrap ${col.className}`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleTenantSort(col.key)}
+                          className={`inline-flex items-center gap-1.5 transition hover:text-gray-200 ${
+                            active ? "text-gray-100" : "text-gray-400"
+                          }`}
+                          aria-label={`Sort by ${col.label}`}
+                        >
+                          {col.label}
+                          {active ? (
+                            tenantSortDir === "asc" ? (
+                              <ArrowUp className="h-3.5 w-3.5" />
+                            ) : (
+                              <ArrowDown className="h-3.5 w-3.5" />
+                            )
+                          ) : (
+                            <span className="inline-flex flex-col leading-none opacity-40">
+                              <ArrowUp className="h-2.5 w-2.5" />
+                              <ArrowDown className="-mt-0.5 h-2.5 w-2.5" />
+                            </span>
+                          )}
+                        </button>
+                      </th>
+                    );
+                  })}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {isLoading && (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-gray-400">Loading tenants...</td>
+                  </tr>
+                )}
+
+                {isError && (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-rose-400">Failed to load tenants.</td>
+                  </tr>
+                )}
+
+                {!isLoading && !isError && filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-gray-400">
+                      {showArchived ? "No archived tenants." : "No tenants found."}
+                    </td>
+                  </tr>
+                )}
+
+                {!isLoading && !isError && paginatedFiltered.map((tenant: any) => (
+                  <tr
+                    key={tenant._id}
+                    onClick={() => openTenantDetails(tenant)}
+                    className="cursor-pointer transition hover:bg-[#151515]"
+                  >
+                    <td className="px-6 py-4 text-xs sm:text-sm text-gray-200">{getTenantDisplayName(tenant)}</td>
+                    <td className="px-6 py-4 text-xs sm:text-sm text-gray-300 tabular-nums">{formatMoney(effectiveRentAmount(tenant))}</td>
+                    <td className="px-6 py-4 text-xs sm:text-sm">
+                      <span className={`rounded-full border px-2.5 py-1 text-xs inline-flex items-center gap-1.5 ${statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                        {getStatusLabel(tenant)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-xs sm:text-sm text-gray-400">
+                      {showArchived
+                        ? formatDate(tenant.moveOutDate || tenant.archivedAt)
+                        : formatDate(tenant.lastPayment)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {!isLoading && !isError &&
+            renderTenantListPagination(
+              filtered.length,
+              safeListPage,
+              listTotalPages,
+              setListPage
+            )}
+        </>
       )}
 
       {transactionModalOpen && selectedTenant && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 md:items-center md:p-6">
-          <div style={{
-          scrollbarWidth: 'none',
-          }} className="my-4 max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 backdrop-blur-sm p-3 sm:p-6 md:items-center no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="my-2 sm:my-4 max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-2xl border border-gray-800/80 bg-[#111] p-4 sm:p-6 text-white shadow-2xl no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold">
@@ -2047,6 +2294,9 @@ export default function TenantsPage() {
                   {selectedTenant.tenancyStatus !== "vacant" && selectedTenant.moveInDate
                     ? ` · Moved in ${formatDate(selectedTenant.moveInDate)}`
                     : ""}
+                  {selectedTenant.archived && selectedTenant.moveOutDate
+                    ? ` · Tenancy ended ${formatDate(selectedTenant.moveOutDate)}`
+                    : ""}
                 </p>
               </div>
               <button onClick={closeTransactionModal} className="shrink-0 text-gray-400 hover:text-white">
@@ -2057,6 +2307,14 @@ export default function TenantsPage() {
             {selectedTenant.archived && (
               <div className="mb-4 rounded-xl border border-gray-700 bg-gray-900/50 px-4 py-3 text-sm text-gray-300">
                 This tenant is archived — no new rent months will be created until you unarchive them.
+                {selectedTenant.moveOutDate ? (
+                  <span className="mt-1 block text-gray-400">
+                    Tenancy end date:{" "}
+                    <span className="font-medium text-gray-200">
+                      {formatDate(selectedTenant.moveOutDate)}
+                    </span>
+                  </span>
+                ) : null}
               </div>
             )}
 
@@ -3619,6 +3877,19 @@ export default function TenantsPage() {
               <span className="text-gray-200">{getPropertyDisplay(selectedTenant)}</span> will be
               moved to the archived list.
             </p>
+            <div className="mb-4">
+              <label className="mb-1.5 block text-sm text-gray-200">Tenancy end date</label>
+              <DateInput
+                value={archiveEndDate}
+                onChange={setArchiveEndDate}
+                className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-sm text-gray-200 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700"
+              />
+              {selectedTenant.moveInDate ? (
+                <p className="mt-1.5 text-xs text-gray-500">
+                  Move-in was {formatDate(selectedTenant.moveInDate)}
+                </p>
+              ) : null}
+            </div>
             <ul className="mb-5 list-disc space-y-1.5 pl-5 text-sm text-gray-500">
               <li>No new rent months will be created.</li>
               <li>Payment history and bank links are kept.</li>
@@ -3627,7 +3898,10 @@ export default function TenantsPage() {
             <div className="flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setArchiveConfirmOpen(false)}
+                onClick={() => {
+                  setArchiveConfirmOpen(false);
+                  setArchiveEndDate("");
+                }}
                 disabled={archiveTenantMutation.isPending}
                 className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5 disabled:opacity-50"
               >
@@ -3636,7 +3910,7 @@ export default function TenantsPage() {
               <button
                 type="button"
                 onClick={confirmArchiveTenant}
-                disabled={archiveTenantMutation.isPending}
+                disabled={archiveTenantMutation.isPending || !archiveEndDate}
                 className="inline-flex items-center gap-2 rounded-full border border-gray-500 bg-gray-800/70 px-4 py-2 text-sm text-gray-100 hover:bg-gray-700/80 disabled:opacity-60"
               >
                 <Archive className="h-4 w-4" />
@@ -3648,8 +3922,8 @@ export default function TenantsPage() {
       )}
 
       {reverseAllConfirmOpen && selectedTenant && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="w-full max-w-md rounded-2xl border border-gray-800/80 bg-[#111] p-6 text-white shadow-2xl">
             <h3 className="mb-2 text-lg font-semibold">Reverse all payments?</h3>
             <p className="mb-3 text-sm text-gray-400">
               This clears every payment for{" "}
@@ -3685,8 +3959,8 @@ export default function TenantsPage() {
       )}
 
       {removeLineItemConfirm && selectedTenant && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="w-full max-w-md rounded-2xl border border-gray-800/80 bg-[#111] p-6 text-white shadow-2xl">
             <h3 className="mb-2 text-lg font-semibold">
               Remove {removeLineItemConfirm.itemType}?
             </h3>
@@ -3725,8 +3999,8 @@ export default function TenantsPage() {
       )}
 
       {endTenancyOpen && selectedTenant && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="w-full max-w-md rounded-2xl border border-gray-800/80 bg-[#111] p-6 text-white shadow-2xl">
             <h3 className="mb-2 text-lg font-semibold">
               {selectedTenant.tenancyStatus === "vacant" ? "Remove vacant room?" : "Remove tenant?"}
             </h3>
@@ -3762,8 +4036,8 @@ export default function TenantsPage() {
       )}
 
       {assignOpen && selectedTenant && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
-          <div className="w-full max-w-md rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 text-white shadow-xl">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/80 backdrop-blur-sm p-4 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl border border-gray-800/80 bg-[#111] p-5 sm:p-6 text-white shadow-2xl no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="mb-4 flex items-start justify-between">
               <div>
                 <h3 className="text-lg font-semibold">Assign tenant</h3>
@@ -4337,8 +4611,8 @@ export default function TenantsPage() {
       )}
 
       {adjustmentOpen && selectedTenant && (
-        <div className="fixed inset-0 z-[10000] flex items-start justify-center overflow-y-auto bg-black/70 p-4 md:items-center">
-          <div className="w-full max-w-md rounded-2xl border border-[#1a1a1a] bg-[#0B0B0B] p-5 shadow-xl">
+        <div className="fixed inset-0 z-[10000] flex items-start justify-center overflow-y-auto bg-black/80 backdrop-blur-sm p-4 md:items-center no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl border border-gray-800/80 bg-[#111] p-5 sm:p-6 shadow-2xl no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold text-white">
@@ -4544,8 +4818,8 @@ export default function TenantsPage() {
       )}
 
       {dueDayChangeOpen && selectedTenant && (
-        <div className="fixed inset-0 z-[10000] flex items-start justify-center overflow-y-auto bg-black/70 p-4 md:items-center">
-          <div className="w-full max-w-md rounded-2xl border border-[#1a1a1a] bg-[#0B0B0B] p-5 shadow-xl">
+        <div className="fixed inset-0 z-[10000] flex items-start justify-center overflow-y-auto bg-black/80 backdrop-blur-sm p-4 md:items-center no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl border border-gray-800/80 bg-[#111] p-5 sm:p-6 shadow-2xl no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold text-white">Change due day</h3>

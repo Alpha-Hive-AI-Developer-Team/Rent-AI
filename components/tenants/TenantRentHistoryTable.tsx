@@ -58,6 +58,24 @@ export default function TenantRentHistoryTable({
   const depositPaidDate = tenant?.depositPaidDate || tenant?.depositStartDate || null;
   const monthlyRent = Number(tenant?.rent) || 0;
   const rentFrequency = tenant?.rentFrequency === "weekly" ? "Weekly rent" : "Monthly rent";
+  const moveInDate = tenant?.moveInDate || null;
+  const moveOutDate = tenant?.moveOutDate || null;
+  const isArchived = Boolean(tenant?.archived);
+  const room = tenant?.room ? String(tenant.room).trim() : "";
+  const propertyLabel = [tenant?.property, room].filter(Boolean).join(" · ");
+  const displayBalance = computeLandlordDisplayBalance(tenant || { rentHistory: history });
+  const balanceLabel =
+    Math.abs(displayBalance) < 0.005
+      ? "Settled"
+      : displayBalance > 0
+        ? "In credit"
+        : "Underpaid";
+  const balanceClass =
+    Math.abs(displayBalance) < 0.005
+      ? "border-gray-800 bg-[#0a0a0a] text-gray-300"
+      : displayBalance > 0
+        ? "border-emerald-800/50 bg-emerald-950/30 text-emerald-200"
+        : "border-rose-800/50 bg-rose-950/30 text-rose-200";
 
   const [paymentReview, setPaymentReview] = useState<{
     index: number;
@@ -158,40 +176,99 @@ export default function TenantRentHistoryTable({
     }
   };
 
+  const showLeaseStrip =
+    Boolean(title) ||
+    monthlyRent > 0 ||
+    depositAmount > 0 ||
+    Boolean(moveInDate) ||
+    Boolean(moveOutDate) ||
+    Boolean(propertyLabel);
+
   return (
     <>
-      {(title || monthlyRent > 0 || depositAmount > 0) && (
-        <div className="mb-4 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a] px-4 py-3">
-          {title ? <div className="mb-2 text-sm font-medium text-gray-200">{title}</div> : null}
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-400">
-            {monthlyRent > 0 && (
-              <p>
-                {rentFrequency}{" "}
-                <span className="font-medium text-gray-200">{formatRentMoney(monthlyRent)}</span>
-              </p>
-            )}
-            {depositAmount > 0 && (
-              <p className="flex flex-wrap items-center gap-2">
-                Deposit held{" "}
-                <span className="font-medium text-gray-200">{formatRentMoney(depositAmount)}</span>
-                {depositPaidDate && (
-                  <span className="text-gray-500">(paid {formatDate(depositPaidDate)})</span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => openDepositReview()}
-                  className="rounded-full border border-sky-900/80 px-2.5 py-0.5 text-[11px] text-sky-300 hover:bg-sky-950/40"
-                  title="See the bank transaction linked to this deposit"
-                >
-                  View bank payment
-                </button>
-              </p>
-            )}
+      {showLeaseStrip && (
+        <div className="mb-4 space-y-3">
+          {(propertyLabel || moveInDate || moveOutDate || title) && (
+            <div>
+              {title ? (
+                <div className="mb-1 text-sm font-medium text-gray-200">{title}</div>
+              ) : null}
+              {(propertyLabel || moveInDate || (isArchived && moveOutDate)) && (
+                <p className="text-xs sm:text-sm text-gray-400">
+                  {propertyLabel}
+                  {propertyLabel && moveInDate ? " · " : ""}
+                  {moveInDate ? `Moved in ${formatDate(moveInDate)}` : ""}
+                  {isArchived && moveOutDate
+                    ? `${propertyLabel || moveInDate ? " · " : ""}Tenancy ended ${formatDate(moveOutDate)}`
+                    : ""}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div
+            className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 ${balanceClass}`}
+          >
+            <div>
+              <p className="text-[11px] uppercase tracking-wide opacity-70">Current balance</p>
+              <p className="text-sm font-medium">{balanceLabel}</p>
+            </div>
+            <p className="text-lg font-semibold tabular-nums">
+              {formatRentMoney(Math.abs(displayBalance))}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-[#1a1a1a] bg-[#0a0a0a] px-4 py-3">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-400">
+              {monthlyRent > 0 && (
+                <p>
+                  {rentFrequency}{" "}
+                  <span className="font-medium text-gray-200">
+                    {formatRentMoney(monthlyRent)}
+                  </span>
+                </p>
+              )}
+              {depositAmount > 0 && (
+                <p className="flex flex-wrap items-center gap-2">
+                  Deposit held{" "}
+                  <span className="font-medium text-gray-200">
+                    {formatRentMoney(depositAmount)}
+                  </span>
+                  {depositPaidDate && (
+                    <span className="text-gray-500">
+                      (paid {formatDate(depositPaidDate)})
+                    </span>
+                  )}
+                  {tenantId ? (
+                    <button
+                      type="button"
+                      onClick={() => openDepositReview()}
+                      className="rounded-full border border-sky-900/80 px-2.5 py-0.5 text-[11px] text-sky-300 hover:bg-sky-950/40"
+                      title="See the bank transaction linked to this deposit"
+                    >
+                      View bank payment
+                    </button>
+                  ) : null}
+                </p>
+              )}
+              {moveInDate && (
+                <p>
+                  Move-in{" "}
+                  <span className="font-medium text-gray-200">{formatDate(moveInDate)}</span>
+                </p>
+              )}
+              {moveOutDate && (
+                <p>
+                  Tenancy ended{" "}
+                  <span className="font-medium text-gray-200">{formatDate(moveOutDate)}</span>
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      <div className="w-full overflow-x-auto rounded-lg border border-[#1a1a1a] bg-[#0B0B0B]">
+      <div className="w-full overflow-x-auto rounded-xl border border-gray-800/80 bg-[#0c0c0c] no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">

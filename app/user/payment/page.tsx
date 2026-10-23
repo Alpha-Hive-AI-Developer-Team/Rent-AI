@@ -1,7 +1,6 @@
 "use client";
 
-import Image from "next/image";
-import { Bell, CheckCircle } from "lucide-react";
+import { CheckCircle2, CreditCard, History, Info, Sparkles, Wallet, ArrowRight } from "lucide-react";
 import { usePayment } from "@/hooks/usepayment";
 import { useEffect, useState } from "react";
 import { useMyProfile } from "@/hooks/useAuth";
@@ -225,52 +224,65 @@ export default function PaymentPage() {
       : " No credits will be applied unless you enable them above.";
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8 max-w-screen-xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-end gap-4">
-        <h1 className="text-xl font-semibold mr-auto">Payment Plan</h1>
-
-      
-      </div>
-    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-
-   
-<div className="flex gap-2">
-        {/* Subscription status */}
-      {profileResp?.data && (
-        <div className="">
-          {profileResp.data.subscriptionStatus === 'active' && !profileResp.data.cancelAtPeriodEnd && (
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#072a17] text-emerald-300 text-sm">Auto-renews • Active</div>
-          )}
-          {profileResp.data.subscriptionStatus === 'active' && profileResp.data.cancelAtPeriodEnd && (
-            <div className="inline-flex flex-col gap-1">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#2a0b0b] text-rose-300 text-sm">Subscription cancelled — ends {profileResp.data.currentPeriodEnd ? formatDate(profileResp.data.currentPeriodEnd) : ''}</div>
-              <div className="text-xs text-gray-400 mt-1">You will retain access to paid features until the end of the current period.</div>
+    <div className="min-h-screen bg-black text-white p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 max-w-screen-xl mx-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      {/* Header — matching Dashboard / Tenants / Arrears */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-2 border-b border-gray-800/60">
+        <div className="flex items-start gap-3">
+          <div className="p-2.5 rounded-xl bg-[#027A48]/10 border border-[#027A48]/20 text-emerald-400 hidden sm:flex items-center justify-center">
+            <CreditCard className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+                Payment Plans & Billing
+              </h1>
+              {profileResp?.data?.subscriptionStatus === 'active' && !profileResp.data.cancelAtPeriodEnd && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-emerald-700/40 bg-emerald-950/40 text-xs font-medium text-emerald-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  Auto-renews · Active
+                </span>
+              )}
+              {profileResp?.data?.subscriptionStatus === 'active' && profileResp.data.cancelAtPeriodEnd && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-rose-700/40 bg-rose-950/40 text-xs font-medium text-rose-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                  Cancelling on {profileResp.data.currentPeriodEnd ? formatDate(profileResp.data.currentPeriodEnd) : ''}
+                </span>
+              )}
             </div>
-          )}
+            <p className="text-xs sm:text-sm text-gray-400 mt-1">
+              Manage your subscription tier, referral credits wallet, and bank payouts
+            </p>
+          </div>
         </div>
-      )}
 
-       {activePlan !== 'free' && profileResp?.data?.subscriptionStatus === 'active' && !profileResp?.data?.cancelAtPeriodEnd && (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <button className="inline-flex w-full sm:w-auto items-center justify-center rounded-full border border-rose-700 text-rose-300 px-3 py-1 text-sm hover:bg-[#1a0b0b]">
-                    Cancel at period end
-                  </button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Cancel subscription</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will cancel your subscription at the end of the current billing period. You will keep access to paid features until that date.
-                      {profileResp?.data?.currentPeriodEnd && (
-                        <div className="mt-2 text-sm text-gray-400">Active until: {new Date(profileResp.data.currentPeriodEnd).toLocaleString()}</div>
-                      )}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Keep subscription</AlertDialogCancel>
-                    <AlertDialogAction onClick={async () => {
+        {/* Top Header Actions */}
+        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+          {/* Cancel Subscription Action (if active) */}
+          {activePlan !== 'free' && profileResp?.data?.subscriptionStatus === 'active' && !profileResp?.data?.cancelAtPeriodEnd && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <button className="inline-flex items-center justify-center rounded-xl border border-rose-800/60 bg-rose-950/20 text-rose-300 px-3.5 py-2 text-xs sm:text-sm font-medium hover:bg-rose-950/40 transition w-full sm:w-auto">
+                  Cancel subscription
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="bg-[#111] text-white border border-gray-800 rounded-2xl p-6 shadow-2xl">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="text-lg font-bold text-white">Cancel subscription?</AlertDialogTitle>
+                  <AlertDialogDescription className="text-gray-400 text-sm">
+                    This will cancel your subscription at the end of the current billing period. You will retain full access to all paid features until that date.
+                    {profileResp?.data?.currentPeriodEnd && (
+                      <div className="mt-2.5 p-2.5 rounded-xl bg-[#161616] border border-gray-800 text-xs text-gray-300">
+                        Active until: <span className="text-white font-medium">{new Date(profileResp.data.currentPeriodEnd).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter className="gap-2 sm:gap-0">
+                  <AlertDialogCancel className="border-gray-800 bg-transparent text-gray-300 hover:bg-white/5 rounded-xl text-xs sm:text-sm">
+                    Keep subscription
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={async () => {
                       try {
                         await cancelSubscription();
                         toast.success("Subscription will cancel at period end", { duration: 2000 });
@@ -278,142 +290,200 @@ export default function PaymentPage() {
                       } catch (e: any) {
                         toast.error(e?.message || 'Failed to cancel subscription');
                       }
-                    }}>
-                      Confirm cancel
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
-</div>
-       {/* View withdrawal history */}
+                    }}
+                    className="bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs sm:text-sm"
+                  >
+                    Confirm cancel
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+
+          {/* Withdrawal History Action */}
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <button className="inline-flex items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-4 py-2 text-sm hover:bg-[#0b1510] w-full sm:w-auto">
-                View Withdrawal History
+              <button className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-800 bg-[#161616] text-gray-200 hover:text-white hover:bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium transition w-full sm:w-auto">
+                <History className="w-4 h-4 text-emerald-400" />
+                <span>Withdrawal History</span>
               </button>
             </AlertDialogTrigger>
-            <AlertDialogContent className="bg-[#07120b] text-white rounded-2xl p-6 w-full max-w-3xl">
+            <AlertDialogContent className="bg-[#111] text-white border border-gray-800 rounded-2xl p-5 sm:p-6 w-full max-w-3xl shadow-2xl">
               <AlertDialogHeader>
                 <div className="flex items-start justify-between">
-                  <AlertDialogTitle className="text-lg text-white">Withdrawal History</AlertDialogTitle>
-                  <AlertDialogCancel className="text-sm text-gray-700">Close</AlertDialogCancel>
+                  <div>
+                    <AlertDialogTitle className="text-lg font-bold text-white">Withdrawal History</AlertDialogTitle>
+                    <p className="text-xs text-gray-400 mt-0.5">Track your bank payouts and referral credit transfers</p>
+                  </div>
+                  <AlertDialogCancel className="border-gray-800 bg-transparent text-gray-300 hover:bg-white/5 rounded-xl text-xs py-1.5 px-3">
+                    Close
+                  </AlertDialogCancel>
                 </div>
               </AlertDialogHeader>
-              <AlertDialogDescription>
-                <div className="text-xs text-gray-400 bg-[#0b1510] border border-[#24302a] rounded-lg p-3">
-                  Funds will automatically be transferred to your bank account in 5–7 days. You can view pending payouts in your Stripe Express account.
+              <div className="space-y-4 pt-2">
+                <div className="text-xs text-gray-300 bg-[#161616] border border-gray-800/80 rounded-xl p-3 flex items-start gap-2.5">
+                  <Info className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <span>Funds are automatically transferred to your connected bank account via Stripe Express within 5–7 business days.</span>
                 </div>
-                <div className="max-h-72 overflow-y-auto mt-4">
+                <div className="max-h-72 overflow-y-auto rounded-xl border border-gray-800 bg-[#0c0c0c] no-scrollbar">
                   {walletData?.transactions && walletData.transactions.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm text-left">
+                    <table className="w-full text-xs text-left">
                       <thead>
-                        <tr className="text-gray-400 text-xs border-b border-[#24302a]">
-                          <th className="py-3">Request Date</th>
-                          <th className="py-3">Type</th>
-                          <th className="py-3">Amount</th>
-                          <th className="py-3">Status</th>
-                          {/* <th className="py-3">Description</th> */}
+                        <tr className="text-gray-400 text-[11px] bg-[#141414] border-b border-gray-800">
+                          <th className="py-2.5 px-3.5">Request Date</th>
+                          <th className="py-2.5 px-3.5">Type</th>
+                          <th className="py-2.5 px-3.5">Amount</th>
+                          <th className="py-2.5 px-3.5 text-right">Status</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-[#12221a]">
+                      <tbody className="divide-y divide-gray-800/60">
                         {walletData.transactions.map((t: any) => {
                           const status = (t.status || '').toLowerCase();
-                          const statusClass = status === 'paid' ? 'text-emerald-400' : status === 'failed' ? 'text-rose-400' : 'text-amber-400';
+                          const statusPill =
+                            status === 'paid'
+                              ? 'bg-emerald-950/40 text-emerald-300 border-emerald-700/40'
+                              : status === 'failed'
+                              ? 'bg-rose-950/40 text-rose-300 border-rose-700/40'
+                              : 'bg-amber-950/40 text-amber-300 border-amber-700/40';
                           return (
-                            <tr key={t._id || t.stripeTransferId || t.createdAt}>
-                              <td className="py-3 align-top text-gray-200">{t.createdAt ? new Date(t.createdAt).toLocaleString() : '-'}</td>
-                              <td className="py-3 align-top text-gray-200">{t.type || '-'}</td>
-                              <td className="py-3 align-top text-emerald-300">£{(Number(t.amount) || 0).toFixed(2)}</td>
-                              <td className={`py-3 align-top ${statusClass}`}>{t.status || '-'}</td>
-                              {/* <td className="py-3 align-top text-gray-400">{t.description || '-'}</td> */}
+                            <tr key={t._id || t.stripeTransferId || t.createdAt} className="hover:bg-white/[0.02]">
+                              <td className="py-3 px-3.5 text-gray-300">{t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '-'}</td>
+                              <td className="py-3 px-3.5 text-gray-300 capitalize">{t.type || 'Payout'}</td>
+                              <td className="py-3 px-3.5 font-semibold text-emerald-400 tabular-nums">£{(Number(t.amount) || 0).toFixed(2)}</td>
+                              <td className="py-3 px-3.5 text-right">
+                                <span className={`inline-block px-2 py-0.5 rounded-full border text-[10px] font-medium capitalize ${statusPill}`}>
+                                  {t.status || 'Pending'}
+                                </span>
+                              </td>
                             </tr>
                           );
                         })}
                       </tbody>
-                      </table>
-                    </div>
+                    </table>
                   ) : (
-                    <div className="text-sm text-gray-400">No payout transactions found.</div>
+                    <div className="p-8 text-center text-xs text-gray-400">No payout transactions found.</div>
                   )}
                 </div>
-              </AlertDialogDescription>
+              </div>
             </AlertDialogContent>
           </AlertDialog>
- </div>
-      {/* Plans & Billing */}
-      <section>
-        {/* <h2 className="text-lg font-semibold mb-6">Plans & Billing</h2> */}
-        {/* Plan Cards (match screenshot) */}
-        {plansQuery.isLoading && (
-          <p className="text-sm text-gray-400 mb-4">Loading plans…</p>
-        )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {plans.map((plan) => (
-            <div key={plan.key} className={`rounded-2xl border p-5 flex flex-col justify-between ${activePlan === plan.key ? 'border-emerald-500 bg-[#072a17]' : 'border-[#2A2A2A] bg-transparent'}`}>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-200 mb-3">{plan.title}</h3>
-                <p className="text-3xl font-bold mb-1">{plan.price}<span className="text-sm font-normal text-gray-400">{plan.per}</span></p>
-                {plan.description ? (
-                  <p className="text-xs text-gray-500 mt-1">{plan.description}</p>
-                ) : null}
-                {plan.key !== 'free' && (planRank[plan.key] > (planRank[activePlan] ?? 0)) && (
-                  <p className="text-xs text-emerald-400 mt-1">Up to {getPlanDiscountPercent(plan.key as PlanKey)}% off with credits</p>
-                )}  
-                <ul className="mt-3 space-y-2 text-sm text-gray-300">
-                  {plan.features?.map((f, i) => (
-                    <li key={i} className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-400" /> {f}</li>
-                  ))}
-                </ul>
-              </div>
-              {(() => {
-                const { disabled, label, highlight } = getButtonState(plan.key);
-                return (
+        </div>
+      </div>
+
+      {/* Plans & Billing Grid */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-white">Available Plans</h2>
+            <p className="text-xs text-gray-400">Choose the subscription tier that matches your property portfolio</p>
+          </div>
+          {plansQuery.isLoading && (
+            <span className="text-xs text-emerald-400 animate-pulse">Loading plans…</span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          {plans.map((plan) => {
+            const isCurrent = activePlan === plan.key;
+            const { disabled, label, highlight } = getButtonState(plan.key);
+            const discountPct = getPlanDiscountPercent(plan.key as PlanKey);
+
+            return (
+              <div
+                key={plan.key}
+                className={`rounded-2xl border p-5 sm:p-6 flex flex-col justify-between transition-all duration-200 relative ${
+                  isCurrent
+                    ? 'border-[#027A48] bg-gradient-to-b from-[#027A48]/15 via-[#111] to-[#111] shadow-xl shadow-emerald-950/20'
+                    : 'border-gray-800/80 bg-[#111] hover:border-gray-700/80 shadow-md'
+                }`}
+              >
+                {isCurrent && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#027A48] text-white text-[10px] font-bold uppercase tracking-wider shadow-sm">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>Current Plan</span>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="text-base font-bold text-white">{plan.title}</h3>
+                    <div className="mt-2 flex items-baseline gap-1">
+                      <span className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">{plan.price}</span>
+                      <span className="text-xs font-normal text-gray-400">{plan.per}</span>
+                    </div>
+                    {plan.description && (
+                      <p className="text-xs text-gray-400 mt-1.5 leading-relaxed min-h-[2rem]">{plan.description}</p>
+                    )}
+                  </div>
+
+                  {plan.key !== 'free' && (planRank[plan.key] > (planRank[activePlan] ?? 0)) && discountPct > 0 && (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-700/40 text-[11px] font-medium text-emerald-300">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Up to {discountPct}% off with credits</span>
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-gray-800/60">
+                    <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2.5">Included Features</p>
+                    <ul className="space-y-2 text-xs text-gray-300">
+                      {plan.features?.map((f, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                          <span className="leading-tight text-gray-200">{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="pt-5 mt-4 border-t border-gray-800/60">
                   <button
                     disabled={disabled}
                     onClick={() => {
-                      if (disabled) return;
-                      if (plan.key === 'free') return;
+                      if (disabled || plan.key === 'free') return;
                       handleSelectPlan(plan.key);
                     }}
-                    className={`mt-5 w-full rounded-full px-4 py-2 text-sm ${highlight ? 'bg-emerald-600 text-white border-emerald-600' : 'border border-emerald-700 text-emerald-300 hover:bg-[#0b1510]'} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    className={`w-full rounded-xl py-2.5 px-4 text-xs sm:text-sm font-semibold transition ${
+                      highlight
+                        ? 'bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 cursor-default'
+                        : disabled
+                        ? 'border border-gray-800 bg-[#161616] text-gray-500 cursor-not-allowed opacity-60'
+                        : 'bg-[#027A48] hover:bg-emerald-600 text-white shadow-md shadow-emerald-950/40'
+                    }`}
                   >
-                    
                     {label}
                   </button>
-                );
-              })()}
-            </div>
-          ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Confirm mid-cycle plan upgrade (proration) — not shown for new checkout */}
+        {/* Confirm mid-cycle plan upgrade (proration) */}
         <AlertDialog
           open={!!upgradeConfirmPlan}
           onOpenChange={(open) => {
             if (!open) setUpgradeConfirmPlan(null);
           }}
         >
-          <AlertDialogContent className="bg-[#0c0c0c] text-white border border-[#222]">
+          <AlertDialogContent className="bg-[#111] text-white border border-gray-800 rounded-2xl p-6 shadow-2xl">
             <AlertDialogHeader>
-              <AlertDialogTitle>Upgrade to {upgradePlanLabel}?</AlertDialogTitle>
-              <AlertDialogDescription className="text-gray-400">
-                You are on <span className="text-gray-200">{currentPlanLabel}</span>. Upgrading to{" "}
-                <span className="text-gray-200">{upgradePlanLabel}</span> will prorate the change
-                for the rest of your current billing period and charge the difference now. Your next
-                renewal will be the full {upgradePlanLabel} price.
+              <AlertDialogTitle className="text-lg font-bold text-white">Upgrade to {upgradePlanLabel}?</AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-400 text-sm leading-relaxed">
+                You are currently on <span className="text-white font-medium">{currentPlanLabel}</span>. Upgrading to{" "}
+                <span className="text-emerald-300 font-semibold">{upgradePlanLabel}</span> will prorate the billing change
+                for the remainder of your current monthly cycle and charge only the difference today. Your subsequent renewals will continue at the full {upgradePlanLabel} rate.
                 {upgradeCreditNote}
               </AlertDialogDescription>
             </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="border-[#2A2A2A] bg-transparent text-gray-300 hover:bg-white/5">
+            <AlertDialogFooter className="gap-2 sm:gap-0">
+              <AlertDialogCancel className="border-gray-800 bg-transparent text-gray-300 hover:bg-white/5 rounded-xl text-xs sm:text-sm">
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={confirmUpgradePlan}
                 disabled={loading}
-                className="bg-emerald-600 text-white hover:bg-emerald-700"
+                className="bg-[#027A48] hover:bg-emerald-600 text-white rounded-xl text-xs sm:text-sm shadow-md shadow-emerald-950/40"
               >
                 {loading ? "Upgrading…" : "Confirm upgrade"}
               </AlertDialogAction>
@@ -421,41 +491,53 @@ export default function PaymentPage() {
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* Credits & wallet */}
-        <div className="mt-8 space-y-5 pb-8">
-          <div className="rounded-2xl border border-[#1f1f1f] bg-[#0b0b0b] p-5 sm:p-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-wide text-gray-500">Referral wallet</p>
-                <div className="mt-2 flex flex-wrap items-end gap-3">
-                  <p className="text-3xl font-semibold tabular-nums text-white">
+        {/* Credits & Wallet Section */}
+        <div className="mt-8 space-y-6">
+          <div className="rounded-2xl border border-gray-800/80 bg-[#111] p-5 sm:p-6 shadow-md space-y-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-950/60 border border-emerald-700/40 flex items-center justify-center text-emerald-400">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Referral Wallet</h3>
+                    <p className="text-xs text-gray-400">Your available rewards balance from landlord referrals</p>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex flex-wrap items-baseline gap-3">
+                  <p className="text-3xl sm:text-4xl font-extrabold tabular-nums text-white">
                     £{availableCredit.toFixed(2)}
                   </p>
-                  <p className="pb-1 text-sm text-gray-400">available credits</p>
+                  <span className="text-xs text-gray-400 font-medium">available credits</span>
                 </div>
+
                 {pendingHoldBalance > 0 && (
-                  <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-800/50 bg-amber-950/30 px-3 py-1 text-xs font-medium text-amber-300">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                    £{pendingHoldBalance.toFixed(2)} on 14-day hold
+                  <div className="space-y-1 pt-1">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-amber-700/40 bg-amber-950/30 px-3 py-1 text-xs font-medium text-amber-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      £{pendingHoldBalance.toFixed(2)} on 14-day hold
+                    </div>
+                    <p className="text-[11px] text-gray-500 max-w-md">
+                      On-hold referral credits clear automatically after 14 days, then can be used for upgrades, renewals, or bank withdrawals.
+                    </p>
                   </div>
-                )}
-                {pendingHoldBalance > 0 && (
-                  <p className="mt-2 max-w-md text-[12px] text-gray-500">
-                    On-hold referral credits clear automatically after 14 days, then can be used for
-                    upgrades, next renewal, or withdrawals.
-                  </p>
                 )}
               </div>
 
-              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-                <Link href="/user/referrals">
+              {/* Wallet Actions */}
+              <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                <Link href="/user/referrals" className="w-full sm:w-auto">
                   <button
                     type="button"
-                    className="inline-flex w-full items-center justify-center rounded-full border border-emerald-800/80 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510] sm:w-auto"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-gray-800 bg-[#161616] px-4 py-2.5 text-xs sm:text-sm font-medium text-gray-200 hover:text-white hover:bg-white/5 transition"
                   >
-                    Referral dashboard
+                    <span>Referral Dashboard</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-gray-400" />
                   </button>
                 </Link>
+
                 {!isConnected ? (
                   <button
                     type="button"
@@ -473,9 +555,9 @@ export default function PaymentPage() {
                       }
                     }}
                     disabled={connectLoading}
-                    className="inline-flex w-full items-center justify-center rounded-full border border-emerald-800/80 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510] sm:w-auto"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-700/60 bg-emerald-950/30 px-4 py-2.5 text-xs sm:text-sm font-medium text-emerald-300 hover:bg-emerald-950/50 transition disabled:opacity-50"
                   >
-                    {connectLoading ? "Connecting..." : "Connect bank"}
+                    {connectLoading ? "Connecting…" : "Connect Payout Bank"}
                   </button>
                 ) : (
                   <>
@@ -484,62 +566,65 @@ export default function PaymentPage() {
                         <button
                           type="button"
                           disabled={withdrawLoading || (walletBalance || 0) <= 0}
-                          className={`inline-flex w-full items-center justify-center rounded-full px-4 py-2 text-sm text-white sm:w-auto ${
+                          className={`w-full sm:w-auto inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-xs sm:text-sm font-semibold text-white transition ${
                             withdrawLoading || (walletBalance || 0) <= 0
-                              ? "cursor-not-allowed bg-gray-700"
-                              : "bg-emerald-600 hover:bg-emerald-700"
+                              ? "cursor-not-allowed bg-gray-800 text-gray-500"
+                              : "bg-[#027A48] hover:bg-emerald-600 shadow-md shadow-emerald-950/40"
                           }`}
                         >
-                          {withdrawLoading ? "Withdrawing..." : "Withdraw"}
+                          {withdrawLoading ? "Withdrawing…" : "Withdraw Funds"}
                         </button>
                       </AlertDialogTrigger>
-                      <AlertDialogContent className="w-full max-w-lg rounded-2xl bg-[#07120b] p-6 text-white">
+                      <AlertDialogContent className="w-full max-w-lg rounded-2xl bg-[#111] p-5 sm:p-6 text-white border border-gray-800 shadow-2xl">
                         <AlertDialogHeader>
-                          <AlertDialogTitle className="text-lg">Confirm Withdrawal</AlertDialogTitle>
-                          <AlertDialogDescription className="text-sm text-gray-300">
-                            Available balance: £{(walletBalance || 0).toFixed(2)}
+                          <AlertDialogTitle className="text-lg font-bold text-white">Confirm Withdrawal</AlertDialogTitle>
+                          <AlertDialogDescription className="text-xs sm:text-sm text-gray-300">
+                            Available withdrawable balance: <span className="text-emerald-400 font-bold">£{(walletBalance || 0).toFixed(2)}</span>
                           </AlertDialogDescription>
                         </AlertDialogHeader>
-                        <div className="mt-4 space-y-2">
+                        <div className="mt-4 space-y-3">
                           {pendingHoldBalance > 0 && (
-                            <div className="rounded-lg border border-amber-800/40 bg-amber-950/30 p-2.5 text-xs text-amber-300/90">
-                              £{pendingHoldBalance.toFixed(2)} is in a 14-day hold and cannot be
-                              withdrawn yet.
+                            <div className="rounded-xl border border-amber-700/40 bg-amber-950/30 p-2.5 text-xs text-amber-300/90">
+                              £{pendingHoldBalance.toFixed(2)} is in a 14-day hold and cannot be withdrawn yet.
                             </div>
                           )}
-                          <label className="text-sm text-gray-200">Amount to withdraw (GBP)</label>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            step={0.01}
-                            placeholder={(walletBalance || 0).toFixed(2)}
-                            value={withdrawAmount === "" ? "" : withdrawAmount}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              const num = Number(val);
-                              if (val === "") {
-                                setWithdrawAmount("");
-                                setWithdrawError("");
-                                return;
-                              }
-                              if (Number.isNaN(num) || num <= 0) {
-                                setWithdrawError("Enter a valid amount greater than 0");
-                              } else if (num > (walletBalance || 0)) {
-                                setWithdrawError("Amount exceeds available balance");
-                              } else {
-                                setWithdrawError("");
-                              }
-                              setWithdrawAmount(num);
-                            }}
-                            className="w-full rounded-lg border border-[#24302a] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:border-emerald-600 focus:outline-none"
-                          />
-                          {withdrawError && (
-                            <div className="text-xs text-rose-400">{withdrawError}</div>
-                          )}
+                          <div>
+                            <label className="text-xs sm:text-sm text-gray-300 block mb-1.5">Amount to withdraw (GBP)</label>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              step={0.01}
+                              placeholder={(walletBalance || 0).toFixed(2)}
+                              value={withdrawAmount === "" ? "" : withdrawAmount}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const num = Number(val);
+                                if (val === "") {
+                                  setWithdrawAmount("");
+                                  setWithdrawError("");
+                                  return;
+                                }
+                                if (Number.isNaN(num) || num <= 0) {
+                                  setWithdrawError("Enter a valid amount greater than 0");
+                                } else if (num > (walletBalance || 0)) {
+                                  setWithdrawError("Amount exceeds available balance");
+                                } else {
+                                  setWithdrawError("");
+                                }
+                                setWithdrawAmount(num);
+                              }}
+                              className="w-full rounded-xl border border-gray-800 bg-[#161616] px-3.5 py-2.5 text-xs sm:text-sm text-gray-200 placeholder:text-gray-500 focus:border-[#027A48] focus:outline-none transition"
+                            />
+                            {withdrawError && (
+                              <div className="text-xs text-rose-400 mt-1">{withdrawError}</div>
+                            )}
+                          </div>
                         </div>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel className="text-sm text-gray-700">Cancel</AlertDialogCancel>
+                        <AlertDialogFooter className="gap-2 sm:gap-0 pt-3">
+                          <AlertDialogCancel className="border-gray-800 bg-transparent text-gray-300 hover:bg-white/5 rounded-xl text-xs sm:text-sm">
+                            Cancel
+                          </AlertDialogCancel>
                           <AlertDialogAction
                             onClick={async () => {
                               const amountToWithdraw =
@@ -552,7 +637,7 @@ export default function PaymentPage() {
                                 toast.loading("Submitting withdrawal...", { id: "withdraw" });
                                 await withdraw(amountToWithdraw);
                                 toast.success(
-                                  "Amount Successfully transferred to your connected account",
+                                  "Amount successfully transferred to your connected account",
                                   { id: "withdraw", duration: 2000 }
                                 );
                                 setTimeout(() => window.location.reload(), 2000);
@@ -562,7 +647,7 @@ export default function PaymentPage() {
                                 setWithdrawLoading(false);
                               }
                             }}
-                            className="bg-emerald-600 hover:bg-emerald-700"
+                            className="bg-[#027A48] hover:bg-emerald-600 text-white rounded-xl text-xs sm:text-sm"
                             disabled={
                               withdrawLoading ||
                               !!withdrawError ||
@@ -574,6 +659,7 @@ export default function PaymentPage() {
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
+
                     <button
                       type="button"
                       onClick={async () => {
@@ -590,42 +676,44 @@ export default function PaymentPage() {
                         }
                       }}
                       disabled={manageLoading}
-                      className={`inline-flex w-full items-center justify-center rounded-full border px-4 py-2 text-sm sm:w-auto ${
+                      className={`w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-gray-800 bg-[#161616] px-4 py-2.5 text-xs sm:text-sm font-medium transition ${
                         manageLoading
-                          ? "cursor-not-allowed border-gray-700 text-gray-500"
-                          : "border-emerald-800/80 text-emerald-300 hover:bg-[#0b1510]"
+                          ? "cursor-not-allowed text-gray-500"
+                          : "text-gray-200 hover:text-white hover:bg-white/5"
                       }`}
                     >
-                      {manageLoading ? "Opening..." : "Manage bank"}
+                      {manageLoading ? "Opening…" : "Manage Bank"}
                     </button>
                   </>
                 )}
               </div>
             </div>
 
-            <div className="mt-5 border-t border-[#1a1a1a] pt-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            {/* Use at Checkout / Upgrade Switch */}
+            <div className="border-t border-gray-800/60 pt-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-gray-200">Use at checkout / upgrade</p>
-                  <p className="mt-0.5 text-xs text-gray-500">
+                  <p className="text-xs sm:text-sm font-medium text-gray-200">Use credits at checkout / upgrade</p>
+                  <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
                     Off by default. Turn on and enter an amount only when you want credits applied.
                   </p>
                 </div>
-                <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-200">
+                <label className="inline-flex cursor-pointer items-center gap-2 text-xs sm:text-sm text-gray-200">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 accent-emerald-600"
+                    className="h-4 w-4 accent-[#027A48] rounded"
                     checked={applyCredit}
                     onChange={(e) => setApplyCredit(e.target.checked)}
                   />
-                  Apply credits
+                  <span>Apply credits</span>
                 </label>
               </div>
+
               {applyCredit && availableCredit > 0 && (
-                <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-[#1f1f1f] bg-[#080808] px-4 py-3">
-                  <label className="flex items-center gap-2 text-sm text-gray-300">
-                    <span className="text-gray-500">Amount</span>
-                    <span className="text-gray-400">£</span>
+                <div className="mt-3.5 flex flex-wrap items-center gap-3 rounded-xl border border-gray-800/80 bg-[#161616] px-4 py-3">
+                  <label className="flex items-center gap-2 text-xs sm:text-sm text-gray-300">
+                    <span className="text-gray-400">Amount:</span>
+                    <span className="text-emerald-400 font-bold">£</span>
                     <input
                       type="number"
                       min={0}
@@ -641,12 +729,12 @@ export default function PaymentPage() {
                         }
                         setCreditAmount(Math.min(n, availableCredit).toFixed(2));
                       }}
-                      className="w-24 rounded-lg border border-[#2A2A2A] bg-black px-2 py-1.5 text-sm text-white"
+                      className="w-28 rounded-lg border border-gray-700 bg-black px-2.5 py-1.5 text-xs sm:text-sm text-white focus:outline-none focus:border-[#027A48]"
                     />
                   </label>
                   <button
                     type="button"
-                    className="text-xs text-emerald-400 hover:underline"
+                    className="text-xs text-emerald-400 hover:text-emerald-300 font-medium underline transition"
                     onClick={() => setCreditAmount(availableCredit.toFixed(2))}
                   >
                     Use max (£{availableCredit.toFixed(2)})
@@ -656,50 +744,50 @@ export default function PaymentPage() {
             </div>
           </div>
 
+          {/* Reserve for Next Renewal Section */}
           {canReserveForNext && (
-            <div className="rounded-2xl border border-[#1f1f1f] bg-[#0b0b0b] p-5 sm:p-6">
+            <div className="rounded-2xl border border-gray-800/80 bg-[#111] p-5 sm:p-6 shadow-md space-y-5">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h3 className="text-base font-medium text-gray-100">
+                  <h3 className="text-base font-bold text-white">
                     Apply credits to next payment
                   </h3>
-                  <p className="mt-1 max-w-xl text-sm text-gray-500">
-                    Reserve wallet credits for your next auto-renewal. Amount defaults to £0 so
-                    nothing is reserved unless you choose it.
+                  <p className="mt-1 max-w-xl text-xs sm:text-sm text-gray-400">
+                    Reserve wallet credits for your next auto-renewal. Amount defaults to £0 so nothing is reserved unless you choose it.
                   </p>
                 </div>
                 {profileResp?.data?.currentPeriodEnd && (
-                  <div className="mt-2 shrink-0 rounded-full border border-[#222] bg-[#080808] px-3 py-1 text-xs text-gray-400 sm:mt-0">
+                  <div className="mt-2 shrink-0 rounded-full border border-gray-800 bg-[#161616] px-3 py-1 text-xs text-gray-400 sm:mt-0">
                     Next charge {formatDate(profileResp.data.currentPeriodEnd)}
                   </div>
                 )}
               </div>
 
-              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div className="rounded-xl border border-[#1a1a1a] bg-[#080808] px-4 py-3">
-                  <p className="text-xs text-gray-500">Plan renewal</p>
-                  <p className="mt-1 text-lg font-semibold tabular-nums text-gray-100">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-gray-800/80 bg-[#161616] p-4">
+                  <p className="text-xs text-gray-400">Plan renewal</p>
+                  <p className="mt-1 text-lg sm:text-xl font-bold tabular-nums text-white">
                     £{nextPlanPounds.toFixed(2)}
                   </p>
                 </div>
-                <div className="rounded-xl border border-[#1a1a1a] bg-[#080808] px-4 py-3">
-                  <p className="text-xs text-gray-500">Already reserved</p>
-                  <p className="mt-1 text-lg font-semibold tabular-nums text-sky-300">
+                <div className="rounded-xl border border-gray-800/80 bg-[#161616] p-4">
+                  <p className="text-xs text-gray-400">Already reserved</p>
+                  <p className="mt-1 text-lg sm:text-xl font-bold tabular-nums text-sky-300">
                     £{stripeReservedPounds.toFixed(2)}
                   </p>
                 </div>
-                <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/20 px-4 py-3">
-                  <p className="text-xs text-emerald-500/80">Estimated next charge</p>
-                  <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-300">
+                <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
+                  <p className="text-xs text-emerald-400/90 font-medium">Estimated next charge</p>
+                  <p className="mt-1 text-lg sm:text-xl font-bold tabular-nums text-emerald-300">
                     £{estimatedNextChargePounds.toFixed(2)}
                   </p>
                 </div>
               </div>
 
-              <div className="mt-5 flex flex-col gap-4 border-t border-[#1a1a1a] pt-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex flex-col gap-4 border-t border-gray-800/60 pt-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="flex flex-wrap items-end gap-3">
-                  <label className="flex flex-col gap-1.5 text-sm text-gray-300">
-                    <span className="text-xs text-gray-500">Amount to reserve (£)</span>
+                  <label className="flex flex-col gap-1.5 text-xs sm:text-sm text-gray-300">
+                    <span className="text-xs text-gray-400">Amount to reserve (£)</span>
                     <input
                       type="number"
                       min={0}
@@ -715,12 +803,12 @@ export default function PaymentPage() {
                         }
                         setNextRenewalCreditAmount(Math.min(n, availableCredit).toFixed(2));
                       }}
-                      className="w-32 rounded-lg border border-[#2A2A2A] bg-black px-3 py-2 text-sm text-white"
+                      className="w-32 rounded-xl border border-gray-800 bg-[#161616] px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-[#027A48]"
                     />
                   </label>
                   <button
                     type="button"
-                    className="mb-2 text-xs text-emerald-400 hover:underline"
+                    className="mb-2 text-xs text-emerald-400 hover:text-emerald-300 underline font-medium transition"
                     onClick={() =>
                       setNextRenewalCreditAmount(
                         Math.min(
@@ -732,16 +820,16 @@ export default function PaymentPage() {
                   >
                     Max
                   </button>
-                  <div className="mb-2 min-w-[10rem] text-sm text-gray-500">
+                  <div className="mb-2 min-w-[10rem] text-xs sm:text-sm text-gray-400">
                     {nextRenewalCreditPounds > 0 ? (
                       <>
                         After reserve:{" "}
-                        <span className="font-medium text-emerald-300">
+                        <span className="font-semibold text-emerald-300">
                           £{nextPlanPounds.toFixed(2)} → £{previewNextChargeAfterReserve.toFixed(2)}
                         </span>
                       </>
                     ) : (
-                      <span className="text-gray-600">Enter an amount to preview</span>
+                      <span className="text-gray-500">Enter an amount to preview</span>
                     )}
                   </div>
                 </div>
@@ -753,19 +841,19 @@ export default function PaymentPage() {
                       disabled={
                         applyNextCreditMutation.isPending || !(nextRenewalCreditPounds > 0)
                       }
-                      className="inline-flex items-center justify-center rounded-full bg-sky-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-[#1a1a1a] disabled:text-gray-500"
+                      className="inline-flex items-center justify-center rounded-xl bg-sky-600 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500 transition shadow-md shadow-sky-950/40"
                     >
                       {applyNextCreditMutation.isPending
                         ? "Reserving…"
                         : "Reserve for next payment"}
                     </button>
                   </AlertDialogTrigger>
-                  <AlertDialogContent>
+                  <AlertDialogContent className="bg-[#111] text-white border border-gray-800 rounded-2xl p-6 shadow-2xl">
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Reserve credits for next renewal?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This deducts £{nextRenewalCreditPounds.toFixed(2)} from your wallet now and
-                        applies it to your next Stripe renewal
+                      <AlertDialogTitle className="text-lg font-bold text-white">Reserve credits for next renewal?</AlertDialogTitle>
+                      <AlertDialogDescription className="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        This deducts £{nextRenewalCreditPounds.toFixed(2)} from your referral wallet today and
+                        applies it to your upcoming Stripe auto-renewal
                         {nextPlanPounds > 0 && (
                           <>
                             {" "}
@@ -773,12 +861,17 @@ export default function PaymentPage() {
                             {previewNextChargeAfterReserve.toFixed(2)})
                           </>
                         )}
-                        . Reserved credits leave your withdrawable wallet immediately.
+                        . Reserved credits leave your withdrawable wallet balance immediately.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleReserveNextRenewalCredit}>
+                    <AlertDialogFooter className="gap-2 sm:gap-0 pt-2">
+                      <AlertDialogCancel className="border-gray-800 bg-transparent text-gray-300 hover:bg-white/5 rounded-xl text-xs sm:text-sm">
+                        Cancel
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleReserveNextRenewalCredit}
+                        className="bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs sm:text-sm"
+                      >
                         Confirm reserve
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -789,68 +882,6 @@ export default function PaymentPage() {
           )}
         </div>
       </section>
-      {/* Add Card Section */}
-      {/* <section>
-        <h2 className="text-lg font-semibold mb-6">Add Card</h2>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          
-          <form className="w-full space-y-5">
-            <div>
-              <label className="block text-sm text-gray-200 mb-2">Card number</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                placeholder="1234 5678 9012 3456"
-                className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-gray-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-200 mb-2">Name on card</label>
-              <input
-                type="text"
-                placeholder="Jane Doe"
-                className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-gray-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-200 mb-2">Expiry Date</label>
-                <input
-                  type="text"
-                  placeholder="MM/YY"
-                  className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-gray-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-200 mb-2">CVV</label>
-                <input
-                  type="password"
-                  placeholder="123"
-                  className="w-full bg-transparent border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-gray-500"
-                />
-              </div>
-            </div>
-
-            <button type="submit" className="inline-flex items-center justify-center rounded-full border border-emerald-700 text-emerald-300 px-6 py-2 text-sm hover:bg-[#0b1510]">
-              Save
-            </button>
-          </form>
-
-
-          <div className="w-full flex justify-center lg:justify-end">
-            <Image
-              src="/images/card.png"
-              alt="Credit Card"
-              width={420}
-              height={260}
-              className="rounded-xl object-contain"
-            />
-          </div>
-        </div>
-      </section> */}
     </div>
   );
 }
