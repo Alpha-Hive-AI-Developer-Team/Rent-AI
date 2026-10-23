@@ -65,12 +65,14 @@ export default function ReferralRewardCenter() {
 
       {/* Cards */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {topReferrers.map((partner:any, idx:any) => (
+        {topReferrers.map((partner: any, idx: any) => (
           <ReferralCard
             key={partner.id}
             name={partner.name}
             rank={idx + 1}
             earnings={formatMoney(partner.rewardCents)}
+            hold={formatMoney(partner.holdCents)}
+            available={formatMoney(partner.availableCents)}
             referrals={partner.referralsCount}
             referralCode={partner.referralCode}
           />

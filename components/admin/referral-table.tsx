@@ -21,6 +21,9 @@ interface ReferralData {
   name: string;
   status: string;
   rewardCents: number;
+  holdCents?: number;
+  availableCents?: number;
+  withdrawnCents?: number;
   usersRatio: string;
   createdAt: string;
 }
@@ -111,14 +114,16 @@ export default function ReferralTable({ data, total, page, pageSize, statusFilte
 
       {/* TABLE SECTION */}
       <div className="overflow-x-auto rounded-lg">
-        <table className="w-full min-w-[700px] text-left text-xs sm:text-sm text-gray-300">
+        <table className="w-full min-w-[880px] text-left text-xs sm:text-sm text-gray-300">
           <thead>
             <tr className="border-b border-[#1E1E1E] text-[#737373]">
               <th className="p-3 whitespace-nowrap">Code</th>
               <th className="p-3 whitespace-nowrap">Referrer</th>
               <th className="p-3 whitespace-nowrap">Status</th>
-              <th className="p-3 whitespace-nowrap">Reward Value</th>
-              <th className="p-3 whitespace-nowrap">Users Ratio</th>
+              <th className="p-3 whitespace-nowrap">Total earned</th>
+              <th className="p-3 whitespace-nowrap">In hold</th>
+              <th className="p-3 whitespace-nowrap">Available</th>
+              <th className="p-3 whitespace-nowrap">Paying / Referred</th>
               <th className="p-3 whitespace-nowrap">Created</th>
               {/* <th className="p-3 whitespace-nowrap">Action</th> */}
             </tr>
@@ -143,7 +148,15 @@ export default function ReferralTable({ data, total, page, pageSize, statusFilte
                     {item.status}
                   </span>
                 </td>
-                <td className="p-3">{formatMoney(item.rewardCents)}</td>
+                <td className="p-3 tabular-nums text-white">
+                  {formatMoney(item.rewardCents)}
+                </td>
+                <td className="p-3 tabular-nums text-amber-300">
+                  {formatMoney(item.holdCents || 0)}
+                </td>
+                <td className="p-3 tabular-nums text-emerald-300">
+                  {formatMoney(item.availableCents || 0)}
+                </td>
                 <td className="p-3">{item.usersRatio}</td>
                 <td className="p-3">{formatDate(item.createdAt)}</td>
                 {/* <td className="p-3">

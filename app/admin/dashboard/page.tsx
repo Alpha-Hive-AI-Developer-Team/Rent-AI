@@ -1,13 +1,12 @@
 "use client";
 
-import LineChartCard from "@/components/admin/chart-card";
 import SubscriptionRevenueCard from "@/components/admin/subscription-revenue-card";
+import NetRevenueCard from "@/components/admin/net-revenue-card";
 import StatCard from "@/components/admin/analytics-card";
-import { useAdminSummary, useAdminArrearsTrend, useAdminSubscriptionRevenue } from "@/hooks/useAdmin";
+import { useAdminSummary, useAdminSubscriptionRevenue } from "@/hooks/useAdmin";
 
 function DashboardPage() {
   const { data: summaryResp } = useAdminSummary();
-  const { data: arrearsTrendResp } = useAdminArrearsTrend(6);
   const { data: subRevenueResp } = useAdminSubscriptionRevenue(6);
 
   const summary = summaryResp?.data;
@@ -21,14 +20,6 @@ function DashboardPage() {
       value: summary ? (summary.landlords?.total ?? 0).toLocaleString() : "—",
       trend: summary ? (summary.landlords?.changePct ?? 0) : 0,
       period: monthName ? `All time · new in ${monthName}` : "All time",
-    },
-    {
-      title: "Rent Processed",
-      value: summary
-        ? `£${Number(summary.rentProcessed?.total || 0).toLocaleString()}`
-        : "—",
-      trend: summary ? (summary.rentProcessed?.changePct ?? 0) : 0,
-      period: "All time",
     },
     {
       title: "Expected Sub Revenue",
@@ -63,32 +54,19 @@ function DashboardPage() {
     },
   ];
 
-  const arrearsSeries = Array.isArray(arrearsTrendResp?.data?.series)
-    ? arrearsTrendResp.data.series.map((d: any) => ({
-        name: d.name,
-        arrears: d.arrears,
-      }))
-    : [];
-  const arrearsFooter =
-    typeof arrearsTrendResp?.data?.changePct === "number"
-      ? `Trending ${arrearsTrendResp.data.changePct >= 0 ? "up" : "down"} by ${Math.abs(
-          arrearsTrendResp.data.changePct
-        )}% this month`
-      : undefined;
-
   return (
     <div className="min-h-screen bg-black text-white p-4 md:p-8">
       <div className="flex items-center justify-end gap-4 mb-8">
         <h1 className="text-xl font-semibold mr-auto">Dashboard</h1>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
         {stats.map((item, i) => (
           <StatCard key={i} {...item} />
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6 items-stretch">
         <SubscriptionRevenueCard
           tiers={sub?.tiers}
           members={sub?.members}
@@ -98,16 +76,11 @@ function DashboardPage() {
           windowMonths={windowMonths}
         />
 
-        <LineChartCard
-          title="Arrears Trends"
-          subtitle={
-            monthName
-              ? `Last ${windowMonths} months · up to ${monthName}`
-              : `Last ${windowMonths} months`
-          }
-          data={arrearsSeries}
-          lines={[{ key: "arrears", color: "#FF6B00", name: "Unpaid" }]}
-          footer={arrearsFooter}
+        <NetRevenueCard
+          series={sub?.series}
+          revenue={sub?.revenue}
+          monthName={monthName}
+          windowMonths={windowMonths}
         />
       </div>
     </div>

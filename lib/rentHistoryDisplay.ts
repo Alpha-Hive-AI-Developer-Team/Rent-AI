@@ -574,9 +574,11 @@ export function buildBankStatementTxsByHistoryIndex(
     if (payMonth && byMonth.has(payMonth)) {
       const candidates = [...(byMonth.get(payMonth) || [])];
       if (payMs != null && candidates.length > 1) {
+        const payDayMs = payMs;
         candidates.sort(
           (a, b) =>
-            Math.abs(a.dueMs - payMs) - Math.abs(b.dueMs - payMs) || a.dueMs - b.dueMs
+            Math.abs(a.dueMs - payDayMs) - Math.abs(b.dueMs - payDayMs) ||
+            a.dueMs - b.dueMs
         );
       }
       targetIndex = candidates[0]?.index ?? null;
@@ -586,8 +588,9 @@ export function buildBankStatementTxsByHistoryIndex(
     } else if (payMonth && firstRent && payMonth < firstRent.monthKey) {
       targetIndex = firstRent.index;
     } else if (payMs != null && rentRows.length > 0) {
-      const next = rentRows.find((r) => r.dueMs >= payMs);
-      const prev = [...rentRows].reverse().find((r) => r.dueMs <= payMs);
+      const payDayMs = payMs;
+      const next = rentRows.find((r) => r.dueMs >= payDayMs);
+      const prev = [...rentRows].reverse().find((r) => r.dueMs <= payDayMs);
       targetIndex = (next ?? prev)?.index ?? null;
     }
 
