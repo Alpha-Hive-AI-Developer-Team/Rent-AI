@@ -91,7 +91,7 @@ Referral code: ${referralCode}`;
       {/* Header */}
       <div>
         <h1 className="text-xl font-semibold text-white">Refer a Customer & Earn Recurring Commission</h1>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs md:text-sm text-[#535862] mt-1">
           Share your partner link or referral code with landlords and property managers. Earn 10% monthly recurring
           commission for every active paying subscriber.
         </p>
@@ -102,17 +102,17 @@ Referral code: ${referralCode}`;
         {/* Left Column (7 cols): Link Generator & Outreach Templates */}
         <div className="lg:col-span-7 space-y-6">
           {/* Referral Link & Code Box */}
-          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-white">Your Referral Credentials</h2>
+          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-4 md:p-6 space-y-4 shadow-md">
+            <h2 className="text-sm md:text-base font-medium text-gray-200">Your Referral Credentials</h2>
 
             {/* Link */}
             <div className="space-y-1.5">
               <label className="text-xs text-gray-300 font-medium">Unique Referral Link</label>
               <div className="flex items-center gap-2 bg-[#0c0c0c] border border-gray-800 rounded-lg px-3 py-2">
-                <span className="text-xs text-gray-200 truncate flex-1 font-mono">{effectiveLink}</span>
+                <span className="text-xs text-gray-200 truncate flex-1 font-normal select-all">{effectiveLink}</span>
                 <button
                   onClick={handleCopyLink}
-                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-[#027A48] hover:bg-green-700 text-white transition flex items-center gap-1.5"
+                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-[#027A48] hover:bg-green-700 text-white transition flex items-center gap-1.5 shadow-sm"
                 >
                   {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                   {copiedLink ? "Copied" : "Copy Link"}
@@ -124,7 +124,7 @@ Referral code: ${referralCode}`;
             <div className="space-y-1.5">
               <label className="text-xs text-gray-300 font-medium">Partner Referral Code</label>
               <div className="flex items-center justify-between bg-[#0c0c0c] border border-gray-800 rounded-lg px-3 py-2">
-                <span className="text-sm font-bold text-white font-mono tracking-wider">{referralCode}</span>
+                <span className="text-sm font-semibold text-white tracking-wider select-all">{referralCode}</span>
                 <button
                   onClick={handleCopyCode}
                   className="px-3 py-1.5 text-xs font-medium rounded-md bg-[#1a1a1a] hover:bg-[#252525] text-gray-200 transition flex items-center gap-1.5"
@@ -175,10 +175,10 @@ Referral code: ${referralCode}`;
           </div>
 
           {/* Outreach Templates */}
-          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-5 space-y-4">
+          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-4 md:p-6 space-y-4 shadow-md">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-white">Pre-Written Outreach Templates</h2>
-              <span className="text-[11px] text-gray-500">Copy & customize</span>
+              <h2 className="text-sm md:text-base font-medium text-gray-200">Pre-Written Outreach Templates</h2>
+              <span className="text-xs text-gray-500">Copy & customize</span>
             </div>
 
             {/* Template 1: Landlord */}
@@ -197,7 +197,7 @@ Referral code: ${referralCode}`;
                   {copiedTemplate === "landlord" ? "Copied" : "Copy Template"}
                 </button>
               </div>
-              <p className="text-xs text-gray-400 font-mono whitespace-pre-line leading-relaxed bg-[#111] p-3 rounded border border-gray-800/60">
+              <p className="text-xs text-gray-300 whitespace-pre-line leading-relaxed bg-[#111] p-3.5 rounded-lg border border-gray-800/60 font-normal">
                 {landlordTemplate}
               </p>
             </div>
@@ -218,7 +218,7 @@ Referral code: ${referralCode}`;
                   {copiedTemplate === "pm" ? "Copied" : "Copy Template"}
                 </button>
               </div>
-              <p className="text-xs text-gray-400 font-mono whitespace-pre-line leading-relaxed bg-[#111] p-3 rounded border border-gray-800/60">
+              <p className="text-xs text-gray-300 whitespace-pre-line leading-relaxed bg-[#111] p-3.5 rounded-lg border border-gray-800/60 font-normal">
                 {propertyManagerTemplate}
               </p>
             </div>
@@ -228,41 +228,41 @@ Referral code: ${referralCode}`;
         {/* Right Column (5 cols): Programme Economics & Guidelines */}
         <div className="lg:col-span-5 space-y-4">
           {/* Economics Card */}
-          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-5 space-y-3.5">
-            <h2 className="text-sm font-semibold text-white">Partner Programme Economics</h2>
+          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-4 md:p-6 space-y-4 shadow-md">
+            <h2 className="text-sm md:text-base font-medium text-gray-200">Partner Programme Economics</h2>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-3.5 text-xs">
               <div className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-md bg-[#161616] border border-gray-800 flex items-center justify-center text-emerald-400 shrink-0">
+                <div className="w-7 h-7 rounded-md bg-[#161616] border border-gray-800 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
                   <Percent className="w-3.5 h-3.5" />
                 </div>
                 <div>
                   <p className="font-semibold text-white">10% Recurring Commission</p>
-                  <p className="text-gray-400 mt-0.5">
+                  <p className="text-gray-400 mt-0.5 leading-relaxed">
                     At today&apos;s £299/month subscription price, earn <strong className="text-gray-200">£29.90 every month</strong> for each active customer.
                   </p>
                 </div>
               </div>
 
               <div className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-md bg-[#161616] border border-gray-800 flex items-center justify-center text-gray-300 shrink-0">
+                <div className="w-7 h-7 rounded-md bg-[#161616] border border-gray-800 flex items-center justify-center text-gray-300 shrink-0 mt-0.5">
                   <ShieldCheck className="w-3.5 h-3.5" />
                 </div>
                 <div>
                   <p className="font-semibold text-white">Price Grandfathering</p>
-                  <p className="text-gray-400 mt-0.5">
+                  <p className="text-gray-400 mt-0.5 leading-relaxed">
                     Your monthly commission amount is permanently locked to the introduction price. Future price changes will not reduce your historical earnings.
                   </p>
                 </div>
               </div>
 
               <div className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-md bg-[#161616] border border-gray-800 flex items-center justify-center text-amber-400 shrink-0">
+                <div className="w-7 h-7 rounded-md bg-[#161616] border border-gray-800 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
                   <Clock className="w-3.5 h-3.5" />
                 </div>
                 <div>
                   <p className="font-semibold text-white">14-Day Anti-Refund Period</p>
-                  <p className="text-gray-400 mt-0.5">
+                  <p className="text-gray-400 mt-0.5 leading-relaxed">
                     New referrals qualify 14 days after payment, safeguarding against trial cancellations and refunds.
                   </p>
                 </div>
@@ -271,24 +271,24 @@ Referral code: ${referralCode}`;
           </div>
 
           {/* Rules Card */}
-          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-white">Core Programme Rules</h2>
-            <ul className="space-y-2 text-xs text-gray-400">
+          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-4 md:p-6 space-y-4 shadow-md">
+            <h2 className="text-sm md:text-base font-medium text-gray-200">Core Programme Rules</h2>
+            <ul className="space-y-2.5 text-xs text-gray-400">
               <li className="flex items-start gap-2">
                 <span className="text-emerald-400 font-bold">•</span>
-                <span>
+                <span className="leading-relaxed">
                   <strong className="text-gray-300">60-Day Activity Requirement:</strong> Introduce at least 1 new paying customer every 60 days to keep your portfolio protected.
                 </span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-emerald-400 font-bold">•</span>
-                <span>
+                <span className="leading-relaxed">
                   <strong className="text-gray-300">Oldest Referral Forfeiture:</strong> If 60 days elapse without a qualifying referral, 1 existing customer is permanently removed.
                 </span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-emerald-400 font-bold">•</span>
-                <span>
+                <span className="leading-relaxed">
                   <strong className="text-gray-300">Anti-Recycling Protection:</strong> Customers cannot cancel and re-subscribe with the same partner code.
                 </span>
               </li>

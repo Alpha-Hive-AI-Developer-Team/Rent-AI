@@ -7,15 +7,25 @@ import {
 	applyCreditsToNextRenewal as apiApplyCreditsToNextRenewal,
 } from '../lib/api/payment';
 import { loadStripe } from '@stripe/stripe-js';
+import { getEnabledPlans } from '@/lib/api/adminApi';
 import { PRICE_ID_MAP } from '@/lib/plans';
 import toast from 'react-hot-toast';
 
-type PlanKey = 'starter' | 'pro' | 'enterprise';
+type PlanKey = string;
 
 export function usePayment() {
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const qc = useQueryClient();
+
+	const plansQuery = useQuery({
+		queryKey: ['enabledPlans'],
+		queryFn: async () => {
+			const res = await getEnabledPlans();
+			return res.data || [];
+		},
+		staleTime: 60_000,
+	});
 
 	const nextCreditQuery = useQuery({
 		queryKey: ['nextRenewalCredit'],
@@ -26,11 +36,17 @@ export function usePayment() {
 		staleTime: 30_000,
 	});
 
-	const priceMap = useMemo(() => ({
-		starter: PRICE_ID_MAP.starter || process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER || '',
-		pro: PRICE_ID_MAP.pro || process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO || '',
-		enterprise: PRICE_ID_MAP.enterprise || process.env.NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE || '',
-	}), []);
+	const priceMap = useMemo(() => {
+		const map: Record<string, string> = {
+			starter: PRICE_ID_MAP.starter || process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER || '',
+			pro: PRICE_ID_MAP.pro || process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO || '',
+			enterprise: PRICE_ID_MAP.enterprise || process.env.NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE || '',
+		};
+		for (const p of plansQuery.data || []) {
+			if (p.key && p.stripePriceId) map[p.key] = p.stripePriceId;
+		}
+		return map;
+	}, [plansQuery.data]);
 
 	const startCheckout = useCallback(async (
 		plan: PlanKey,
@@ -40,7 +56,6 @@ export function usePayment() {
 		setError(null);
 		try {
 			const priceId = priceMap[plan];
-			if (!priceId) throw new Error(`Missing Stripe price id for plan: ${plan}`);
 			const origin = typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_CLIENT_URL || 'http://localhost:3000';
 
 			const opts =
@@ -49,11 +64,12 @@ export function usePayment() {
 					: options || {};
 
 			const payload: Parameters<typeof createCheckoutSession>[0] = {
-				priceId,
 				planType: plan,
+				planKey: plan,
 				successUrl: `${origin}/user/payment?status=success`,
 				cancelUrl: `${origin}/user/payment?status=cancel`,
 			};
+			if (priceId) payload.priceId = priceId;
 
 			if (typeof opts.applyCreditCents === 'number' && opts.applyCreditCents > 0) {
 				payload.applyCreditCents = Math.round(opts.applyCreditCents);
@@ -91,7 +107,10 @@ export function usePayment() {
 				}
 			}
 		} catch (e: any) {
-			setError(e?.message || 'Checkout failed');
+			const msg =
+				e?.response?.data?.message || e?.message || 'Checkout failed';
+			setError(msg);
+			toast.error(msg);
 			throw e;
 		} finally {
 			setLoading(false);
@@ -107,7 +126,6 @@ export function usePayment() {
 			setError(null);
 		},
 		onSuccess: () => {
-			// Invalidate profile/notifications so UI updates (keys used elsewhere)
 			qc.invalidateQueries({ queryKey: ['me'] });
 			qc.invalidateQueries({ queryKey: ['notifications'] });
 		},
@@ -159,5 +177,7 @@ export function usePayment() {
 		nextCreditQuery,
 		applyCreditsToNextRenewal,
 		applyNextCreditMutation,
+		plansQuery,
+		enabledPlans: plansQuery.data || [],
 	};
 }

@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Home, Building2, Users, Gift, LogOut, X } from "lucide-react";
+import { Home, Building2, Users, Gift, LogOut, X, CreditCard } from "lucide-react";
 import { useAuthUser } from "@/redux/useAuthUser";
 import { useCustomerLogout } from "@/hooks/useAuth";
 import { signOut } from "firebase/auth";
@@ -29,14 +29,19 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
     { name: "Admin Management", path: "/admin/management", Icon: Users },
     { name: "Landlord Management", path: "/admin/landlords", Icon: Building2 },
     { name: "Tenant Management", path: "/admin/tenants", Icon: Users },
+    { name: "Subscription Plans", path: "/admin/plans", Icon: CreditCard },
     { name: "Referrals", path: "/admin/referrals", Icon: Gift },
   ];
 
   // determine role from auth user and decide which menu items to render
   const userRole = String(user?.role || "")
   const isSuper = ["superAdmin"].includes(userRole);
-  // show Admin Management only to super-admin; all other users see the menu without that item
-  const renderMenuItems = isSuper ? menuItems : menuItems.filter((m) => m.name !== "Admin Management");
+  // Admin Management + Subscription Plans are super-admin only
+  const renderMenuItems = isSuper
+    ? menuItems
+    : menuItems.filter(
+        (m) => m.name !== "Admin Management" && m.name !== "Subscription Plans"
+      );
 
   // Detect screen size (lg breakpoint)
   useEffect(() => {
@@ -81,7 +86,7 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
       )}
 
       {/* 📋 Navigation — min-h-0 so Safari/Mac flex doesn't push Logout below the fold */}
-      <nav className="flex-1 min-h-0 px-3 py-4 overflow-y-auto">
+      <nav className="flex-1 min-h-0 px-3 py-4 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {/* {isDesktop && (
           <div className="text-xs text-gray-400 px-2 pb-2">Main</div>
         )} */}
@@ -123,8 +128,8 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
 
       {/* Logout confirmation modal */}
       {logoutOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-sm bg-[#0c0c0c] border border-gray-800 rounded-2xl p-6 text-white shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-[#111111] border border-gray-800 rounded-2xl p-6 text-white shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Confirm logout</h3>
               <button
@@ -196,7 +201,7 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
                 </button>
               </div>
 
-              <nav className="flex-1 min-h-0 px-3 py-4 overflow-y-auto">
+              <nav className="flex-1 min-h-0 px-3 py-4 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                 <div className="bg-transparent p-2 space-y-3">
                   {renderMenuItems.map(({ name, path, Icon }) => {
                     const isActive = pathname === path || (pathname === "" && path === "/");

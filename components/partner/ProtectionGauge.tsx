@@ -52,8 +52,8 @@ export default function ProtectionGauge({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-        <span className="text-2xl font-bold text-white tracking-tight">{daysRemaining}</span>
-        <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Days Left</span>
+        <span className="text-3xl font-semibold text-white tabular-nums">{daysRemaining}</span>
+        <span className="text-xs text-gray-400 font-medium uppercase tracking-wider mt-0.5">Days Left</span>
       </div>
     </div>
   );

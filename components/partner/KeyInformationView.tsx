@@ -60,25 +60,25 @@ export default function KeyInformationView() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-semibold text-white">Programme Rules & Key Information</h1>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs md:text-sm text-[#535862] mt-1">
           Core rules governing partner commissions, portfolio protection, anti-refund holds, and anti-abuse policies.
         </p>
       </div>
 
       {/* 3-Column Desktop Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         {rules.map((r) => {
           const Icon = r.icon;
           return (
             <div
               key={r.id}
-              className="bg-[#111] border border-gray-800/50 rounded-xl p-5 flex flex-col justify-between space-y-3 hover:border-gray-700 transition"
+              className="bg-[#111] border border-gray-800/50 rounded-xl p-4 md:p-6 flex flex-col justify-between space-y-3.5 hover:border-gray-700 transition shadow-md"
             >
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-[#161616] border border-gray-800 flex items-center justify-center shrink-0">
                   <Icon className={`w-4 h-4 ${r.accent}`} />
                 </div>
-                <h3 className="text-xs font-semibold text-white">{r.title}</h3>
+                <h3 className="text-sm font-semibold text-white">{r.title}</h3>
               </div>
 
               <p className="text-xs text-gray-400 leading-relaxed">{r.description}</p>

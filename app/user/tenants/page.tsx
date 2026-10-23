@@ -6,6 +6,8 @@ import NewTenantModal from "@/components/user/new-tenant-modal";
 import RentScheduleFields, {
   buildRentSchedulePayload,
   scheduleFromTenant,
+  effectiveRentAmount,
+  currentRentFromSchedule,
   type RentAdjustmentRow,
 } from "@/components/user/rent-schedule-fields";
 import DueOnScheduleFields, {
@@ -44,9 +46,11 @@ import {
   isDueDayChangeLineItem,
 } from "@/lib/dueDayChange";
 import {
+  buildBankStatementTxsByHistoryIndex,
   getLastVisibleRentHistoryIndex,
   resolveRowDisplayBalance,
 } from "@/lib/rentHistoryDisplay";
+import BankStatementCell from "@/components/tenants/BankStatementCell";
 
 export default function TenantsPage() {
   /** True if char is a Unicode letter (works without regex `u` / `\p{L}`). */
@@ -327,8 +331,17 @@ export default function TenantsPage() {
     return address || "—";
   };
 
+  /** Unique property address key (no room) for the addresses sidebar. */
+  const getAddressKey = (tenant: any) => {
+    const raw = String(tenant?.property || tenant?.propertyName || "").trim();
+    return raw || "Unknown address";
+  };
+
   type TenantSortKey = "name" | "property" | "rent" | "status" | "lastPayment";
   const [search, setSearch] = useState("");
+  /** When on: addresses sidebar (unique properties) + tenants for selected address. */
+  const [showAddress, setShowAddress] = useState(false);
+  const [selectedAddressKey, setSelectedAddressKey] = useState<string | null>(null);
   const [tenantSortBy, setTenantSortBy] = useState<TenantSortKey>("name");
   const [tenantSortDir, setTenantSortDir] = useState<"asc" | "desc">("asc");
   const [newTenantOpen, setNewTenantOpen] = useState(false);
@@ -460,65 +473,126 @@ export default function TenantsPage() {
     }
   };
 
+  const sortTenants = useCallback(
+    (rows: any[]) => {
+      const statusRank: Record<string, number> = {
+        Unpaid: 0,
+        Partial: 1,
+        Paid: 2,
+        Vacant: 3,
+        Archived: 4,
+      };
+      const dir = tenantSortDir === "asc" ? 1 : -1;
+
+      return [...rows].sort((a: any, b: any) => {
+        if (tenantSortBy === "name") {
+          return (
+            getTenantDisplayName(a).localeCompare(getTenantDisplayName(b), undefined, {
+              sensitivity: "base",
+            }) * dir
+          );
+        }
+        if (tenantSortBy === "property") {
+          return (
+            getPropertyDisplay(a).localeCompare(getPropertyDisplay(b), undefined, {
+              sensitivity: "base",
+            }) * dir
+          );
+        }
+        if (tenantSortBy === "rent") {
+          const ar = Number(a.rent) || 0;
+          const br = Number(b.rent) || 0;
+          return (ar - br) * dir;
+        }
+        if (tenantSortBy === "status") {
+          const rem = getRemainingAmount(a) - getRemainingAmount(b);
+          if (rem !== 0) return rem * dir;
+          const sa = statusRank[getEffectiveStatus(a).key] ?? 9;
+          const sb = statusRank[getEffectiveStatus(b).key] ?? 9;
+          return (sa - sb) * dir;
+        }
+        const da = a.lastPayment ? new Date(a.lastPayment).getTime() : NaN;
+        const db = b.lastPayment ? new Date(b.lastPayment).getTime() : NaN;
+        const aMissing = Number.isNaN(da);
+        const bMissing = Number.isNaN(db);
+        if (aMissing && bMissing) return 0;
+        if (aMissing) return 1;
+        if (bMissing) return -1;
+        return (da - db) * dir;
+      });
+    },
+    [tenantSortBy, tenantSortDir]
+  );
+
+  const activeTenants = useMemo(
+    () => tenantsFromApi.filter((t: any) => t.tenancyStatus !== "vacant"),
+    [tenantsFromApi]
+  );
+
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    const rows = tenantsFromApi
-      .filter((t: any) => t.tenancyStatus !== "vacant")
-      .filter(
-        (t: any) =>
-          getTenantDisplayName(t).toLowerCase().includes(q) ||
-          (t.property || "").toLowerCase().includes(q) ||
-          (t.room || "").toLowerCase().includes(q) ||
-          (t.propertyName || "").toLowerCase().includes(q)
-      );
-
-    const statusRank: Record<string, number> = {
-      Unpaid: 0,
-      Partial: 1,
-      Paid: 2,
-      Vacant: 3,
-      Archived: 4,
-    };
-    const dir = tenantSortDir === "asc" ? 1 : -1;
-
-    return [...rows].sort((a: any, b: any) => {
-      if (tenantSortBy === "name") {
-        return (
-          getTenantDisplayName(a).localeCompare(getTenantDisplayName(b), undefined, {
-            sensitivity: "base",
-          }) * dir
-        );
-      }
-      if (tenantSortBy === "property") {
-        return (
-          getPropertyDisplay(a).localeCompare(getPropertyDisplay(b), undefined, {
-            sensitivity: "base",
-          }) * dir
-        );
-      }
-      if (tenantSortBy === "rent") {
-        const ar = Number(a.rent) || 0;
-        const br = Number(b.rent) || 0;
-        return (ar - br) * dir;
-      }
-      if (tenantSortBy === "status") {
-        const rem = getRemainingAmount(a) - getRemainingAmount(b);
-        if (rem !== 0) return rem * dir;
-        const sa = statusRank[getEffectiveStatus(a).key] ?? 9;
-        const sb = statusRank[getEffectiveStatus(b).key] ?? 9;
-        return (sa - sb) * dir;
-      }
-      // lastPayment — missing dates sort last when asc, first when desc
-      const da = a.lastPayment ? new Date(a.lastPayment).getTime() : NaN;
-      const db = b.lastPayment ? new Date(b.lastPayment).getTime() : NaN;
-      const aMissing = Number.isNaN(da);
-      const bMissing = Number.isNaN(db);
-      if (aMissing && bMissing) return 0;
-      if (aMissing) return 1;
-      if (bMissing) return -1;
-      return (da - db) * dir;
+    const q = search.trim().toLowerCase();
+    const rows = activeTenants.filter((t: any) => {
+      if (!q) return true;
+      return getTenantDisplayName(t).toLowerCase().includes(q);
     });
-  }, [tenantsFromApi, search, tenantSortBy, tenantSortDir]);
+    return sortTenants(rows);
+  }, [activeTenants, search, sortTenants]);
+
+  /** Unique addresses + tenants — used when Show address is on. */
+  const addressGroups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const byAddress = new Map<string, any[]>();
+
+    for (const t of activeTenants) {
+      const key = getAddressKey(t);
+      const list = byAddress.get(key) || [];
+      list.push(t);
+      byAddress.set(key, list);
+    }
+
+    const groups = Array.from(byAddress.entries())
+      .map(([address, tenants]) => {
+        const sortedTenants = sortTenants(tenants);
+        const addressMatch = !q || address.toLowerCase().includes(q);
+        const matchingTenants = q
+          ? sortedTenants.filter(
+              (t) =>
+                getTenantDisplayName(t).toLowerCase().includes(q) ||
+                (t.room || "").toLowerCase().includes(q) ||
+                getPropertyDisplay(t).toLowerCase().includes(q)
+            )
+          : sortedTenants;
+        return {
+          address,
+          tenants: addressMatch ? sortedTenants : matchingTenants,
+          totalCount: tenants.length,
+        };
+      })
+      .filter((g) => {
+        if (!q) return true;
+        return g.address.toLowerCase().includes(q) || g.tenants.length > 0;
+      })
+      .sort((a, b) => a.address.localeCompare(b.address, undefined, { sensitivity: "base" }));
+
+    return groups;
+  }, [activeTenants, search, sortTenants]);
+
+  const selectedAddressGroup = useMemo(() => {
+    if (!addressGroups.length) return null;
+    const found = addressGroups.find((g) => g.address === selectedAddressKey);
+    return found || addressGroups[0];
+  }, [addressGroups, selectedAddressKey]);
+
+  useEffect(() => {
+    if (!showAddress) return;
+    if (!selectedAddressGroup) {
+      setSelectedAddressKey(null);
+      return;
+    }
+    if (selectedAddressKey !== selectedAddressGroup.address) {
+      setSelectedAddressKey(selectedAddressGroup.address);
+    }
+  }, [showAddress, selectedAddressGroup, selectedAddressKey]);
 
   const closeTransactionModal = () => {
     setTransactionModalOpen(false);
@@ -1322,6 +1396,9 @@ export default function TenantsPage() {
     paymentPieceRoles,
     paymentTotalsByGroup
   );
+  const bankStatementByIndex = buildBankStatementTxsByHistoryIndex(
+    selectedTenant?.rentHistory || []
+  );
 
   const openPaymentReview = async (index: number, entry: any) => {
     if (!selectedTenant || !hasRecordedPayment(entry)) return;
@@ -1657,17 +1734,34 @@ export default function TenantsPage() {
       </div>
 
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 md:max-w-xl">
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 md:max-w-2xl">
           <div className="relative w-full sm:flex-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search tenants..."
+              placeholder={showAddress ? "Search tenants or address..." : "Search tenants..."}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full rounded-lg border border-gray-800 bg-[#0c0c0c] py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
             />
           </div>
+          <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-[#2A2A2A] px-3 py-2 text-sm text-gray-300 hover:border-gray-600">
+            <input
+              type="checkbox"
+              checked={showAddress}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setShowAddress(on);
+                setSelectedAddressKey(null);
+                if (!on && tenantSortBy === "property") {
+                  setTenantSortBy("name");
+                  setTenantSortDir("asc");
+                }
+              }}
+              className="h-3.5 w-3.5 rounded border-gray-600 bg-[#0c0c0c] text-emerald-500 focus:ring-emerald-600 focus:ring-offset-0"
+            />
+            Show address
+          </label>
           <button
             type="button"
             onClick={() => {
@@ -1697,93 +1791,244 @@ export default function TenantsPage() {
         )}
       </div>
 
-      <div className="w-full overflow-x-auto rounded-2xl border border-[#1a1a1a] bg-[#0B0B0B]">
-        <table className="min-w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
-              {(
-                [
-                  { key: "name" as TenantSortKey, label: "Tenant Name", className: "rounded-tl-2xl" },
-                  { key: "property" as TenantSortKey, label: "Property", className: "" },
-                  { key: "rent" as TenantSortKey, label: "Rent", className: "" },
-                  { key: "status" as TenantSortKey, label: "Status", className: "" },
-                  { key: "lastPayment" as TenantSortKey, label: "Last Payment", className: "rounded-tr-2xl" },
-                ] as const
-              ).map((col) => {
-                const active = tenantSortBy === col.key;
-                return (
-                  <th
-                    key={col.key}
-                    className={`px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm ${col.className}`}
-                  >
+      {showAddress ? (
+        <div className="grid min-h-[28rem] overflow-hidden rounded-2xl border border-[#1a1a1a] bg-[#0B0B0B] md:grid-cols-12">
+          <div className="border-b border-[#151515] md:col-span-4 md:border-b-0 md:border-r md:border-[#151515]">
+            <div className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-gray-500">
+              Addresses
+            </div>
+            <div
+              className="max-h-[40vh] space-y-2 overflow-y-auto px-3 pb-4 md:max-h-[min(70vh,36rem)] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            >
+              {isLoading ? (
+                <div className="px-2 py-8 text-center text-sm text-gray-500">Loading…</div>
+              ) : isError ? (
+                <div className="px-2 py-8 text-center text-sm text-rose-400">Failed to load tenants.</div>
+              ) : addressGroups.length === 0 ? (
+                <div className="px-2 py-8 text-center text-sm text-gray-500">
+                  {showArchived ? "No archived addresses." : "No addresses found."}
+                </div>
+              ) : (
+                addressGroups.map((group) => {
+                  const selected = selectedAddressGroup?.address === group.address;
+                  const count = group.totalCount;
+                  return (
                     <button
+                      key={group.address}
                       type="button"
-                      onClick={() => toggleTenantSort(col.key)}
-                      className={`inline-flex items-center gap-1.5 transition hover:text-gray-200 ${
-                        active ? "text-gray-100" : "text-gray-400"
+                      onClick={() => setSelectedAddressKey(group.address)}
+                      className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                        selected
+                          ? "border-emerald-600 bg-emerald-950/30"
+                          : "border-gray-800 bg-[#080808] hover:border-gray-700"
                       }`}
-                      aria-label={`Sort by ${col.label}`}
                     >
-                      {col.label}
-                      {active ? (
-                        tenantSortDir === "asc" ? (
-                          <ArrowUp className="h-3.5 w-3.5" />
-                        ) : (
-                          <ArrowDown className="h-3.5 w-3.5" />
-                        )
-                      ) : (
-                        <span className="inline-flex flex-col leading-none opacity-40">
-                          <ArrowUp className="h-2.5 w-2.5" />
-                          <ArrowDown className="-mt-0.5 h-2.5 w-2.5" />
-                        </span>
-                      )}
+                      <div className="text-sm font-medium text-gray-100">{group.address}</div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {count} tenant{count === 1 ? "" : "s"}
+                      </div>
                     </button>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr>
-                <td colSpan={5} className="py-8 text-center text-gray-400">Loading tenants...</td>
-              </tr>
-            )}
+                  );
+                })
+              )}
+            </div>
+          </div>
 
-            {isError && (
-              <tr>
-                <td colSpan={5} className="py-8 text-center text-rose-400">Failed to load tenants.</td>
-              </tr>
-            )}
+          <div className="min-h-0 overflow-y-auto px-4 py-4 sm:px-6 md:col-span-8 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="mb-4">
+              <h4 className="text-base font-medium text-gray-100">
+                {selectedAddressGroup?.address || "Tenants"}
+              </h4>
+              <p className="text-xs text-gray-500">
+                Click a tenant to open rent history
+              </p>
+            </div>
 
-            {!isLoading && !isError && filtered.length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-8 text-center text-gray-400">
-                  {showArchived ? "No archived tenants." : "No tenants found."}
-                </td>
-              </tr>
+            {isLoading ? (
+              <div className="rounded-xl border border-[#1a1a1a] px-4 py-10 text-center text-gray-400">
+                Loading tenants…
+              </div>
+            ) : !selectedAddressGroup ? (
+              <div className="rounded-xl border border-[#1a1a1a] px-4 py-10 text-center text-gray-400">
+                {showArchived ? "No archived tenants." : "No tenants found."}
+              </div>
+            ) : selectedAddressGroup.tenants.length === 0 ? (
+              <div className="rounded-xl border border-[#1a1a1a] px-4 py-10 text-center text-gray-400">
+                No tenants found for this property
+              </div>
+            ) : (
+              <div className="w-full overflow-x-auto rounded-xl border border-[#1a1a1a] bg-[#0B0B0B]">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
+                      {(
+                        [
+                          { key: "name" as TenantSortKey, label: "Tenant Name" },
+                          { key: "rent" as TenantSortKey, label: "Rent" },
+                          { key: "status" as TenantSortKey, label: "Status" },
+                          { key: "lastPayment" as TenantSortKey, label: "Last Payment" },
+                        ] as const
+                      ).map((col) => {
+                        const active = tenantSortBy === col.key;
+                        return (
+                          <th key={col.key} className="px-4 py-3 text-xs whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => toggleTenantSort(col.key)}
+                              className={`inline-flex items-center gap-1.5 transition hover:text-gray-200 ${
+                                active ? "text-gray-100" : "text-gray-400"
+                              }`}
+                              aria-label={`Sort by ${col.label}`}
+                            >
+                              {col.label}
+                              {active ? (
+                                tenantSortDir === "asc" ? (
+                                  <ArrowUp className="h-3.5 w-3.5" />
+                                ) : (
+                                  <ArrowDown className="h-3.5 w-3.5" />
+                                )
+                              ) : (
+                                <span className="inline-flex flex-col leading-none opacity-40">
+                                  <ArrowUp className="h-2.5 w-2.5" />
+                                  <ArrowDown className="-mt-0.5 h-2.5 w-2.5" />
+                                </span>
+                              )}
+                            </button>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedAddressGroup.tenants.map((tenant: any) => (
+                      <tr
+                        key={tenant._id}
+                        onClick={() => openTenantDetails(tenant)}
+                        className="cursor-pointer border-t border-[#151515] transition hover:bg-[#0e0e0e]"
+                      >
+                        <td className="px-4 py-3 text-sm text-gray-200">
+                          {getTenantDisplayName(tenant)}
+                          {tenant.room ? (
+                            <span className="mt-0.5 block text-[11px] text-gray-500">
+                              {tenant.room}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3 text-sm tabular-nums text-gray-300">
+                          {formatMoney(effectiveRentAmount(tenant))}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <span
+                            className={`rounded-full border px-2.5 py-1 text-xs ${
+                              statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] ||
+                              "bg-gray-800 text-gray-400"
+                            }`}
+                          >
+                            {getStatusLabel(tenant)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-400">
+                          {formatDate(tenant.lastPayment)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-
-            {!isLoading && !isError && filtered.map((tenant: any) => (
-              <tr
-                key={tenant._id}
-                onClick={() => openTenantDetails(tenant)}
-                className="cursor-pointer border-t border-[#151515] transition hover:bg-[#0e0e0e]"
-              >
-                <td className="px-6 py-4 text-sm text-gray-300">{getTenantDisplayName(tenant)}</td>
-                <td className="px-6 py-4 text-sm text-gray-300">{getPropertyDisplay(tenant)}</td>
-                <td className="px-6 py-4 text-sm text-gray-300">{typeof tenant.rent === "number" ? formatMoney(tenant.rent) : tenant.rent}</td>
-                <td className="px-6 py-4 text-sm text-gray-300">
-                  <span className={`rounded-full border px-2.5 py-1 text-xs ${statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
-                    {getStatusLabel(tenant)}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-300">{formatDate(tenant.lastPayment)}</td>
+          </div>
+        </div>
+      ) : (
+        <div className="w-full overflow-x-auto rounded-2xl border border-[#1a1a1a] bg-[#0B0B0B]">
+          <table className="min-w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
+                {(
+                  [
+                    { key: "name" as TenantSortKey, label: "Tenant Name", className: "rounded-tl-2xl" },
+                    { key: "rent" as TenantSortKey, label: "Rent", className: "" },
+                    { key: "status" as TenantSortKey, label: "Status", className: "" },
+                    {
+                      key: "lastPayment" as TenantSortKey,
+                      label: "Last Payment",
+                      className: "rounded-tr-2xl",
+                    },
+                  ] as { key: TenantSortKey; label: string; className: string }[]
+                ).map((col) => {
+                  const active = tenantSortBy === col.key;
+                  return (
+                    <th
+                      key={col.key}
+                      className={`px-6 py-4 text-xs font-medium whitespace-nowrap md:text-sm ${col.className}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleTenantSort(col.key)}
+                        className={`inline-flex items-center gap-1.5 transition hover:text-gray-200 ${
+                          active ? "text-gray-100" : "text-gray-400"
+                        }`}
+                        aria-label={`Sort by ${col.label}`}
+                      >
+                        {col.label}
+                        {active ? (
+                          tenantSortDir === "asc" ? (
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          ) : (
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          )
+                        ) : (
+                          <span className="inline-flex flex-col leading-none opacity-40">
+                            <ArrowUp className="h-2.5 w-2.5" />
+                            <ArrowDown className="-mt-0.5 h-2.5 w-2.5" />
+                          </span>
+                        )}
+                      </button>
+                    </th>
+                  );
+                })}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-gray-400">Loading tenants...</td>
+                </tr>
+              )}
+
+              {isError && (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-rose-400">Failed to load tenants.</td>
+                </tr>
+              )}
+
+              {!isLoading && !isError && filtered.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-gray-400">
+                    {showArchived ? "No archived tenants." : "No tenants found."}
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading && !isError && filtered.map((tenant: any) => (
+                <tr
+                  key={tenant._id}
+                  onClick={() => openTenantDetails(tenant)}
+                  className="cursor-pointer border-t border-[#151515] transition hover:bg-[#0e0e0e]"
+                >
+                  <td className="px-6 py-4 text-sm text-gray-300">{getTenantDisplayName(tenant)}</td>
+                  <td className="px-6 py-4 text-sm text-gray-300">{formatMoney(effectiveRentAmount(tenant))}</td>
+                  <td className="px-6 py-4 text-sm text-gray-300">
+                    <span className={`rounded-full border px-2.5 py-1 text-xs ${statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
+                      {getStatusLabel(tenant)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-300">{formatDate(tenant.lastPayment)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {transactionModalOpen && selectedTenant && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 md:items-center md:p-6">
@@ -1844,8 +2089,14 @@ export default function TenantsPage() {
                 <p>
                   {selectedTenant.rentFrequency === "weekly" ? "Weekly rent" : "Monthly rent"}{" "}
                   <span className="font-medium text-gray-200">
-                    {formatMoney(Number(selectedTenant.rent) || 0)}
+                    {formatMoney(effectiveRentAmount(selectedTenant))}
                   </span>
+                  {Array.isArray(selectedTenant.rentSchedule) &&
+                    selectedTenant.rentSchedule.length > 0 && (
+                      <span className="ml-1 text-xs text-gray-500">
+                        (started at {formatMoney(Number(scheduleFromTenant(selectedTenant).baseRent) || 0)})
+                      </span>
+                    )}
                 </p>
                 {Number(selectedTenant.depositAmount) > 0 && (
                   <p className="flex flex-wrap items-center gap-2">
@@ -2072,6 +2323,7 @@ export default function TenantsPage() {
                     <th className="px-4 py-3 text-xs">Status</th>
                     <th className="px-4 py-3 text-xs">Balance</th>
                     <th className="px-4 py-3 text-xs">Actions</th>
+                    <th className="px-4 py-3 text-xs">Details</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2079,7 +2331,7 @@ export default function TenantsPage() {
                     if (detailLoading) {
                       return (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-gray-400">
+                          <td colSpan={8} className="py-8 text-center text-gray-400">
                             Loading rent history…
                           </td>
                         </tr>
@@ -2115,7 +2367,7 @@ export default function TenantsPage() {
                     if (!visibleHistory.length) {
                       return (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-gray-400">
+                          <td colSpan={8} className="py-8 text-center text-gray-400">
                             No rent history found for this tenant.
                           </td>
                         </tr>
@@ -2259,94 +2511,15 @@ export default function TenantsPage() {
                         <td className={`px-4 py-3 ${!isAdjustment && remaining > 0 ? "text-rose-400" : "text-gray-300"}`}>
                           {isAdjustment ? "—" : formatMoney(Number(entry.amountPaid) || 0)}
                         </td>
-                        <td className="px-4 py-3 align-top">
-                          {(() => {
-                            if (isAdjustment) {
-                              return <span className="text-sm text-gray-500">—</span>;
-                            }
-                            const totalPaid = Number(entry.amountPaid) || 0;
-                            const pieces = getPaymentPieces(entry);
-                            const originating = getOriginatingPaymentsForMonth(
-                              entry,
-                              index,
-                              paymentPieceRoles,
-                              paymentTotalsByGroup
-                            );
-                            const creditOnly =
-                              totalPaid > 0 &&
-                              originating.length === 0 &&
-                              pieces.length > 0;
-
-                            if (totalPaid <= 0 && !creditOnly) {
-                              return <span className="text-sm text-gray-500">—</span>;
-                            }
-
-                            // Bank-primary: show the bank statement amount when a payment originated here.
-                            const bankDisplay = originating.reduce(
-                              (s, row) => s + (Number(row.amount) || 0),
-                              0
-                            );
-                            const displayAmount =
-                              originating.length > 0 && bankDisplay > 0 ? bankDisplay : totalPaid;
-                            const depositPart = originating.reduce(
-                              (s, row) => s + (Number(row.depositAllocated) || 0),
-                              0
-                            );
-                            const rentFromBank = originating.reduce(
-                              (s, row) => s + (Number(row.appliedThisMonth) || 0),
-                              0
-                            );
-
-                            return (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (recorded) openPaymentReview(index, entry);
-                                }}
-                                className={`text-left ${recorded ? "hover:opacity-90" : "cursor-default"}`}
-                                title={
-                                  pieces.length >= 1
-                                    ? "Click to see bank payment breakdown"
-                                    : recorded
-                                      ? "Click for payment details"
-                                      : undefined
-                                }
-                              >
-                                <span className="block tabular-nums text-sm font-medium text-gray-200">
-                                  {formatMoney(displayAmount)}
-                                </span>
-                                {originating.length > 0 && (depositPart > 0.001 || rentFromBank + 0.001 < displayAmount) ? (
-                                  <span className="mt-0.5 block text-[11px] text-sky-400/90">
-                                    {depositPart > 0.001
-                                      ? `${formatMoney(depositPart)} deposit`
-                                      : ""}
-                                    {depositPart > 0.001 && rentFromBank > 0.001 ? " · " : ""}
-                                    {rentFromBank > 0.001
-                                      ? `${formatMoney(rentFromBank)} rent`
-                                      : ""}
-                                    {displayAmount - depositPart - rentFromBank > 0.001
-                                      ? ` · ${formatMoney(displayAmount - depositPart - rentFromBank)} credit`
-                                      : ""}
-                                    {" · view"}
-                                  </span>
-                                ) : pieces.length >= 1 && !creditOnly ? (
-                                  <span className="mt-0.5 block text-[11px] text-sky-400/90">
-                                    {pieces.length} payment
-                                    {pieces.length === 1 ? "" : "s"} · view breakdown
-                                  </span>
-                                ) : creditOnly ? (
-                                  <span className="mt-0.5 block text-[11px] text-emerald-400/90">
-                                    From earlier credit
-                                  </span>
-                                ) : entry.paidOn ? (
-                                  <span className="mt-0.5 block text-[11px] text-gray-500">
-                                    {formatDate(entry.paidOn)}
-                                  </span>
-                                ) : null}
-                              </button>
-                            );
-                          })()}
+                        <td className="min-w-[7rem] px-4 py-3 align-top">
+                          {isAdjustment ? (
+                            <span className="text-sm text-gray-500">—</span>
+                          ) : (
+                            <BankStatementCell
+                              txs={bankStatementByIndex.get(index) || []}
+                              formatMoney={formatMoney}
+                            />
+                          )}
                         </td>
                         <td className="px-4 py-3 text-gray-300">{formatDate(entry.dueDate)}</td>
                         <td className="px-4 py-3">
@@ -2449,6 +2622,94 @@ export default function TenantsPage() {
                           ) : (
                             <span className="text-xs text-gray-400">—</span>
                           )}
+                        </td>
+                        <td className="min-w-[12rem] px-4 py-3 align-top">
+                          {(() => {
+                            if (isAdjustment) {
+                              return <span className="text-sm text-gray-500">—</span>;
+                            }
+                            const totalPaid = Number(entry.amountPaid) || 0;
+                            const pieces = getPaymentPieces(entry);
+                            const originating = getOriginatingPaymentsForMonth(
+                              entry,
+                              index,
+                              paymentPieceRoles,
+                              paymentTotalsByGroup
+                            );
+                            const creditOnly =
+                              totalPaid > 0 &&
+                              originating.length === 0 &&
+                              pieces.length > 0;
+
+                            if (totalPaid <= 0 && !creditOnly) {
+                              return <span className="text-sm text-gray-500">—</span>;
+                            }
+
+                            const bankDisplay = originating.reduce(
+                              (s, row) => s + (Number(row.amount) || 0),
+                              0
+                            );
+                            const displayAmount =
+                              originating.length > 0 && bankDisplay > 0 ? bankDisplay : totalPaid;
+                            const depositPart = originating.reduce(
+                              (s, row) => s + (Number(row.depositAllocated) || 0),
+                              0
+                            );
+                            const rentFromBank = originating.reduce(
+                              (s, row) => s + (Number(row.appliedThisMonth) || 0),
+                              0
+                            );
+
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (recorded) openPaymentReview(index, entry);
+                                }}
+                                className={`text-left ${recorded ? "hover:opacity-90" : "cursor-default"}`}
+                                title={
+                                  pieces.length >= 1
+                                    ? "Click to see bank payment breakdown"
+                                    : recorded
+                                      ? "Click for payment details"
+                                      : undefined
+                                }
+                              >
+                                <span className="block tabular-nums text-sm font-medium text-gray-200">
+                                  {formatMoney(displayAmount)}
+                                </span>
+                                {originating.length > 0 && (depositPart > 0.001 || rentFromBank + 0.001 < displayAmount) ? (
+                                  <span className="mt-0.5 block text-[11px] text-sky-400/90">
+                                    {depositPart > 0.001
+                                      ? `${formatMoney(depositPart)} deposit`
+                                      : ""}
+                                    {depositPart > 0.001 && rentFromBank > 0.001 ? " · " : ""}
+                                    {rentFromBank > 0.001
+                                      ? `${formatMoney(rentFromBank)} rent`
+                                      : ""}
+                                    {displayAmount - depositPart - rentFromBank > 0.001
+                                      ? ` · ${formatMoney(displayAmount - depositPart - rentFromBank)} credit`
+                                      : ""}
+                                    {" · view"}
+                                  </span>
+                                ) : pieces.length >= 1 && !creditOnly ? (
+                                  <span className="mt-0.5 block text-[11px] text-sky-400/90">
+                                    {pieces.length} payment
+                                    {pieces.length === 1 ? "" : "s"} · view breakdown
+                                  </span>
+                                ) : creditOnly ? (
+                                  <span className="mt-0.5 block text-[11px] text-emerald-400/90">
+                                    From earlier credit
+                                  </span>
+                                ) : entry.paidOn ? (
+                                  <span className="mt-0.5 block text-[11px] text-gray-500">
+                                    {formatDate(entry.paidOn)}
+                                  </span>
+                                ) : null}
+                              </button>
+                            );
+                          })()}
                         </td>
                       </tr>
                       );
@@ -3595,6 +3856,7 @@ export default function TenantsPage() {
                 adjustments={assignRentAdjustments}
                 onAdjustmentsChange={setAssignRentAdjustments}
                 hideBaseRent
+                moveInDate={assignMoveIn}
               />
             </div>
 
@@ -3867,6 +4129,7 @@ export default function TenantsPage() {
                   onBaseRentChange={setEditRent}
                   adjustments={editRentAdjustments}
                   onAdjustmentsChange={setEditRentAdjustments}
+                  moveInDate={editMoveIn}
                   frequency={
                     selectedTenant.rentFrequency === "weekly" ? "weekly" : "monthly"
                   }
@@ -4006,21 +4269,36 @@ export default function TenantsPage() {
                   <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">
                     {selectedTenant.rentFrequency === "weekly" ? "Weekly rent" : "Monthly rent"}
                   </p>
-                  <p className="text-sm text-gray-200">
-                    £{Number(editRent || 0).toFixed(2)}
-                    {editRentAdjustments.length > 0
-                      ? ` · ${editRentAdjustments.length} change${editRentAdjustments.length === 1 ? "" : "s"}`
-                      : ""}
-                  </p>
-                  {editRentAdjustments.length > 0 && (
-                    <ul className="mt-1 space-y-0.5 text-xs text-gray-500">
-                      {editRentAdjustments.map((a) => (
-                        <li key={a.id}>
-                          From {a.startMonth}: £{Number(a.amount || 0).toFixed(2)}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  {(() => {
+                    const current = currentRentFromSchedule(editRent, editRentAdjustments);
+                    const starting = Number(editRent || 0);
+                    return (
+                      <>
+                        <p className="text-sm text-gray-200">
+                          Current: £{current.toFixed(2)}
+                          {editRentAdjustments.length > 0 &&
+                          Math.abs(current - starting) > 0.0001
+                            ? ` · started at £${starting.toFixed(2)}`
+                            : ""}
+                          {editRentAdjustments.length > 0
+                            ? ` · ${editRentAdjustments.length} change${editRentAdjustments.length === 1 ? "" : "s"}`
+                            : ""}
+                        </p>
+                        {editRentAdjustments.length > 0 && (
+                          <ul className="mt-1 space-y-0.5 text-xs text-gray-500">
+                            <li>
+                              From move-in: £{starting.toFixed(2)}
+                            </li>
+                            {editRentAdjustments.map((a) => (
+                              <li key={a.id}>
+                                From {a.startMonth}: £{Number(a.amount || 0).toFixed(2)}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
               {selectedTenant.tenancyStatus !== "vacant" && (
@@ -4333,7 +4611,7 @@ export default function TenantsPage() {
                 if (!dueDayEffectiveFrom || !/^\d{4}-\d{2}-\d{2}$/.test(dueDayEffectiveFrom)) {
                   return null;
                 }
-                const monthly = Number(selectedTenant.rent) || 0;
+                const monthly = effectiveRentAmount(selectedTenant);
                 const preview = computeDueDayTransitionPreview(
                   monthly,
                   dueDayEffectiveFrom,

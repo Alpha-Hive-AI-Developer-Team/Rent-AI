@@ -4,8 +4,10 @@ import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { getDepositPayment, getRentEntryPayment } from "@/lib/api/tenantsApi";
+import BankStatementCell from "@/components/tenants/BankStatementCell";
 import {
   RENT_STATUS_COLORS,
+  buildBankStatementTxsByHistoryIndex,
   buildPaymentPieceRoleMap,
   buildPaymentTotalsByGroup,
   buildRunningBalancesByIndex,
@@ -46,6 +48,10 @@ export default function TenantRentHistoryTable({
   const runningBalancesByIndex = useMemo(
     () => buildRunningBalancesByIndex(history, paymentPieceRoles, paymentTotalsByGroup),
     [history, paymentPieceRoles, paymentTotalsByGroup]
+  );
+  const bankStatementByIndex = useMemo(
+    () => buildBankStatementTxsByHistoryIndex(history),
+    [history]
   );
 
   const depositAmount = Number(tenant?.depositAmount) || 0;
@@ -196,12 +202,13 @@ export default function TenantRentHistoryTable({
               <th className="whitespace-nowrap px-4 py-3 text-xs">Status</th>
               <th className="whitespace-nowrap px-4 py-3 text-xs">Balance</th>
               <th className="whitespace-nowrap px-4 py-3 text-xs">Actions</th>
+              <th className="whitespace-nowrap px-4 py-3 text-xs">Details</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-gray-400">
+                <td colSpan={8} className="py-8 text-center text-gray-400">
                   Loading rent history…
                 </td>
               </tr>
@@ -211,7 +218,7 @@ export default function TenantRentHistoryTable({
                 if (!visibleHistory.length) {
                   return (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-gray-400">
+                      <td colSpan={8} className="py-8 text-center text-gray-400">
                         No rent history found for this tenant.
                       </td>
                     </tr>
@@ -296,6 +303,84 @@ export default function TenantRentHistoryTable({
                       >
                         {isAdjustment ? "—" : formatRentMoney(Number(entry.amountPaid) || 0)}
                       </td>
+                      <td className="min-w-[7rem] px-4 py-3 align-top">
+                        {isAdjustment ? (
+                          <span className="text-sm text-gray-500">—</span>
+                        ) : (
+                          <BankStatementCell txs={bankStatementByIndex.get(index) || []} />
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-gray-300">
+                        {formatDate(entry.dueDate || entry.month)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <span
+                          className={`rounded-full border px-2 py-1 text-xs ${
+                            RENT_STATUS_COLORS[statusKey] || "bg-gray-800 text-gray-400"
+                          }`}
+                        >
+                          {statusKey}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 align-top">
+                        {(() => {
+                          if (isAdjustment) {
+                            return <span className="text-sm text-gray-500">—</span>;
+                          }
+                          const bal = resolveRowDisplayBalance(
+                            runningBalancesByIndex.get(index) ?? 0,
+                            {
+                              isLastVisibleRentRow: index === lastVisibleRentIndex,
+                              overallBalance,
+                            }
+                          );
+                          if (Math.abs(bal) < 0.005) {
+                            return <span className="text-sm text-gray-400">Settled</span>;
+                          }
+                          if (bal > 0) {
+                            return (
+                              <div>
+                                <span className="block tabular-nums text-sm font-medium text-emerald-300">
+                                  {formatRentMoney(bal)}
+                                </span>
+                                <span className="mt-0.5 block text-[11px] text-emerald-400/80">
+                                  In credit
+                                </span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div>
+                              <span className="block tabular-nums text-sm font-medium text-rose-300">
+                                {formatRentMoney(Math.abs(bal))}
+                              </span>
+                              <span className="mt-0.5 block text-[11px] text-rose-400/80">
+                                Arrears
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {isAdjustment ? (
+                          <span className="text-xs text-gray-500">—</span>
+                        ) : recorded &&
+                          entry.paymentMethod &&
+                          entry.paymentMethod !== "none" ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openPaymentReview(index, entry);
+                            }}
+                            className="rounded-full border border-[#2A2A2A] px-3 py-1 text-xs text-gray-300 hover:bg-white/5"
+                          >
+                            {entry.paymentMethod}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
                       <td className="min-w-[12rem] px-4 py-3 align-top">
                         {(() => {
                           if (isAdjustment) {
@@ -377,77 +462,6 @@ export default function TenantRentHistoryTable({
                             </button>
                           );
                         })()}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-gray-300">
-                        {formatDate(entry.dueDate || entry.month)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <span
-                          className={`rounded-full border px-2 py-1 text-xs ${
-                            RENT_STATUS_COLORS[statusKey] || "bg-gray-800 text-gray-400"
-                          }`}
-                        >
-                          {statusKey}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 align-top">
-                        {(() => {
-                          if (isAdjustment) {
-                            return <span className="text-sm text-gray-500">—</span>;
-                          }
-                          const bal = resolveRowDisplayBalance(
-                            runningBalancesByIndex.get(index) ?? 0,
-                            {
-                              isLastVisibleRentRow: index === lastVisibleRentIndex,
-                              overallBalance,
-                            }
-                          );
-                          if (Math.abs(bal) < 0.005) {
-                            return <span className="text-sm text-gray-400">Settled</span>;
-                          }
-                          if (bal > 0) {
-                            return (
-                              <div>
-                                <span className="block tabular-nums text-sm font-medium text-emerald-300">
-                                  {formatRentMoney(bal)}
-                                </span>
-                                <span className="mt-0.5 block text-[11px] text-emerald-400/80">
-                                  In credit
-                                </span>
-                              </div>
-                            );
-                          }
-                          return (
-                            <div>
-                              <span className="block tabular-nums text-sm font-medium text-rose-300">
-                                {formatRentMoney(Math.abs(bal))}
-                              </span>
-                              <span className="mt-0.5 block text-[11px] text-rose-400/80">
-                                Arrears
-                              </span>
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        {isAdjustment ? (
-                          <span className="text-xs text-gray-500">—</span>
-                        ) : recorded &&
-                          entry.paymentMethod &&
-                          entry.paymentMethod !== "none" ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openPaymentReview(index, entry);
-                            }}
-                            className="rounded-full border border-[#2A2A2A] px-3 py-1 text-xs text-gray-300 hover:bg-white/5"
-                          >
-                            {entry.paymentMethod}
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
                       </td>
                     </tr>
                   );

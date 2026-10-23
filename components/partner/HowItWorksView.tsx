@@ -36,22 +36,22 @@ export default function HowItWorksView() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-semibold text-white">How the Partner Programme Works</h1>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs md:text-sm text-[#535862] mt-1">
           Simple, transparent, and recurring partner income for introducing landlords to Rent AI.
         </p>
       </div>
 
       {/* 4 Steps Desktop Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {steps.map((s) => {
           const Icon = s.icon;
           return (
             <div
               key={s.num}
-              className="bg-[#111] border border-gray-800/50 rounded-xl p-5 flex flex-col justify-between space-y-4 hover:border-gray-700 transition"
+              className="bg-[#111] border border-gray-800/50 rounded-xl p-4 md:p-6 flex flex-col justify-between space-y-4 hover:border-gray-700 transition shadow-md"
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-mono font-bold text-gray-500">{s.num}</span>
+                <span className="text-xs font-semibold text-gray-500">{s.num}</span>
                 <div className="w-8 h-8 rounded-lg bg-[#161616] border border-gray-800 flex items-center justify-center text-emerald-400">
                   <Icon className="w-4 h-4" />
                 </div>
@@ -67,12 +67,12 @@ export default function HowItWorksView() {
       </div>
 
       {/* Economics & Commercial Terms Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Card 1: Pricing & Grandfathering */}
-        <div className="bg-[#111] border border-gray-800/50 rounded-xl p-5 space-y-3">
+        <div className="bg-[#111] border border-gray-800/50 rounded-xl p-4 md:p-6 space-y-3.5 shadow-md">
           <div className="flex items-center gap-2.5">
             <Percent className="w-4 h-4 text-emerald-400" />
-            <h3 className="text-sm font-semibold text-white">Commercial Terms & Price Locking</h3>
+            <h3 className="text-sm md:text-base font-medium text-gray-200">Commercial Terms & Price Locking</h3>
           </div>
           <p className="text-xs text-gray-400 leading-relaxed">
             <strong className="text-gray-200">£29.90</strong> represents 10% of today&apos;s standard £299 monthly subscription.
@@ -82,10 +82,10 @@ export default function HowItWorksView() {
         </div>
 
         {/* Card 2: 60-Day Activity Protection */}
-        <div className="bg-[#111] border border-gray-800/50 rounded-xl p-5 space-y-3">
+        <div className="bg-[#111] border border-gray-800/50 rounded-xl p-4 md:p-6 space-y-3.5 shadow-md">
           <div className="flex items-center gap-2.5">
             <Shield className="w-4 h-4 text-amber-400" />
-            <h3 className="text-sm font-semibold text-white">60-Day Activity Protection Cycle</h3>
+            <h3 className="text-sm md:text-base font-medium text-gray-200">60-Day Activity Protection Cycle</h3>
           </div>
           <p className="text-xs text-gray-400 leading-relaxed">
             Partners must introduce at least <strong className="text-gray-200">1 new qualifying customer every 60 days</strong>.

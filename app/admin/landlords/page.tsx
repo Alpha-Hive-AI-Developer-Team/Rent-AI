@@ -11,10 +11,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Search, Plus, X, ChevronLeft } from "lucide-react";
+import { ChevronDown, Search, Plus, X, ChevronLeft, Building2 } from "lucide-react";
 import CustomTable from "@/components/admin/custom-table";
 import TenantRentHistoryTable from "@/components/tenants/TenantRentHistoryTable";
 import { formatDate } from "@/lib/utils";
+
+function getInitials(name?: string): string {
+  if (!name || !name.trim()) return "LL";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
 
 export default function LandlordManagement() {
   const [planFilter, setPlanFilter] = useState("All Plan");
@@ -85,14 +92,14 @@ export default function LandlordManagement() {
     const val = String(value || "").toLowerCase();
     const map: Record<string, Record<string, string>> = {
       plan: {
-        free: "bg-gray-800/30 text-gray-300",
-        starter: "bg-green-600/30 text-[#009118]",
-        pro: "bg-purple-600/30 text-[#9A00B2]",
-        enterprise: "bg-yellow-600/30 text-[#AFB200]",
+        free: "bg-white/5 text-gray-300 border border-gray-800",
+        starter: "bg-emerald-950/40 text-emerald-400 border border-emerald-700/40",
+        pro: "bg-purple-950/40 text-purple-400 border border-purple-700/40",
+        enterprise: "bg-amber-950/40 text-amber-400 border border-amber-700/40",
       },
       status: {
-        active: "bg-green-600/30 text-[#00B22F]",
-        disable: "bg-red-600/30 text-[#FF5E49]",
+        active: "bg-emerald-950/40 text-emerald-400 border border-emerald-700/40",
+        disable: "bg-rose-950/40 text-rose-400 border border-rose-800/40",
       },
     };
 
@@ -106,13 +113,14 @@ export default function LandlordManagement() {
       render: (row: any) => (
         <button
           onClick={() => handleOpenLandlord(row)}
-          className="flex items-center gap-3 text-left w-full"
+          className="flex items-center gap-3 text-left w-full hover:opacity-90 transition group"
         >
-          <div className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-700">
-            {row.name.split(" ")[0][0]}
-            {row.name.split(" ")[1][0]}
+          <div className="w-8 h-8 flex items-center justify-center rounded-full bg-gradient-to-br from-emerald-800/40 to-teal-900/40 border border-emerald-600/30 text-emerald-300 font-semibold text-xs shrink-0">
+            {getInitials(row.name)}
           </div>
-          <span className="underline text-emerald-300">{row.name}</span>
+          <span className="text-gray-200 group-hover:text-emerald-400 font-medium transition truncate max-w-[200px]">
+            {row.name}
+          </span>
         </button>
       ),
     },
@@ -122,7 +130,7 @@ export default function LandlordManagement() {
       label: "Plan",
       render: (row: any) => (
         <span
-          className={`px-2 py-1 rounded-lg text-xs font-medium ${getBadgeColor(
+          className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize border ${getBadgeColor(
             "plan",
             row.plan
           )}`}
@@ -137,11 +145,16 @@ export default function LandlordManagement() {
       label: "Status",
       render: (row: any) => (
         <span
-          className={`px-2 py-1 rounded-lg text-xs font-medium ${getBadgeColor(
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium capitalize border ${getBadgeColor(
             "status",
             row.status
           )}`}
         >
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              row.status === "active" ? "bg-emerald-400" : "bg-rose-400"
+            }`}
+          />
           {row.status}
         </span>
       ),
@@ -168,10 +181,6 @@ export default function LandlordManagement() {
     setSelectedTenantId(tenant._id || tenant.id || null);
     setModalView("tenant");
   };
-  // const handleOpenLandlord = (landlord: any) => {
-  //   setSelectedLandlord(landlord);
-  //   setSelectedAddressIndex(0);
-  // };
 
   // Manual expenses state and inputs
   const [manualExpenses, setManualExpenses] = useState<Array<{ desc: string; amount: number }>>([]);
@@ -201,7 +210,7 @@ export default function LandlordManagement() {
         onSuccess: () => {
           setNewExpenseDesc("");
           setNewExpenseAmount("");
-          toast("Expense saved and totals updated.");
+          toast.success("Expense saved and totals updated.");
         },
         onError: (err: any) => {
           const msg = err?.response?.data?.message || "Failed to add expense";
@@ -224,46 +233,58 @@ export default function LandlordManagement() {
   };
 
   return (
-    <div className="p-4 sm:p-6 md:p-8 bg-black min-h-screen text-white">
+    <div className="p-4 sm:p-6 lg:p-8 bg-black min-h-screen text-white space-y-6 sm:space-y-8 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div>
-          <h1 className="text-xl font-semibold">Landlord Management</h1>
-          <p className="text-[#535862] text-sm">
-            Manage all landlord and agency accounts
-          </p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-2 border-b border-gray-800/60">
+        <div className="flex items-start gap-3">
+          <div className="p-2.5 rounded-xl bg-[#027A48]/10 border border-[#027A48]/20 text-emerald-400 hidden sm:flex items-center justify-center">
+            <Building2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+              Landlord Management
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-400 mt-1">
+              Manage all landlord and agency accounts, inspect property portfolios, and review tenant ledgers
+            </p>
+          </div>
         </div>
-        {/* <Button className="bg-[#027A48] hover:bg-green-700">
-          <Plus className="w-4 h-4 mr-1" /> Add Landlord
-        </Button> */}
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mt-16 mb-4">
-        <div className="relative w-full md:w-1/3">
-          <Search className="absolute left-3 top-2.5 w-4 h-4 text-[#535862]" />
-          <Input
-            placeholder="Search Landlords..."
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#111] border border-gray-800/70 rounded-xl p-3 sm:p-4 mb-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            placeholder="Search landlords by name or email..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 bg-[#111] border-gray-800 text-white placeholder-gray-500"
+            className="w-full bg-[#161616] border border-gray-800 text-xs sm:text-sm text-gray-200 placeholder-gray-500 rounded-xl pl-10 pr-8 py-2.5 focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"
           />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Plan Filter */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                className="bg-[#111] border-gray-800 text-white flex items-center"
+                className="h-10 px-3.5 rounded-xl bg-[#161616] border border-gray-800 text-gray-300 hover:text-white hover:bg-white/5 flex items-center justify-between gap-2 text-xs sm:text-sm transition"
               >
-                {planFilter} <ChevronDown className="ml-2 w-4 h-4" />
+                <span>Plan: <strong className="text-white font-medium capitalize">{planFilter}</strong></span>
+                <ChevronDown className="w-3.5 h-3.5 text-gray-400 ml-1" />
               </Button>
             </DropdownMenuTrigger>
-            {/* ✅ Fix: Add z-index and relative positioning */}
             <DropdownMenuContent
-              className="bg-[#111] border-gray-800 text-white z-[9999] relative"
+              className="bg-[#141414] border border-gray-800 text-gray-300 rounded-xl shadow-xl min-w-[140px] p-1 z-50"
               align="start"
               sideOffset={4}
             >
@@ -271,8 +292,9 @@ export default function LandlordManagement() {
                 <DropdownMenuItem
                   key={plan}
                   onClick={() => setPlanFilter(plan)}
+                  className="hover:bg-white/5 cursor-pointer rounded-lg text-xs sm:text-sm px-3 py-2 capitalize"
                 >
-                  {plan === "All Plan" ? "All Plan" : String(plan).charAt(0).toUpperCase() + String(plan).slice(1)}
+                  {plan === "All Plan" ? "All Plans" : plan}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -283,38 +305,42 @@ export default function LandlordManagement() {
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                className="bg-[#111] border-gray-800 text-white flex items-center"
+                className="h-10 px-3.5 rounded-xl bg-[#161616] border border-gray-800 text-gray-300 hover:text-white hover:bg-white/5 flex items-center justify-between gap-2 text-xs sm:text-sm transition"
               >
-                {statusFilter} <ChevronDown className="ml-2 w-4 h-4" />
+                <span>Status: <strong className="text-white font-medium capitalize">{statusFilter}</strong></span>
+                <ChevronDown className="w-3.5 h-3.5 text-gray-400 ml-1" />
               </Button>
             </DropdownMenuTrigger>
-            {/* ✅ Same fix for the second dropdown */}
             <DropdownMenuContent
-              className="bg-[#111] border-gray-800 text-white z-[9999] relative"
+              className="bg-[#141414] border border-gray-800 text-gray-300 rounded-xl shadow-xl min-w-[140px] p-1 z-50"
               align="start"
               sideOffset={4}
             >
               {["All Status", "active", "disable"].map((status) => (
-                <DropdownMenuItem key={status} onClick={() => setStatusFilter(status)}>
-                  {status === "All Status" ? "All Status" : String(status).charAt(0).toUpperCase() + String(status).slice(1)}
+                <DropdownMenuItem
+                  key={status}
+                  onClick={() => setStatusFilter(status)}
+                  className="hover:bg-white/5 cursor-pointer rounded-lg text-xs sm:text-sm px-3 py-2 capitalize"
+                >
+                  {status === "All Status" ? "All Statuses" : status}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
 
           <Button
-            variant="outline"
-            className="bg-[#111] border-gray-800 text-white"
+            className="h-10 px-4 rounded-xl bg-[#027A48] hover:bg-[#02653d] text-white text-xs sm:text-sm font-medium transition active:scale-95"
             onClick={() => {
               const p = planFilter === "All Plan" ? undefined : String(planFilter).toLowerCase();
               const s = statusFilter === "All Status" ? undefined : String(statusFilter).toLowerCase();
               setAppliedFilters({ search: search || undefined, plan: p, status: s });
             }}
           >
-            Apply Filter
+            Apply
           </Button>
         </div>
       </div>
+
 
       {/* Table */}
       <CustomTable
@@ -335,14 +361,14 @@ export default function LandlordManagement() {
 
       {/* Landlord details modal */}
       {selectedLandlord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-6">
-          <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-800 bg-[#0b0b0b] text-white shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-[#151515] px-5 py-4 sm:px-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-6 animate-in fade-in">
+          <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-800 bg-[#111] text-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-800/80 px-5 py-4 sm:px-6">
               <div className="min-w-0">
-                <h3 className="truncate text-lg font-semibold">{selectedLandlord.name}</h3>
-                <p className="mt-0.5 truncate text-sm text-gray-400">
+                <h3 className="truncate text-base sm:text-lg font-semibold">{selectedLandlord.name}</h3>
+                <p className="mt-0.5 truncate text-xs sm:text-sm text-gray-400">
                   {selectedLandlord.email || "Landlord details"}
-                  {selectedLandlord.plan ? ` · ${String(selectedLandlord.plan)}` : ""}
+                  {selectedLandlord.plan ? ` · ${String(selectedLandlord.plan).toUpperCase()}` : ""}
                 </p>
               </div>
               <button
@@ -353,117 +379,117 @@ export default function LandlordManagement() {
                   setSelectedTenantId(null);
                   setSelectedTenantName(null);
                 }}
-                className="shrink-0 rounded-full p-1.5 text-gray-400 hover:bg-white/5 hover:text-white"
+                className="shrink-0 rounded-xl p-1.5 text-gray-400 hover:bg-white/5 hover:text-white transition"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-12">
+            <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-12 overflow-hidden">
               {modalView === "landlord" && (
-                <div className="border-b border-[#151515] md:col-span-4 md:border-b-0 md:border-r md:border-[#151515]">
-                  <div className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-gray-500">
-                    Addresses
+                <div className="border-b border-gray-800/80 md:col-span-4 md:border-b-0 md:border-r md:border-gray-800/80">
+                  <div className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 border-b border-gray-800/60 bg-[#0c0c0c]">
+                    Portfolio Properties
                   </div>
-                  <div className="max-h-[28vh] space-y-2 overflow-y-auto px-3 pb-10 md:max-h-[calc(92vh-7rem)] md:pb-12">
+                  <div className="max-h-[28vh] space-y-2 overflow-y-auto px-3 py-3 md:max-h-[calc(90vh-8rem)] no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                     {tenantsLoading ? (
-                      <div className="px-2 py-6 text-center text-sm text-gray-500">Loading…</div>
+                      <div className="px-2 py-8 text-center text-xs text-gray-400">Loading properties…</div>
                     ) : modalAddresses.length === 0 ? (
-                      <div className="px-2 py-6 text-center text-sm text-gray-500">No addresses</div>
+                      <div className="px-2 py-8 text-center text-xs text-gray-400">No properties recorded</div>
                     ) : (
-                      <>
-                        {modalAddresses.map((addr: any, i: number) => (
-                          <button
-                            key={addr.id || `${i}`}
-                            onClick={() => setSelectedAddressIndex(i)}
-                            className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                              selectedAddressIndex === i
-                                ? "border-emerald-600 bg-emerald-950/30"
-                                : "border-gray-800 bg-[#080808] hover:border-gray-700"
-                            }`}
-                          >
-                            <div className="text-sm font-medium text-gray-100">
-                              {addr.address || addr.property}
-                            </div>
-                            <div className="mt-1 text-xs text-gray-500">
-                              {(addr.tenants || []).length} tenant
-                              {(addr.tenants || []).length === 1 ? "" : "s"}
-                            </div>
-                          </button>
-                        ))}
-                        <div className="h-4 shrink-0" aria-hidden />
-                      </>
+                      modalAddresses.map((addr: any, i: number) => (
+                        <button
+                          key={addr.id || `${i}`}
+                          onClick={() => setSelectedAddressIndex(i)}
+                          className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                            selectedAddressIndex === i
+                              ? "border-[#027A48] bg-[#027A48]/15 text-white"
+                              : "border-gray-800/80 bg-[#161616] text-gray-300 hover:border-gray-700 hover:text-white"
+                          }`}
+                        >
+                          <div className="text-xs sm:text-sm font-medium truncate">
+                            {addr.address || addr.property}
+                          </div>
+                          <div className="mt-1 text-[11px] text-gray-400">
+                            {(addr.tenants || []).length} tenant
+                            {(addr.tenants || []).length === 1 ? "" : "s"}
+                          </div>
+                        </button>
+                      ))
                     )}
                   </div>
                 </div>
               )}
 
               <div
-                className={`min-h-0 overflow-y-auto px-4 pt-4 pb-12 sm:px-6 sm:pb-14 ${
+                className={`min-h-0 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
                   modalView === "landlord" ? "md:col-span-8" : "md:col-span-12"
                 }`}
               >
                 {modalView === "landlord" ? (
-                  <>
-                    <div className="mb-4">
-                      <h4 className="text-base font-medium text-gray-100">
-                        {currentAddress || "Tenants"}
-                      </h4>
-                      <p className="text-xs text-gray-500">
-                        Click a tenant to open rent history (read-only)
-                      </p>
+                  <div className="space-y-5">
+                    <div className="flex items-center justify-between pb-3 border-b border-gray-800/60">
+                      <div>
+                        <h4 className="text-sm sm:text-base font-semibold text-white truncate max-w-[400px]">
+                          {currentAddress || "Tenants"}
+                        </h4>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Click a tenant row to inspect their rent transaction ledger (read-only audit)
+                        </p>
+                      </div>
                     </div>
 
                     {modalAddresses.length === 0 ? (
-                      <div className="rounded-xl border border-[#1a1a1a] px-4 py-10 text-center text-gray-400">
+                      <div className="rounded-xl border border-gray-800 bg-[#161616] px-4 py-10 text-center text-xs text-gray-400">
                         No tenants found
                       </div>
                     ) : currentTenants.length === 0 ? (
-                      <div className="rounded-xl border border-[#1a1a1a] px-4 py-10 text-center text-gray-400">
-                        No tenants found for this property
+                      <div className="rounded-xl border border-gray-800 bg-[#161616] px-4 py-10 text-center text-xs text-gray-400">
+                        No tenants registered for this property
                       </div>
                     ) : (
-                      <div className="w-full overflow-x-auto rounded-xl border border-[#1a1a1a] bg-[#0B0B0B]">
-                        <table className="min-w-full text-sm">
+                      <div className="w-full overflow-x-auto rounded-xl border border-gray-800/80 bg-[#161616] no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                        <table className="min-w-full text-xs sm:text-sm">
                           <thead>
-                            <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
-                              <th className="px-4 py-3 text-xs">Tenant Name</th>
-                              <th className="px-4 py-3 text-xs">Rent</th>
-                              <th className="px-4 py-3 text-xs">Status</th>
-                              <th className="px-4 py-3 text-xs">Last Payment</th>
+                            <tr className="border-b border-gray-800 bg-[#0c0c0c] text-left text-gray-400 font-medium text-[11px] uppercase tracking-wider">
+                              <th className="px-4 py-3">Tenant Name</th>
+                              <th className="px-4 py-3">Rent</th>
+                              <th className="px-4 py-3">Status</th>
+                              <th className="px-4 py-3">Last Payment</th>
                             </tr>
                           </thead>
-                          <tbody>
+                          <tbody className="divide-y divide-gray-800/50">
                             {currentTenants.map((t: any) => {
                               const statusRaw = String(
                                 t.status ||
                                   (t.rentHistory && t.rentHistory[0] ? t.rentHistory[0].status : "") ||
                                   ""
                               ).toLowerCase();
-                              const statusLabel = statusRaw
-                                ? statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1)
-                                : "—";
-                              const statusClass =
-                                statusRaw === "paid"
-                                  ? "border-green-700/60 bg-green-900/40 text-green-400"
-                                  : statusRaw === "partial"
-                                    ? "border-yellow-700/60 bg-yellow-900/40 text-yellow-400"
-                                    : statusRaw === "unpaid"
-                                      ? "border-red-700/60 bg-red-900/40 text-red-400"
-                                      : "border-gray-700 bg-gray-800 text-gray-400";
+                              const isPaid = statusRaw === "paid";
+                              const isPartial = statusRaw === "partial";
+                              const isUnpaid = statusRaw === "unpaid";
+
+                              const statusClass = isPaid
+                                ? "border-emerald-700/40 bg-emerald-950/40 text-emerald-400"
+                                : isPartial
+                                ? "border-amber-700/40 bg-amber-950/40 text-amber-400"
+                                : isUnpaid
+                                ? "border-rose-800/40 bg-rose-950/40 text-rose-400"
+                                : "border-gray-800 bg-white/5 text-gray-400";
+
                               const rentVal = Number(t.rent) || 0;
                               return (
                                 <tr
                                   key={t._id || t.id}
                                   onClick={() => openTenant(t)}
-                                  className="cursor-pointer border-t border-[#151515] hover:bg-[#0e0e0e]"
+                                  className="cursor-pointer hover:bg-white/5 transition"
                                 >
-                                  <td className="px-4 py-3 text-gray-200">
+                                  <td className="px-4 py-3 text-white font-medium">
                                     {Array.isArray(t.tenantName)
                                       ? t.tenantName.join(" ")
                                       : t.name || t.tenantName}
                                   </td>
-                                  <td className="px-4 py-3 tabular-nums text-gray-300">
+                                  <td className="px-4 py-3 tabular-nums text-gray-200">
                                     {rentVal
                                       ? `£${rentVal.toLocaleString(undefined, {
                                           minimumFractionDigits: 0,
@@ -473,9 +499,9 @@ export default function LandlordManagement() {
                                   </td>
                                   <td className="px-4 py-3">
                                     <span
-                                      className={`rounded-full border px-2.5 py-0.5 text-xs ${statusClass}`}
+                                      className={`rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${statusClass}`}
                                     >
-                                      {statusLabel}
+                                      {statusRaw || "—"}
                                     </span>
                                   </td>
                                   <td className="px-4 py-3 text-gray-400">
@@ -489,7 +515,8 @@ export default function LandlordManagement() {
                       </div>
                     )}
 
-                    <div className="mt-5 mb-2 rounded-xl border border-gray-800 bg-[#080808] p-4 pb-6">
+                    {/* Financial Summary & Expense Tool */}
+                    <div className="rounded-xl border border-gray-800/80 bg-[#161616] p-4 space-y-4">
                       {(() => {
                         const gross = Number(incomeSummaryResp?.data?.grossIncome || 0);
                         const totalExpenses = Number(incomeSummaryResp?.data?.totalExpenses || 0);
@@ -499,62 +526,62 @@ export default function LandlordManagement() {
                         const fmt = (n: number) =>
                           `£${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
                         return (
-                          <div>
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                              <div className="rounded-lg border border-[#151515] bg-[#0b0b0b] px-3 py-3">
-                                <div className="text-xs text-gray-500">Total Gross</div>
-                                <div className="mt-1 text-sm font-medium text-gray-100">{fmt(gross)}</div>
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                              <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] px-3.5 py-3">
+                                <div className="text-[11px] text-gray-400 font-medium">Total Gross Income</div>
+                                <div className="mt-1 text-sm sm:text-base font-bold text-white tabular-nums">{fmt(gross)}</div>
                               </div>
-                              <div className="rounded-lg border border-[#151515] bg-[#0b0b0b] px-3 py-3">
-                                <div className="text-xs text-gray-500">Total Expenses</div>
-                                <div className="mt-1 text-sm font-medium text-rose-400">
+                              <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] px-3.5 py-3">
+                                <div className="text-[11px] text-gray-400 font-medium">Total Expenses</div>
+                                <div className="mt-1 text-sm sm:text-base font-bold text-rose-400 tabular-nums">
                                   {fmt(totalExpenses)}
                                 </div>
                               </div>
-                              <div className="rounded-lg border border-[#151515] bg-[#0b0b0b] px-3 py-3">
-                                <div className="text-xs text-gray-500">Net Income</div>
-                                <div className="mt-1 text-sm font-medium text-emerald-300">
+                              <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] px-3.5 py-3">
+                                <div className="text-[11px] text-gray-400 font-medium">Net Income</div>
+                                <div className="mt-1 text-sm sm:text-base font-bold text-emerald-400 tabular-nums">
                                   {fmt(net)}
                                 </div>
                               </div>
                             </div>
 
-                            <div className="mt-4 border-t border-[#151515] pt-4">
-                              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
-                                Add Expense
+                            <div className="border-t border-gray-800/80 pt-4 space-y-3">
+                              <div className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                                Record Property Expense
                               </div>
                               <div className="flex flex-col gap-2 sm:flex-row">
                                 <Input
-                                  placeholder="Description"
+                                  placeholder="Expense description..."
                                   value={newExpenseDesc}
                                   onChange={(e) => setNewExpenseDesc(e.target.value)}
-                                  className="bg-[#0b0b0b] border border-gray-800 text-white"
+                                  className="bg-[#0c0c0c] border border-gray-800 text-xs sm:text-sm text-white rounded-xl focus:border-[#027A48]"
                                 />
                                 <Input
                                   placeholder="Amount (e.g. 120.00)"
                                   value={newExpenseAmount}
                                   onChange={(e) => setNewExpenseAmount(e.target.value)}
-                                  className="w-full bg-[#0b0b0b] border border-gray-800 text-white sm:w-40"
+                                  className="w-full bg-[#0c0c0c] border border-gray-800 text-xs sm:text-sm text-white sm:w-44 rounded-xl focus:border-[#027A48]"
                                 />
                                 <Button
                                   onClick={addExpense}
-                                  className="bg-[#111] border border-gray-800 text-gray-300"
+                                  className="bg-[#027A48] hover:bg-[#02653d] text-white text-xs sm:text-sm font-medium rounded-xl px-5 transition active:scale-95"
                                 >
                                   Add
                                 </Button>
                               </div>
 
                               {Array.isArray(expensesResp?.data) && expensesResp!.data.length > 0 && (
-                                <div className="mt-3">
-                                  <div className="mb-2 text-xs text-gray-500">Manual Expenses</div>
-                                  <div className="space-y-2">
+                                <div className="space-y-2 pt-2">
+                                  <div className="text-xs text-gray-400 font-medium">Manual Expenses Log</div>
+                                  <div className="space-y-1.5 max-h-40 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                                     {expensesResp!.data.map((ex: any, i: number) => (
                                       <div
                                         key={ex._id || i}
-                                        className="flex items-center justify-between rounded-lg border border-[#151515] bg-[#0b0b0b] px-3 py-2 text-sm"
+                                        className="flex items-center justify-between rounded-lg border border-gray-800/70 bg-[#0c0c0c] px-3 py-2 text-xs"
                                       >
                                         <div className="text-gray-200">{ex.description}</div>
-                                        <div className="tabular-nums text-rose-400">
+                                        <div className="tabular-nums font-semibold text-rose-400">
                                           {fmt(Number(ex.amount || 0))}
                                         </div>
                                       </div>
@@ -567,10 +594,10 @@ export default function LandlordManagement() {
                         );
                       })()}
                     </div>
-                  </>
+                  </div>
                 ) : (
-                  <>
-                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-gray-800/60">
                       <div>
                         <button
                           onClick={() => {
@@ -578,33 +605,35 @@ export default function LandlordManagement() {
                             setSelectedTenantId(null);
                             setSelectedTenantName(null);
                           }}
-                          className="mb-2 inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200"
+                          className="mb-2 inline-flex items-center gap-1.5 text-xs sm:text-sm text-emerald-400 hover:text-emerald-300 transition"
                         >
-                          <ChevronLeft className="h-4 w-4" /> Back to tenants
+                          <ChevronLeft className="h-4 w-4" /> Back to property tenants
                         </button>
-                        <h4 className="text-base font-medium text-gray-100">
-                          {selectedTenantName} — Rent history
+                        <h4 className="text-base font-semibold text-white">
+                          {selectedTenantName} — Rent Ledger
                         </h4>
                         {currentAddress ? (
-                          <p className="text-xs text-gray-500">{currentAddress}</p>
+                          <p className="text-xs text-gray-400">{currentAddress}</p>
                         ) : null}
                       </div>
                     </div>
 
                     {tenantError ? (
-                      <div className="rounded-xl border border-rose-900/50 px-4 py-10 text-center text-rose-400">
-                        Failed to load rent history.
+                      <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-4 py-8 text-center text-rose-400 text-xs sm:text-sm">
+                        Failed to load rent history ledger.
                       </div>
                     ) : (
-                      <TenantRentHistoryTable
-                        tenantId={selectedTenantId}
-                        tenant={tenantDetails}
-                        rentHistory={tenantDetails?.rentHistory}
-                        loading={tenantLoading}
-                        readOnly
-                      />
+                      <div className="overflow-x-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                        <TenantRentHistoryTable
+                          tenantId={selectedTenantId}
+                          tenant={tenantDetails}
+                          rentHistory={tenantDetails?.rentHistory}
+                          loading={tenantLoading}
+                          readOnly
+                        />
+                      </div>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
             </div>

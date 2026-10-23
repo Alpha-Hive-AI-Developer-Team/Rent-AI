@@ -5,7 +5,7 @@ import { Bell, CheckCircle } from "lucide-react";
 import { usePayment } from "@/hooks/usepayment";
 import { useEffect, useState } from "react";
 import { useMyProfile } from "@/hooks/useAuth";
-import plansConfig, { PLANS, PLAN_PRICE_CENTS, PlanKey } from "@/lib/plans";
+import { PLANS, PLAN_PRICE_CENTS, PlanKey } from "@/lib/plans";
 import Link from "next/link";
 import usePayout from '@/hooks/usePayout';
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog';
@@ -22,6 +22,8 @@ export default function PaymentPage() {
     nextCreditQuery,
     applyCreditsToNextRenewal,
     applyNextCreditMutation,
+    enabledPlans,
+    plansQuery,
   } = usePayment();
   const [activePlan, setActivePlan] = useState<string>("free");
   const [currentDiscount, setCurrentDiscount] = useState<number>(0);
@@ -33,15 +35,19 @@ export default function PaymentPage() {
   /** Pounds to reserve for the next auto-renewal. Default 0 so credits are not reserved by accident. */
   const [nextRenewalCreditAmount, setNextRenewalCreditAmount] = useState<string>("0");
   /** Pending mid-cycle upgrade (proration) awaiting confirmation — not used for new checkout. */
-  const [upgradeConfirmPlan, setUpgradeConfirmPlan] = useState<
-    "starter" | "pro" | "enterprise" | null
-  >(null);
+  const [upgradeConfirmPlan, setUpgradeConfirmPlan] = useState<string | null>(null);
 
   const planRank: Record<string, number> = {
     free: 0,
     starter: 1,
     pro: 2,
     enterprise: 3,
+    ...Object.fromEntries(
+      (enabledPlans || []).map((p, idx) => [
+        p.key,
+        p.key === "free" ? 0 : typeof p.sortOrder === "number" ? p.sortOrder + 1 : idx + 1,
+      ])
+    ),
   };
 
   const getButtonState = (planKey: string) => {
@@ -98,8 +104,30 @@ export default function PaymentPage() {
   const [withdrawLoading, setWithdrawLoading] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState<number | "">("");
   const [withdrawError, setWithdrawError] = useState<string>("");
-  const plans = PLANS;
-  const planNumericPrice: Record<string, number> = Object.fromEntries(Object.entries(PLAN_PRICE_CENTS).map(([k, v]) => [k, Math.round((v || 0) / 100)]));
+  const plans = (enabledPlans?.length
+    ? enabledPlans.map((p) => ({
+        key: p.key as PlanKey | string,
+        title: p.title,
+        priceDisplay: p.priceDisplay || `£${((p.priceCents || 0) / 100).toFixed(0)}`,
+        priceCents: p.priceCents || 0,
+        price: p.priceDisplay || `£${((p.priceCents || 0) / 100).toFixed(0)}`,
+        per: "/mo",
+        features: p.features || [],
+        description: p.description || "",
+      }))
+    : PLANS) as Array<{
+    key: string;
+    title: string;
+    priceDisplay: string;
+    priceCents: number;
+    price?: string;
+    per?: string;
+    features?: string[];
+    description?: string;
+  }>;
+  const planNumericPrice: Record<string, number> = Object.fromEntries(
+    plans.map((p) => [p.key, Math.round((p.priceCents || PLAN_PRICE_CENTS[p.key as PlanKey] || 0) / 100)])
+  );
 
   const creditAmountPounds = (() => {
     const n = Number(creditAmount);
@@ -157,7 +185,8 @@ export default function PaymentPage() {
     profileResp?.data?.subscriptionStatus === "active" &&
     !profileResp?.data?.cancelAtPeriodEnd;
 
-  const runPlanCheckout = (planKey: "starter" | "pro" | "enterprise") => {
+  const runPlanCheckout = (planKey: string) => {
+    if (planKey === "free") return;
     // Only apply credits when explicitly enabled AND amount > 0 (default amount is 0).
     if (applyCredit && creditAmountCents > 0) {
       startCheckout(planKey, { applyCredit: true, applyCreditCents: creditAmountCents });
@@ -166,7 +195,8 @@ export default function PaymentPage() {
     }
   };
 
-  const handleSelectPlan = (planKey: "starter" | "pro" | "enterprise") => {
+  const handleSelectPlan = (planKey: string) => {
+    if (planKey === "free") return;
     const currentRank = planRank[activePlan] ?? 0;
     const targetRank = planRank[planKey] ?? 0;
     // Mid-cycle upgrade / proration — ask for confirmation (not new Stripe Checkout).
@@ -185,10 +215,10 @@ export default function PaymentPage() {
   };
 
   const upgradePlanLabel = upgradeConfirmPlan
-    ? PLANS.find((p) => p.key === upgradeConfirmPlan)?.title || upgradeConfirmPlan
+    ? plans.find((p) => p.key === upgradeConfirmPlan)?.title || upgradeConfirmPlan
     : "";
   const currentPlanLabel =
-    PLANS.find((p) => p.key === activePlan)?.title || activePlan || "current plan";
+    plans.find((p) => p.key === activePlan)?.title || activePlan || "current plan";
   const upgradeCreditNote =
     applyCredit && creditAmountCents > 0
       ? ` £${creditAmountPounds.toFixed(2)} in credits will be applied to this upgrade invoice.`
@@ -316,14 +346,20 @@ export default function PaymentPage() {
       <section>
         {/* <h2 className="text-lg font-semibold mb-6">Plans & Billing</h2> */}
         {/* Plan Cards (match screenshot) */}
+        {plansQuery.isLoading && (
+          <p className="text-sm text-gray-400 mb-4">Loading plans…</p>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {plans.map((plan) => (
             <div key={plan.key} className={`rounded-2xl border p-5 flex flex-col justify-between ${activePlan === plan.key ? 'border-emerald-500 bg-[#072a17]' : 'border-[#2A2A2A] bg-transparent'}`}>
               <div>
                 <h3 className="text-sm font-semibold text-gray-200 mb-3">{plan.title}</h3>
                 <p className="text-3xl font-bold mb-1">{plan.price}<span className="text-sm font-normal text-gray-400">{plan.per}</span></p>
+                {plan.description ? (
+                  <p className="text-xs text-gray-500 mt-1">{plan.description}</p>
+                ) : null}
                 {plan.key !== 'free' && (planRank[plan.key] > (planRank[activePlan] ?? 0)) && (
-                  <p className="text-xs text-emerald-400 mt-1">Up to {getPlanDiscountPercent(plan.key as any)}% off with credits</p>
+                  <p className="text-xs text-emerald-400 mt-1">Up to {getPlanDiscountPercent(plan.key as PlanKey)}% off with credits</p>
                 )}  
                 <ul className="mt-3 space-y-2 text-sm text-gray-300">
                   {plan.features?.map((f, i) => (
@@ -339,7 +375,7 @@ export default function PaymentPage() {
                     onClick={() => {
                       if (disabled) return;
                       if (plan.key === 'free') return;
-                      handleSelectPlan(plan.key as 'starter' | 'pro' | 'enterprise');
+                      handleSelectPlan(plan.key);
                     }}
                     className={`mt-5 w-full rounded-full px-4 py-2 text-sm ${highlight ? 'bg-emerald-600 text-white border-emerald-600' : 'border border-emerald-700 text-emerald-300 hover:bg-[#0b1510]'} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
                   >

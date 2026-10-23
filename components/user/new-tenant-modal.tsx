@@ -42,7 +42,10 @@ const WEEKDAY_OPTIONS: { value: number; label: string }[] = [
 
 type RoomTenant = {
   id: string;
-  tenantName: string;
+  /** Separate people on this tenancy (e.g. Ali, Ahmed) */
+  tenantNames: string[];
+  /** Draft input before clicking Add person */
+  nameDraft: string;
   rent: string;
   dueOn: number;
   rentFrequency: RentFrequency;
@@ -79,6 +82,28 @@ function sanitizeRentInput(value: string) {
 /** Letters, spaces, hyphens, apostrophes only — no digits or other symbols. */
 function sanitizeTenantNameInput(value: string) {
   return value.replace(/[^\p{L}\s'-]/gu, "");
+}
+
+function isValidTenantName(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed.length) return false;
+  return /^[\p{L}]+(?:[\s'-][\p{L}]+)*$/u.test(trimmed);
+}
+
+function namesFromTenantValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((n) => String(n || "").trim()).filter(Boolean);
+  }
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
+/** Chips + optional draft that was typed but not yet added. */
+function finalizeTenantNames(names: string[], draft: string): string[] {
+  const out = names.map((n) => n.trim()).filter(Boolean);
+  const typed = sanitizeTenantNameInput(draft).trim().replace(/\s+/g, " ");
+  if (typed) out.push(typed);
+  return Array.from(new Set(out));
 }
 
 function formatTenantNames(value: unknown): string {
@@ -172,7 +197,8 @@ function depositPayloadFromFields(opts: {
 function newRoom(index: number): RoomTenant {
   return {
     id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
-    tenantName: "",
+    tenantNames: [],
+    nameDraft: "",
     rent: "",
     dueOn: 1,
     rentFrequency: "monthly",
@@ -198,7 +224,8 @@ function buildExistingRoomsForProperty(address: string, tenants: any[]): RoomTen
     .map((t, i): RoomTenant => ({
       id: `existing-${t._id || i}`,
       tenantId: t._id ? String(t._id) : undefined,
-      tenantName: formatTenantNames(t.tenantName),
+      tenantNames: namesFromTenantValue(t.tenantName),
+      nameDraft: "",
       rent: t.rent != null && t.rent !== "" ? String(t.rent) : "",
       dueOn: Number(t.dueOn) || 1,
       rentFrequency: t.rentFrequency === "weekly" ? "weekly" : "monthly",
@@ -221,7 +248,7 @@ function buildExistingRoomsForProperty(address: string, tenants: any[]): RoomTen
       if (aNum && bNum) return aNum - bNum;
       if (aNum) return -1;
       if (bNum) return 1;
-      return a.tenantName.localeCompare(b.tenantName);
+      return formatTenantNames(a.tenantNames).localeCompare(formatTenantNames(b.tenantNames));
     })
     .map((room, i) => ({
       ...room,
@@ -242,7 +269,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
   const [postcode, setPostcode] = useState("");
   const [tenancyType, setTenancyType] = useState<TenancyType>("single");
   const [singleTenant, setSingleTenant] = useState({
-    tenantName: "",
+    tenantNames: [] as string[],
+    nameDraft: "",
     rent: "",
     dueOn: 1,
     rentFrequency: "monthly" as RentFrequency,
@@ -338,7 +366,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     setPostcode("");
     setTenancyType("single");
     setSingleTenant({
-      tenantName: "",
+      tenantNames: [],
+      nameDraft: "",
       rent: "",
       dueOn: 1,
       rentFrequency: "monthly",
@@ -381,7 +410,10 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
 
   const validateStep3 = () => {
     if (tenancyType === "single" && !addingToExisting) {
-      if (!(singleTenant.tenantName.trim().length > 0 && Number(singleTenant.rent) > 0)) return false;
+      const names = finalizeTenantNames(singleTenant.tenantNames, singleTenant.nameDraft);
+      if (!(names.length > 0 && names.every(isValidTenantName) && Number(singleTenant.rent) > 0)) {
+        return false;
+      }
       if (validateDepositFields(singleTenant)) return false;
       return true;
     }
@@ -394,11 +426,45 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
           const rentVal = r.rent.trim();
           return rentVal === "" || Number(rentVal) >= 0;
         }
-        if (!(r.tenantName.trim().length > 0 && Number(r.rent) > 0)) return false;
+        const names = finalizeTenantNames(r.tenantNames, r.nameDraft);
+        if (!(names.length > 0 && names.every(isValidTenantName) && Number(r.rent) > 0)) {
+          return false;
+        }
         if (validateDepositFields(r)) return false;
         return true;
       })
     );
+  };
+
+  const addSinglePerson = () => {
+    const trimmed = sanitizeTenantNameInput(singleTenant.nameDraft).trim().replace(/\s+/g, " ");
+    if (!trimmed) return;
+    if (!isValidTenantName(trimmed)) {
+      toast.error("Names can only contain letters, spaces, hyphens, and apostrophes.");
+      return;
+    }
+    setSingleTenant((s) => ({
+      ...s,
+      tenantNames: s.tenantNames.includes(trimmed) ? s.tenantNames : [...s.tenantNames, trimmed],
+      nameDraft: "",
+    }));
+  };
+
+  const addRoomPerson = (roomId: string) => {
+    const room = rooms.find((r) => r.id === roomId);
+    if (!room) return;
+    const trimmed = sanitizeTenantNameInput(room.nameDraft).trim().replace(/\s+/g, " ");
+    if (!trimmed) return;
+    if (!isValidTenantName(trimmed)) {
+      toast.error("Names can only contain letters, spaces, hyphens, and apostrophes.");
+      return;
+    }
+    updateRoom(roomId, {
+      tenantNames: room.tenantNames.includes(trimmed)
+        ? room.tenantNames
+        : [...room.tenantNames, trimmed],
+      nameDraft: "",
+    });
   };
 
   const addRoom = () => setRooms((prev) => [...prev, newRoom(nextRoomIndex(prev))]);
@@ -437,7 +503,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
           ? {
               ...r,
               assigning: true,
-              tenantName: "",
+              tenantNames: [],
+              nameDraft: "",
               moveInDate: new Date().toISOString().slice(0, 10),
               rent: r.rent && Number(r.rent) > 0 ? r.rent : "",
             }
@@ -453,7 +520,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
           ? {
               ...r,
               assigning: false,
-              tenantName: "",
+              tenantNames: [],
+              nameDraft: "",
               moveInDate: "",
             }
           : r
@@ -463,9 +531,9 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
 
   const saveAssignExistingVacant = async (room: RoomTenant) => {
     if (!room.tenantId || assigningRoomId) return;
-    const name = sanitizeTenantNameInput(room.tenantName).trim().replace(/\s+/g, " ");
-    if (!name || !/^[\p{L}]+(?:[\s'-][\p{L}]+)*$/u.test(name)) {
-      toast.error("Enter a valid tenant name (letters only).");
+    const names = finalizeTenantNames(room.tenantNames, room.nameDraft);
+    if (names.length === 0 || names.some((n) => !isValidTenantName(n))) {
+      toast.error("Add at least one valid person name (letters only).");
       return;
     }
     const rentNum = Number(room.rent);
@@ -493,7 +561,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     setAssigningRoomId(room.id);
     try {
       await assignTenantToRoom(room.tenantId, {
-        tenantName: [name],
+        tenantName: names,
         rent: rentNum,
         dueOn: clampDueOnForFrequency(room.dueOn, room.moveInDate, freq),
         rentFrequency: freq,
@@ -511,7 +579,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                 ...r,
                 vacant: false,
                 assigning: false,
-                tenantName: name,
+                tenantNames: names,
+                nameDraft: "",
                 rent: String(rentNum),
               }
             : r
@@ -595,7 +664,10 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
       effectiveType === "single"
         ? [
             {
-              tenantName: singleTenant.tenantName.trim(),
+              tenantName: finalizeTenantNames(
+                singleTenant.tenantNames,
+                singleTenant.nameDraft
+              ),
               rent: Number(singleTenant.rent),
               rentFrequency: singleTenant.rentFrequency === "weekly" ? "weekly" : "monthly",
               dueOn: clampDueOnForFrequency(
@@ -619,7 +691,9 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
             const freq: RentFrequency =
               r.rentFrequency === "weekly" ? "weekly" : "monthly";
             return {
-              tenantName: r.vacant ? [] : r.tenantName.trim(),
+              tenantName: r.vacant
+                ? []
+                : finalizeTenantNames(r.tenantNames, r.nameDraft),
               rent: r.vacant ? (r.rent.trim() === "" ? 0 : Number(r.rent)) : Number(r.rent),
               rentFrequency: r.vacant ? undefined : freq,
               dueOn: r.vacant
@@ -1000,20 +1074,64 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
 
                     {tenancyType === "single" && !addingToExisting ? (
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <div>
-                          <label className={labelClass}>Tenant name</label>
-                          <input
-                            list="payer-suggestions"
-                            value={singleTenant.tenantName}
-                            onChange={(e) =>
-                              setSingleTenant((s) => ({
-                                ...s,
-                                tenantName: sanitizeTenantNameInput(e.target.value),
-                              }))
-                            }
-                            placeholder="e.g. John Smith"
-                            className={inputClass}
-                          />
+                        <div className="md:col-span-2 xl:col-span-2">
+                          <label className={labelClass}>Tenant name(s)</label>
+                          <div className="mb-2 flex gap-2">
+                            <input
+                              list="payer-suggestions"
+                              value={singleTenant.nameDraft}
+                              onChange={(e) =>
+                                setSingleTenant((s) => ({
+                                  ...s,
+                                  nameDraft: sanitizeTenantNameInput(e.target.value),
+                                }))
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  addSinglePerson();
+                                }
+                              }}
+                              placeholder="e.g. Ahmed"
+                              className={inputClass}
+                            />
+                            <button
+                              type="button"
+                              onClick={addSinglePerson}
+                              className="shrink-0 rounded-lg border border-emerald-700 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-950/40"
+                            >
+                              Add person
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {singleTenant.tenantNames.map((name, index) => (
+                              <div
+                                key={`${name}-${index}`}
+                                className="flex items-center gap-2 rounded-full border border-[#222] bg-[#0b0b0b] px-3 py-1.5 text-sm"
+                              >
+                                <span className="text-gray-200">{name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSingleTenant((s) => ({
+                                      ...s,
+                                      tenantNames: s.tenantNames.filter((_, i) => i !== index),
+                                    }))
+                                  }
+                                  className="text-gray-400 hover:text-white"
+                                  aria-label={`Remove ${name}`}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          {singleTenant.tenantNames.length === 0 &&
+                            !singleTenant.nameDraft.trim() && (
+                              <p className="mt-1.5 text-xs text-gray-500">
+                                Add each person separately (e.g. Ahmed, then Ali).
+                              </p>
+                            )}
                         </div>
                         <div>
                           <label className={labelClass}>Rent frequency</label>
@@ -1170,6 +1288,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                   setSingleTenant((s) => ({ ...s, rentAdjustments }))
                                 }
                                 hideBaseRent
+                                moveInDate={singleTenant.moveInDate}
                                 labelClass={labelClass}
                                 inputClass={inputClass}
                               />
@@ -1280,7 +1399,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                       onChange={(e) =>
                                         updateRoom(room.id, {
                                           vacant: e.target.checked,
-                                          tenantName: e.target.checked ? "" : room.tenantName,
+                                          tenantNames: e.target.checked ? [] : room.tenantNames,
+                                          nameDraft: e.target.checked ? "" : room.nameDraft,
                                           moveInDate: e.target.checked ? "" : room.moveInDate,
                                           hasDeposit: e.target.checked ? false : room.hasDeposit,
                                           depositAmount: e.target.checked ? "" : room.depositAmount,
@@ -1341,22 +1461,86 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                               </div>
                             </div>
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                              <div>
-                                <label className={labelClass}>Tenant name</label>
-                                <input
-                                  list={fieldsLocked ? undefined : "payer-suggestions"}
-                                  value={isVacant && !isAssigning ? "" : room.tenantName}
-                                  onChange={(e) =>
-                                    updateRoom(room.id, {
-                                      tenantName: sanitizeTenantNameInput(e.target.value),
-                                    })
-                                  }
-                                  disabled={fieldsLocked}
-                                  placeholder={
-                                    isVacant && !isAssigning ? "No tenant yet" : "e.g. John Smith"
-                                  }
-                                  className={`${inputClass} disabled:cursor-not-allowed disabled:text-gray-400`}
-                                />
+                              <div className="md:col-span-2 xl:col-span-2">
+                                <label className={labelClass}>Tenant name(s)</label>
+                                {fieldsLocked ? (
+                                  <div
+                                    className={`${inputClass} flex min-h-[42px] flex-wrap items-center gap-2 disabled:cursor-not-allowed`}
+                                  >
+                                    {room.tenantNames.length > 0 ? (
+                                      room.tenantNames.map((name, index) => (
+                                        <span
+                                          key={`${name}-${index}`}
+                                          className="rounded-full border border-[#222] bg-[#0b0b0b] px-2.5 py-0.5 text-sm text-gray-300"
+                                        >
+                                          {name}
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span className="text-gray-500">
+                                        {isVacant ? "No tenant yet" : "—"}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="mb-2 flex gap-2">
+                                      <input
+                                        list="payer-suggestions"
+                                        value={room.nameDraft}
+                                        onChange={(e) =>
+                                          updateRoom(room.id, {
+                                            nameDraft: sanitizeTenantNameInput(e.target.value),
+                                          })
+                                        }
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            addRoomPerson(room.id);
+                                          }
+                                        }}
+                                        placeholder="e.g. Ahmed"
+                                        className={inputClass}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => addRoomPerson(room.id)}
+                                        className="shrink-0 rounded-lg border border-emerald-700 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-950/40"
+                                      >
+                                        Add person
+                                      </button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                      {room.tenantNames.map((name, index) => (
+                                        <div
+                                          key={`${name}-${index}`}
+                                          className="flex items-center gap-2 rounded-full border border-[#222] bg-[#0b0b0b] px-3 py-1.5 text-sm"
+                                        >
+                                          <span className="text-gray-200">{name}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              updateRoom(room.id, {
+                                                tenantNames: room.tenantNames.filter(
+                                                  (_, i) => i !== index
+                                                ),
+                                              })
+                                            }
+                                            className="text-gray-400 hover:text-white"
+                                            aria-label={`Remove ${name}`}
+                                          >
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    {room.tenantNames.length === 0 && !room.nameDraft.trim() && (
+                                      <p className="mt-1.5 text-xs text-gray-500">
+                                        Add each person separately (e.g. Ahmed, then Ali).
+                                      </p>
+                                    )}
+                                  </>
+                                )}
                               </div>
                               {!(isVacant && !isAssigning) && (
                                 <div>
@@ -1509,6 +1693,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                         updateRoom(room.id, { rentAdjustments })
                                       }
                                       hideBaseRent
+                                      moveInDate={room.moveInDate}
                                       disabled={fieldsLocked}
                                       labelClass={labelClass}
                                       inputClass={inputClass}
@@ -1541,6 +1726,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                         updateRoom(room.id, { rentAdjustments })
                                       }
                                       hideBaseRent
+                                      moveInDate={room.moveInDate}
                                       labelClass={labelClass}
                                       inputClass={inputClass}
                                     />

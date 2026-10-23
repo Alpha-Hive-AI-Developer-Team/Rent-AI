@@ -64,10 +64,12 @@ export async function getTenantTransactions(tenantId: string) {
 }
 
 // Fetch flattened list of all tenants (admin view)
-export async function getAllTenants(filters: { search?: string; status?: string } = {}) {
+export async function getAllTenants(filters: { search?: string; status?: string; page?: number; limit?: number } = {}) {
 	const params: Record<string, any> = {};
 	if (filters.search) params.search = filters.search;
 	if (filters.status) params.status = filters.status;
+	if (filters.page) params.page = filters.page;
+	if (filters.limit) params.limit = filters.limit;
 	const res = await apiClient.get(`/auth/tenants/all`, { params });
 	return res.data;
 }
@@ -142,5 +144,63 @@ export async function getPaidUnpaidSeries(months: number = 6) {
 export async function getArrearsTrend(months: number = 6) {
   const res = await apiClient.get(`/stats/arrears-trend`, { params: { months } });
   return res.data;
+}
+
+export async function getSubscriptionRevenue(months: number = 6) {
+  const res = await apiClient.get(`/stats/subscription-revenue`, { params: { months } });
+  return res.data;
+}
+
+// --- Subscription plan catalog (admin) ---
+export type AdminPlan = {
+	id: string;
+	key: string;
+	title: string;
+	description?: string;
+	features?: string[];
+	priceCents: number;
+	currency?: string;
+	priceDisplay?: string;
+	stripePriceId?: string | null;
+	maxTenants: number;
+	enabled: boolean;
+	sortOrder?: number;
+	isFree?: boolean;
+	activeSubscribers?: number;
+};
+
+export async function getAdminPlans() {
+	const res = await apiClient.get(`/plans/admin`);
+	return res.data as { success: boolean; data: AdminPlan[] };
+}
+
+export async function updateAdminPlan(
+	id: string,
+	payload: Partial<{
+		title: string;
+		description: string;
+		features: string[];
+		priceCents: number;
+		priceDisplay: string;
+		maxTenants: number;
+		enabled: boolean;
+		sortOrder: number;
+	}>
+) {
+	const res = await apiClient.patch(`/plans/admin/${id}`, payload);
+	return res.data as {
+		success: boolean;
+		message?: string;
+		data: {
+			plan: AdminPlan;
+			migration?: { migrated: number; failed: number; skipped: number; errors: any[] } | null;
+			activeSubscribers?: number;
+		};
+	};
+}
+
+export async function getEnabledPlans() {
+	const res = await apiClient.get(`/plans`);
+	return res.data as { success: boolean; data: AdminPlan[] };
 }
 
