@@ -55,9 +55,14 @@ function DashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-8">
-      <div className="flex items-center justify-end gap-4 mb-8">
-        <h1 className="text-xl font-semibold mr-auto">Dashboard</h1>
+    <div className="p-6 bg-black min-h-screen text-white space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
+        <div>
+          <h2 className="text-xl font-semibold">Dashboard</h2>
+          <p className="text-[#535862] text-sm">
+            Overview of platform revenue, subscription performance, and landlord growth
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">

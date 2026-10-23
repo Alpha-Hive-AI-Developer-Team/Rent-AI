@@ -84,23 +84,23 @@ export default function NetRevenueCard({
     <div className="bg-[#111] text-white rounded-xl p-4 md:p-6 border border-gray-800/50 shadow-md w-full flex flex-col">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-medium text-gray-200">Net revenue</h3>
-          <p className="text-xs text-gray-500 mt-1">
+          <h3 className="text-white font-medium text-base">Net Revenue</h3>
+          <p className="text-gray-400 text-xs mt-1">
             Excl. commission · last {windowMonths} months
             {monthName ? ` (through ${monthName})` : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-wide text-gray-400 border border-gray-700 rounded px-1.5 py-0.5">
+          <span className="text-xs text-gray-400 border border-gray-800 rounded-full px-2.5 py-0.5">
             Last {windowMonths} mo
           </span>
           {revenue?.source === "estimated" && (
-            <span className="text-[10px] uppercase tracking-wide text-amber-500/80 border border-amber-500/30 rounded px-1.5 py-0.5">
+            <span className="text-xs text-amber-400 border border-amber-900/40 bg-amber-950/20 rounded-full px-2.5 py-0.5">
               Estimated
             </span>
           )}
           {(revenue?.source === "system" || revenue?.source === "payments") && (
-            <span className="text-[10px] uppercase tracking-wide text-gray-400 border border-gray-700 rounded px-1.5 py-0.5">
+            <span className="text-xs text-emerald-400 border border-emerald-900/40 bg-[#027A48]/15 rounded-full px-2.5 py-0.5">
               Payment history
             </span>
           )}
@@ -108,9 +108,9 @@ export default function NetRevenueCard({
       </div>
 
       <div className="mb-5">
-        <p className="text-2xl md:text-3xl font-semibold tabular-nums tracking-tight">
+        <h2 className="text-2xl md:text-3xl font-semibold tabular-nums text-white">
           {formatGbp(latestNet)}
-        </p>
+        </h2>
         <p className="text-xs text-gray-500 mt-1">
           {latest?.name || monthName || "Latest month"}
           <span className={changeUp ? "text-emerald-400 ml-2" : "text-rose-400 ml-2"}>
@@ -151,31 +151,31 @@ export default function NetRevenueCard({
               type="monotone"
               dataKey="netRevenue"
               name="Net revenue"
-              stroke="#fbbf24"
+              stroke="#0CEB77"
               strokeWidth={2.5}
-              dot={false}
-              activeDot={{ r: 4, fill: "#fbbf24" }}
+              dot={{ fill: "#0CEB77", r: 3 }}
+              activeDot={{ r: 5, fill: "#0CEB77" }}
             />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
-        <div className="rounded-lg border border-gray-800/80 px-3 py-2">
-          <p className="text-gray-500">Gross · last {windowMonths} mo</p>
-          <p className="text-gray-200 font-medium mt-0.5 tabular-nums">
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] p-3">
+          <p className="text-xs text-[#737373]">Gross · last {windowMonths} mo</p>
+          <p className="text-white font-semibold text-sm mt-1 tabular-nums">
             {formatGbp(revenue?.total ?? 0)}
           </p>
         </div>
-        <div className="rounded-lg border border-gray-800/80 px-3 py-2">
-          <p className="text-gray-500">Net excl. commission</p>
-          <p className="text-gray-200 font-medium mt-0.5 tabular-nums">
+        <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] p-3">
+          <p className="text-xs text-[#737373]">Net excl. commission</p>
+          <p className="text-white font-semibold text-sm mt-1 tabular-nums">
             {formatGbp(revenue?.totalExcludingCommission ?? 0)}
           </p>
         </div>
-        <div className="rounded-lg border border-gray-800/80 px-3 py-2">
-          <p className="text-gray-500">Commissions paid out</p>
-          <p className="text-gray-200 font-medium mt-0.5 tabular-nums">
+        <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] p-3">
+          <p className="text-xs text-[#737373]">Commissions paid out</p>
+          <p className="text-white font-semibold text-sm mt-1 tabular-nums">
             {formatGbp(revenue?.commissionsInWindow ?? revenue?.commissionsTotal ?? 0)}
           </p>
         </div>

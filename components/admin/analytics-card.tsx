@@ -35,8 +35,8 @@ export default function StatCard({
           </span>
         </div>
       </div>
-      <h2 className="text-2xl md:text-3xl font-semibold mb-1">{value}</h2>
-      {period ? <p className="text-xs text-gray-500">{period}</p> : null}
+      <h2 className="text-2xl md:text-3xl font-semibold mb-1 tabular-nums">{value}</h2>
+      {period ? <p className="text-xs text-gray-500 mt-1">{period}</p> : null}
     </div>
   );
 }

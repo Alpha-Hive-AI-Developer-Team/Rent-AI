@@ -71,7 +71,7 @@ export default function AccountView() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-semibold text-white">Partner Account & Payout Settings</h1>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs md:text-sm text-[#535862] mt-1">
           Manage your partner profile, Stripe Express bank connections, and payout preferences.
         </p>
       </div>
@@ -81,7 +81,7 @@ export default function AccountView() {
         {/* Left Column (5 cols): Profile & Details */}
         <div className="lg:col-span-5 space-y-4">
           {/* User Profile Card */}
-          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-5 space-y-4">
+          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-4 md:p-6 space-y-4 shadow-md">
             <div className="flex items-center gap-3.5">
               <div className="w-12 h-12 rounded-xl bg-[#161616] border border-gray-700 flex items-center justify-center text-white text-base font-bold uppercase">
                 {initials || "PA"}
@@ -109,23 +109,23 @@ export default function AccountView() {
           </div>
 
           {/* Partner Support Card */}
-          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-5 space-y-2">
+          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-4 md:p-6 space-y-2.5 shadow-md">
             <div className="flex items-center gap-2">
               <HelpCircle className="w-4 h-4 text-gray-400" />
-              <h3 className="text-xs font-semibold text-white">Partner Programme Support</h3>
+              <h3 className="text-sm font-semibold text-white">Partner Programme Support</h3>
             </div>
             <p className="text-xs text-gray-400 leading-relaxed">
               Have questions regarding 60-day protection or need custom enterprise referral arrangements? Contact our
               partner support team.
             </p>
-            <p className="text-xs font-mono text-emerald-400 pt-1">support@rentai.co</p>
+            <p className="text-xs font-medium text-emerald-400 pt-1">support@rentai.co</p>
           </div>
         </div>
 
         {/* Right Column (7 cols): Payout Account & Settings */}
         <div className="lg:col-span-7 space-y-4">
           {/* Stripe Express Payout Box */}
-          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-5 space-y-4">
+          <div className="bg-[#111] border border-gray-800/50 rounded-xl p-4 md:p-6 space-y-4 shadow-md">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-[#161616] border border-gray-800 flex items-center justify-center text-gray-300">

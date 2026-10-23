@@ -64,10 +64,12 @@ export async function getTenantTransactions(tenantId: string) {
 }
 
 // Fetch flattened list of all tenants (admin view)
-export async function getAllTenants(filters: { search?: string; status?: string } = {}) {
+export async function getAllTenants(filters: { search?: string; status?: string; page?: number; limit?: number } = {}) {
 	const params: Record<string, any> = {};
 	if (filters.search) params.search = filters.search;
 	if (filters.status) params.status = filters.status;
+	if (filters.page) params.page = filters.page;
+	if (filters.limit) params.limit = filters.limit;
 	const res = await apiClient.get(`/auth/tenants/all`, { params });
 	return res.data;
 }

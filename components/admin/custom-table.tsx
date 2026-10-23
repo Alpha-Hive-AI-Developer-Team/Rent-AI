@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { EllipsisVertical, ChevronRight, ChevronLeft } from "lucide-react";
+import { ChevronRight, ChevronLeft } from "lucide-react";
 import React from "react";
 
 interface Column {
@@ -29,117 +29,138 @@ export default function CustomTable({
   total,
   pagination,
 }: CustomTableProps) {
-  const totalPages = pagination ? Math.max(1, Math.ceil(pagination.total / pagination.pageSize)) : 1;
+  const totalPages = pagination
+    ? Math.max(1, Math.ceil(pagination.total / pagination.pageSize))
+    : 1;
   const currentPage = pagination?.page ?? 1;
+
   return (
-    <div className="w-full">
-      {/* Responsive wrapper for table scroll */}
-      <div className="overflow-x-auto rounded-xl border border-gray-800">
-        <table className="min-w-full text-sm text-gray-300">
-          <thead className="bg-[#111] text-[#535862] ">
+    <div className="w-full space-y-4">
+      {/* Responsive wrapper for table scroll with hidden scrollbar */}
+      <div className="overflow-x-auto rounded-2xl border border-gray-800/80 bg-[#111] no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <table className="min-w-full text-xs sm:text-sm text-gray-300">
+          <thead className="bg-[#0c0c0c] text-gray-400 border-b border-gray-800/70 uppercase tracking-wider font-medium text-[11px] sm:text-xs">
             <tr>
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className="text-left p-3 sm:p-4 font-medium whitespace-nowrap X"
+                  className="text-left px-4 py-3.5 whitespace-nowrap"
                 >
                   {col.label}
                 </th>
               ))}
-              {/* <th className="text-left p-3 sm:p-4 font-medium whitespace-nowrap">
-                Action
-              </th> */}
             </tr>
           </thead>
-          <tbody>
-            {data.map((row, idx) => (
-              <tr
-                key={idx}
-                className="border-t border-gray-800 hover:bg-[#111] transition"
-              >
-                {columns.map((col) => (
-                  <td
-                    key={col.key}
-                    className="p-3 sm:p-4 whitespace-nowrap text-xs sm:text-sm"
-                  >
-                    {col.render ? col.render(row) : row[col.key]}
-                  </td>
-                ))}
-                {/* <td className="p-3 sm:p-4">
-                  <button className="text-xs bg-transparent border border-emerald-700 px-3 py-1 rounded-full text-emerald-400 hover:bg-emerald-900/5 transition">
-                    Open <span className="ml-2 text-emerald-400">›</span>
-                  </button>
-                </td> */}
+          <tbody className="divide-y divide-gray-800/50">
+            {data.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={columns.length}
+                  className="py-10 text-center text-gray-400 text-xs sm:text-sm"
+                >
+                  No records found
+                </td>
               </tr>
-            ))}
+            ) : (
+              data.map((row, idx) => (
+                <tr
+                  key={idx}
+                  className="hover:bg-[#151515] transition-colors"
+                >
+                  {columns.map((col) => (
+                    <td
+                      key={col.key}
+                      className="px-4 py-3.5 whitespace-nowrap text-xs sm:text-sm"
+                    >
+                      {col.render ? col.render(row) : row[col.key]}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
 
       {/* Pagination */}
       {pagination && (
-        <div className="flex flex-col sm:flex-row justify-between items-center mt-4 text-gray-400 text-xs sm:text-sm p-4 gap-3 sm:gap-0">
-          <p className="text-center sm:text-left">{total}</p>
+        <div className="flex flex-col sm:flex-row justify-between items-center text-gray-400 text-xs sm:text-sm py-2 px-1 gap-3">
+          <p className="text-center sm:text-left text-xs text-gray-400">
+            {total}
+          </p>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-1.5">
             <Button
               variant="outline"
-              className="bg-[#111] border-gray-800 text-white flex items-center px-3 py-1 text-xs sm:text-sm"
-              onClick={() => pagination.onPageChange(Math.max(1, pagination.page - 1))}
+              className="bg-[#141414] border-gray-800 text-white flex items-center px-2.5 py-1 text-xs rounded-xl hover:bg-white/5 disabled:opacity-40"
+              onClick={() =>
+                pagination.onPageChange(Math.max(1, pagination.page - 1))
+              }
               disabled={pagination.page <= 1}
             >
-              <ChevronLeft className="w-4 h-4 mr-1" /> Prev
+              <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Prev
             </Button>
 
-            {/* page buttons */}
+            {/* Page number buttons */}
             {(() => {
               const pages: (number | string)[] = [];
               const current = currentPage;
 
-              if (totalPages <= 7) {
+              if (totalPages <= 5) {
                 for (let i = 1; i <= totalPages; i++) pages.push(i);
               } else {
                 pages.push(1);
-                if (current > 4) pages.push("...");
-                const start = Math.max(2, current - 2);
-                const end = Math.min(totalPages - 1, current + 2);
+                if (current > 3) pages.push("...");
+                const start = Math.max(2, current - 1);
+                const end = Math.min(totalPages - 1, current + 1);
                 for (let i = start; i <= end; i++) pages.push(i);
-                if (current + 2 < totalPages - 1) pages.push("...");
+                if (current + 1 < totalPages - 1) pages.push("...");
                 pages.push(totalPages);
               }
 
               return pages.map((p, idx) =>
                 typeof p === "number" ? (
-                  <Button
+                  <button
                     key={idx}
-                    variant={p === current ? "default" : "outline"}
-                    className={`px-3 py-1 text-xs sm:text-sm ${p === current ? "bg-emerald-700 text-white" : "bg-[#111] border-gray-800 text-white"}`}
+                    className={`min-w-[30px] h-[30px] px-2 rounded-xl text-xs font-medium transition ${
+                      p === current
+                        ? "bg-[#027A48] text-white shadow-sm"
+                        : "bg-[#141414] border border-gray-800 text-gray-300 hover:text-white hover:bg-white/5"
+                    }`}
                     onClick={() => pagination.onPageChange(p)}
                   >
                     {p}
-                  </Button>
+                  </button>
                 ) : (
-                  <span key={idx} className="px-2 text-gray-500">{p}</span>
+                  <span key={idx} className="px-1 text-gray-500 text-xs">
+                    {p}
+                  </span>
                 )
               );
             })()}
 
             <Button
               variant="outline"
-              className="bg-[#111] border-gray-800 text-white flex items-center px-3 py-1 text-xs sm:text-sm"
-              onClick={() => pagination.onPageChange(Math.min(totalPages, currentPage + 1))}
+              className="bg-[#141414] border-gray-800 text-white flex items-center px-2.5 py-1 text-xs rounded-xl hover:bg-white/5 disabled:opacity-40"
+              onClick={() =>
+                pagination.onPageChange(
+                  Math.min(totalPages, currentPage + 1)
+                )
+              }
               disabled={currentPage >= totalPages}
             >
-              Next <ChevronRight className="w-4 h-4 ml-1" />
+              Next <ChevronRight className="w-3.5 h-3.5 ml-1" />
             </Button>
 
             {pagination.onPageSizeChange && (
               <select
                 value={pagination.pageSize}
-                onChange={(e) => pagination.onPageSizeChange?.(Number(e.target.value))}
-                className="ml-2 bg-[#111] border border-gray-800 text-sm px-2 py-1"
+                onChange={(e) =>
+                  pagination.onPageSizeChange?.(Number(e.target.value))
+                }
+                className="ml-1 bg-[#141414] border border-gray-800 text-xs text-gray-300 rounded-xl px-2 py-1.5 focus:outline-none focus:border-[#027A48]"
               >
-                {[5, 10, 20, 50].map((n) => (
+                {[10, 20, 50].map((n) => (
                   <option key={n} value={n}>
                     {n} / page
                   </option>
@@ -152,3 +173,4 @@ export default function CustomTable({
     </div>
   );
 }
+

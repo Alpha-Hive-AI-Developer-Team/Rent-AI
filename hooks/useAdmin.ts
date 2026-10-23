@@ -77,7 +77,7 @@ export function useAdminTopReferrers() {
 	});
 }
 
-export function useAllTenants(filters: { search?: string; status?: string } = {}) {
+export function useAllTenants(filters: { search?: string; status?: string; page?: number; limit?: number } = {}) {
 	return useQuery<any, Error, any>({
 		queryKey: ["adminAllTenants", filters],
 		queryFn: () => getAllTenants(filters),

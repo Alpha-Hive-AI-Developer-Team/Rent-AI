@@ -49,40 +49,61 @@ export default function ReferralRewardCenter() {
   };
 
   return (
-    <div className="p-6 bg-black min-h-screen text-white">
+    <div className="p-4 sm:p-6 lg:p-8 bg-black min-h-screen text-white space-y-6 sm:space-y-8 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
-        <div>
-          <h2 className="text-xl font-semibold">Referral & Reward Center</h2>
-          <p className="text-[#535862] text-sm">
-            Monitor all tenants across the platform
-          </p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-2 border-b border-gray-800/60">
+        <div className="flex items-start gap-3">
+          <div className="p-2.5 rounded-xl bg-[#027A48]/10 border border-[#027A48]/20 text-emerald-400 hidden sm:flex items-center justify-center">
+            <Plus className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+              Referral & Reward Center
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-400 mt-1">
+              Track partner commissions, referral code velocity, and 14-day hold lifecycles
+            </p>
+          </div>
         </div>
-        {/* <Button className="bg-[#027A48] hover:bg-green-700 text-white">
-          <Plus className="w-4 h-4 mr-1" /> Create Referral Code
-        </Button> */}
       </div>
 
-      {/* Cards */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {topReferrers.map((partner: any, idx: any) => (
-          <ReferralCard
-            key={partner.id}
-            name={partner.name}
-            rank={idx + 1}
-            earnings={formatMoney(partner.rewardCents)}
-            hold={formatMoney(partner.holdCents)}
-            available={formatMoney(partner.availableCents)}
-            referrals={partner.referralsCount}
-            referralCode={partner.referralCode}
-          />
-        ))}
+      {/* Top Referrers Cards */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-300">
+            Top Performing Partners
+          </h2>
+          <span className="text-xs text-gray-500">Ranked by total rewards</span>
+        </div>
+
+        {topReferrers.length === 0 ? (
+          <div className="bg-[#111] border border-gray-800/70 rounded-2xl p-6 text-center text-xs text-gray-400">
+            No top referrers recorded yet
+          </div>
+        ) : (
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {topReferrers.map((partner: any, idx: any) => (
+              <ReferralCard
+                key={partner.id}
+                name={partner.name}
+                rank={idx + 1}
+                earnings={formatMoney(partner.rewardCents)}
+                hold={formatMoney(partner.holdCents)}
+                available={formatMoney(partner.availableCents)}
+                referrals={partner.referralsCount}
+                referralCode={partner.referralCode}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Chart */}
-      <ReferralGrowthChart data={trendData} trendPct={trendPct} />
+      {/* Growth Chart */}
+      <div className="w-full">
+        <ReferralGrowthChart data={trendData} trendPct={trendPct} />
+      </div>
 
-      {/* Table */}
+      {/* Referrals Code Table */}
       <ReferralTable
         data={tableData}
         total={total}
@@ -97,3 +118,4 @@ export default function ReferralRewardCenter() {
     </div>
   );
 }
+

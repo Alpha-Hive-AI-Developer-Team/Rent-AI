@@ -87,18 +87,18 @@ export default function SubscriptionRevenueCard({
     <div className="bg-[#111] text-white rounded-xl p-4 md:p-6 border border-gray-800/50 shadow-md w-full flex flex-col">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-medium text-gray-200">Members &amp; plans</h3>
-          <p className="text-xs text-gray-500 mt-1">
+          <h3 className="text-white font-medium text-base">Members &amp; Plans</h3>
+          <p className="text-gray-400 text-xs mt-1">
             Plan mix is current · volume chart covers the last {windowMonths} months
             {monthName ? ` (through ${monthName})` : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-wide text-gray-400 border border-gray-700 rounded px-1.5 py-0.5">
+          <span className="text-xs text-gray-400 border border-gray-800 rounded-full px-2.5 py-0.5">
             Last {windowMonths} mo
           </span>
           {monthName ? (
-            <span className="text-[10px] uppercase tracking-wide text-emerald-400/90 border border-emerald-500/30 rounded px-1.5 py-0.5">
+            <span className="text-xs text-emerald-400 border border-emerald-900/40 bg-[#027A48]/15 rounded-full px-2.5 py-0.5">
               Current · {monthName}
             </span>
           ) : null}
@@ -114,19 +114,19 @@ export default function SubscriptionRevenueCard({
           return (
             <div
               key={key}
-              className="rounded-lg border border-gray-800 bg-[#0a0a0a] px-3 py-2.5"
+              className="rounded-xl border border-gray-800 bg-[#0c0c0c] p-3"
             >
               <div className="flex items-center gap-1.5 mb-1">
                 <span
                   className="inline-block w-2 h-2 rounded-sm"
                   style={{ backgroundColor: TIER_COLORS[key] }}
                 />
-                <span className="text-[11px] text-gray-400 uppercase tracking-wide">
+                <span className="text-xs text-gray-400 uppercase tracking-wide">
                   {tier?.label || key}
                 </span>
               </div>
-              <p className="text-lg font-semibold leading-tight tabular-nums">{count}</p>
-              <p className="text-[10px] text-gray-500 mt-0.5">
+              <p className="text-lg md:text-xl font-semibold leading-tight tabular-nums text-white">{count}</p>
+              <p className="text-xs text-[#535862] mt-0.5">
                 {tier?.display || "—"} · {share}%
               </p>
             </div>
@@ -134,41 +134,41 @@ export default function SubscriptionRevenueCard({
         })}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5 text-xs">
-        <div className="rounded-lg border border-gray-800/80 px-3 py-2">
-          <p className="text-gray-500">Paying · now</p>
-          <p className="text-green-400 font-semibold text-sm mt-0.5 tabular-nums">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
+        <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] p-3">
+          <p className="text-xs text-[#737373]">Paying · now</p>
+          <p className="text-emerald-400 font-semibold text-base mt-1 tabular-nums">
             {members?.paying ?? 0}
-            <span className="text-gray-500 font-normal ml-1">
+            <span className="text-gray-500 font-normal text-xs ml-1">
               ({members?.payingSharePct ?? 0}%)
             </span>
           </p>
         </div>
-        <div className="rounded-lg border border-gray-800/80 px-3 py-2">
-          <p className="text-gray-500">Non-paying · now</p>
-          <p className="text-gray-200 font-semibold text-sm mt-0.5 tabular-nums">
+        <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] p-3">
+          <p className="text-xs text-[#737373]">Non-paying · now</p>
+          <p className="text-white font-semibold text-base mt-1 tabular-nums">
             {members?.nonPaying ?? 0}
           </p>
         </div>
-        <div className="rounded-lg border border-gray-800/80 px-3 py-2">
-          <p className="text-gray-500">
+        <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] p-3">
+          <p className="text-xs text-[#737373]">
             Expected MRR · {monthName || "this month"}
           </p>
-          <p className="text-white font-semibold text-sm mt-0.5 tabular-nums">
+          <p className="text-white font-semibold text-base mt-1 tabular-nums">
             {formatGbp(revenue?.expectedThisMonth ?? 0)}
           </p>
         </div>
-        <div className="rounded-lg border border-gray-800/80 px-3 py-2">
-          <p className="text-gray-500">
+        <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] p-3">
+          <p className="text-xs text-[#737373]">
             Net MRR · {monthName || "this month"}
           </p>
-          <p className="text-white font-semibold text-sm mt-0.5 tabular-nums">
+          <p className="text-white font-semibold text-base mt-1 tabular-nums">
             {formatGbp(revenue?.expectedThisMonthNet ?? 0)}
           </p>
         </div>
       </div>
 
-      <p className="text-[11px] text-gray-500 mb-2">
+      <p className="text-xs text-gray-400 mb-2">
         Paying vs non-paying by month
       </p>
 

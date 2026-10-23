@@ -131,199 +131,343 @@ function AdminPlansPage() {
   };
 
   return (
-    <div className="p-6 bg-black min-h-screen text-white">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
-        <div>
-          <h2 className="text-xl font-semibold">Subscription Plans</h2>
-          <p className="text-[#535862] text-sm">
-            Edit plan name, price, description, features, and availability. Disabled plans are hidden
-            from landlords and cannot be purchased.
-          </p>
+    <div className="p-4 sm:p-6 lg:p-8 bg-black min-h-screen text-white space-y-6 sm:space-y-8 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-2 border-b border-gray-800/60">
+        <div className="flex items-start gap-3">
+          <div className="p-2.5 rounded-xl bg-[#027A48]/10 border border-[#027A48]/20 text-emerald-400 hidden sm:flex items-center justify-center">
+            <Pencil className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+              Subscription Plans
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-400 mt-1">
+              Configure pricing tiers, tenant limits, feature inclusions, and landlord availability
+            </p>
+          </div>
         </div>
       </div>
 
-      {isLoading && <p className="text-sm text-gray-400">Loading plans…</p>}
-      {isError && (
-        <p className="text-sm text-rose-400">
-          Failed to load plans.{" "}
-          <button type="button" className="underline" onClick={() => refetch()}>
-            Retry
-          </button>
-        </p>
-      )}
-
-      {!isLoading && !isError && (
-        <div className="overflow-x-auto rounded-2xl border border-[#2A2A2A]">
-          <table className="w-full text-sm text-left">
-            <thead>
-              <tr className="text-gray-400 text-xs border-b border-[#2A2A2A] bg-[#0c0c0c]">
-                <th className="px-4 py-3">Plan</th>
-                <th className="px-4 py-3">Price</th>
-                <th className="px-4 py-3">Max tenants</th>
-                <th className="px-4 py-3">Enabled</th>
-                <th className="px-4 py-3">Active subs</th>
-                <th className="px-4 py-3">Stripe price</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1a1a1a]">
-              {plans.map((plan) => (
-                <tr key={plan.id} className="hover:bg-white/[0.02]">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-white">{plan.title}</div>
-                    <div className="text-xs text-gray-500 capitalize">{plan.key}</div>
-                  </td>
-                  <td className="px-4 py-3 text-emerald-300">
-                    {plan.priceDisplay || `£${((plan.priceCents || 0) / 100).toFixed(2)}`}
-                  </td>
-                  <td className="px-4 py-3 text-gray-300">
-                    {plan.maxTenants >= 1000000 ? "Unlimited" : plan.maxTenants}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex px-2 py-0.5 rounded-full text-xs border ${
-                        plan.enabled
-                          ? "border-emerald-700 text-emerald-300"
-                          : "border-rose-800 text-rose-300"
-                      }`}
-                    >
-                      {plan.enabled ? "Enabled" : "Disabled"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-300">{plan.activeSubscribers ?? 0}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500 font-mono max-w-[140px] truncate">
-                    {plan.isFree ? "—" : plan.stripePriceId || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(plan)}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-[#2A2A2A] px-3 py-1.5 text-xs text-gray-200 hover:border-emerald-700/60"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                      Edit
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {isLoading && (
+        <div className="py-12 text-center text-gray-400 text-sm bg-[#111] border border-gray-800/70 rounded-2xl">
+          Loading subscription tiers…
         </div>
       )}
 
+      {isError && (
+        <div className="p-6 text-center text-rose-400 bg-rose-950/20 border border-rose-900/40 rounded-2xl text-sm">
+          Failed to load plans.{" "}
+          <button
+            type="button"
+            className="underline hover:text-rose-300 ml-1 font-medium"
+            onClick={() => refetch()}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !isError && (
+        <div className="space-y-4">
+          {/* Mobile Card List (< sm) */}
+          <div className="block sm:hidden space-y-3">
+            {plans.map((plan) => (
+              <div
+                key={plan.id}
+                className="bg-[#111] border border-gray-800/80 rounded-2xl p-4 space-y-3 shadow-md shadow-black/40"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="font-semibold text-white text-base">
+                      {plan.title}
+                    </h3>
+                    <p className="text-xs text-gray-400 capitalize mt-0.5">
+                      {plan.key} Tier
+                    </p>
+                  </div>
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium border shrink-0 ${
+                      plan.enabled
+                        ? "bg-emerald-950/40 border-emerald-700/40 text-emerald-400"
+                        : "bg-rose-950/40 border-rose-800/40 text-rose-400"
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        plan.enabled ? "bg-emerald-400" : "bg-rose-400"
+                      }`}
+                    />
+                    {plan.enabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-gray-800/60">
+                  <div>
+                    <span className="text-[11px] text-gray-400 block">Price</span>
+                    <span className="text-sm font-bold text-emerald-400 tabular-nums">
+                      {plan.priceDisplay ||
+                        `£${((plan.priceCents || 0) / 100).toFixed(2)} / mo`}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-gray-400 block">
+                      Max Tenants
+                    </span>
+                    <span className="text-sm font-semibold text-white">
+                      {plan.maxTenants >= 1000000 ? "Unlimited" : plan.maxTenants}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-gray-800/60 text-xs">
+                  <span className="text-gray-400">
+                    Active Subscribers:{" "}
+                    <strong className="text-white font-semibold">
+                      {plan.activeSubscribers ?? 0}
+                    </strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => openEdit(plan)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-800 text-xs font-medium text-gray-200 hover:text-white hover:bg-white/5 active:scale-95 transition"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-emerald-400" />
+                    Edit
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table View (>= sm) with Hidden Scrollbar */}
+          <div className="hidden sm:block overflow-x-auto rounded-2xl border border-gray-800/80 bg-[#111] no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden shadow-md shadow-black/40">
+            <table className="w-full text-left text-xs sm:text-sm min-w-[720px]">
+              <thead>
+                <tr className="bg-[#0c0c0c] border-b border-gray-800 text-gray-400 font-medium text-[11px] sm:text-xs uppercase tracking-wider">
+                  <th className="px-4 py-3.5">Plan Tier</th>
+                  <th className="px-4 py-3.5">Pricing</th>
+                  <th className="px-4 py-3.5">Max Tenants</th>
+                  <th className="px-4 py-3.5">Status</th>
+                  <th className="px-4 py-3.5">Active Subs</th>
+                  <th className="px-4 py-3.5">Stripe Price ID</th>
+                  <th className="px-4 py-3.5 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {plans.map((plan) => (
+                  <tr
+                    key={plan.id}
+                    className="hover:bg-[#151515] transition-colors"
+                  >
+                    <td className="px-4 py-3.5">
+                      <div className="font-semibold text-white">{plan.title}</div>
+                      <div className="text-xs text-gray-500 capitalize">
+                        {plan.key} Tier
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5 font-bold text-emerald-400 tabular-nums">
+                      {plan.priceDisplay ||
+                        `£${((plan.priceCents || 0) / 100).toFixed(2)}`}
+                    </td>
+                    <td className="px-4 py-3.5 text-gray-300">
+                      {plan.maxTenants >= 1000000 ? "Unlimited" : plan.maxTenants}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                          plan.enabled
+                            ? "bg-emerald-950/40 border-emerald-700/40 text-emerald-400"
+                            : "bg-rose-950/40 border-rose-800/40 text-rose-400"
+                        }`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            plan.enabled ? "bg-emerald-400" : "bg-rose-400"
+                          }`}
+                        />
+                        {plan.enabled ? "Enabled" : "Disabled"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-gray-300 font-semibold tabular-nums">
+                      {plan.activeSubscribers ?? 0}
+                    </td>
+                    <td className="px-4 py-3.5 text-xs text-gray-400 font-mono max-w-[140px] truncate">
+                      {plan.isFree ? "—" : plan.stripePriceId || "—"}
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(plan)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-gray-800 px-3 py-1.5 text-xs text-gray-200 hover:text-white hover:bg-white/5 active:scale-95 transition"
+                      >
+                        <Pencil className="w-3.5 h-3.5 text-emerald-400" />
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Plan Modal */}
       {editing && form && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-800 bg-[#0c0c0c] p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Edit {editing.title}</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-2xl border border-gray-800 bg-[#111] p-6 text-white shadow-2xl relative no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex items-center justify-between pb-4 border-b border-gray-800/80 mb-5">
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold">
+                  Edit Plan — {editing.title}
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Update subscription tier settings and inclusions
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={closeEdit}
                 disabled={updateMutation.isPending}
-                className="text-gray-400 hover:text-white"
+                className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-4">
-              <label className="block text-sm">
-                <span className="text-gray-400">Name</span>
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1">
+                  Plan Display Title
+                </label>
                 <input
-                  className="mt-1 w-full rounded-xl border border-[#2A2A2A] bg-black px-3 py-2 text-white"
+                  className="w-full rounded-xl border border-gray-800 bg-[#161616] px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                 />
-              </label>
+              </div>
 
-              <label className="block text-sm">
-                <span className="text-gray-400">Description</span>
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1">
+                  Plan Description
+                </label>
                 <textarea
-                  className="mt-1 w-full rounded-xl border border-[#2A2A2A] bg-black px-3 py-2 text-white min-h-[72px]"
+                  className="w-full rounded-xl border border-gray-800 bg-[#161616] px-3.5 py-2.5 text-xs sm:text-sm text-white min-h-[72px] focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"
                   value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, description: e.target.value })
+                  }
                 />
-              </label>
+              </div>
 
-              <label className="block text-sm">
-                <span className="text-gray-400">Features (one per line)</span>
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1">
+                  Features (one item per line)
+                </label>
                 <textarea
-                  className="mt-1 w-full rounded-xl border border-[#2A2A2A] bg-black px-3 py-2 text-white min-h-[100px] font-mono text-xs"
+                  className="w-full rounded-xl border border-gray-800 bg-[#161616] px-3.5 py-2.5 text-xs font-mono text-gray-200 min-h-[100px] focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"
                   value={form.featuresText}
-                  onChange={(e) => setForm({ ...form, featuresText: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, featuresText: e.target.value })
+                  }
                 />
-              </label>
+              </div>
 
               {!editing.isFree && (
-                <>
-                  <label className="block text-sm">
-                    <span className="text-gray-400">Price (£ / month)</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-300 mb-1">
+                      Price (£ / month)
+                    </label>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
-                      className="mt-1 w-full rounded-xl border border-[#2A2A2A] bg-black px-3 py-2 text-white"
+                      className="w-full rounded-xl border border-gray-800 bg-[#161616] px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"
                       value={form.pricePounds}
-                      onChange={(e) => setForm({ ...form, pricePounds: e.target.value })}
+                      onChange={(e) =>
+                        setForm({ ...form, pricePounds: e.target.value })
+                      }
                     />
-                  </label>
-                  <label className="block text-sm">
-                    <span className="text-gray-400">Display label (optional)</span>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-300 mb-1">
+                      Display Label (optional)
+                    </label>
                     <input
-                      className="mt-1 w-full rounded-xl border border-[#2A2A2A] bg-black px-3 py-2 text-white"
+                      className="w-full rounded-xl border border-gray-800 bg-[#161616] px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"
                       placeholder="e.g. £29"
                       value={form.priceDisplay}
-                      onChange={(e) => setForm({ ...form, priceDisplay: e.target.value })}
+                      onChange={(e) =>
+                        setForm({ ...form, priceDisplay: e.target.value })
+                      }
                     />
-                  </label>
-                </>
+                  </div>
+                </div>
               )}
 
-              <label className="block text-sm">
-                <span className="text-gray-400">Max tenants</span>
-                <input
-                  type="number"
-                  min="0"
-                  className="mt-1 w-full rounded-xl border border-[#2A2A2A] bg-black px-3 py-2 text-white"
-                  value={form.maxTenants}
-                  onChange={(e) => setForm({ ...form, maxTenants: e.target.value })}
-                />
-                <span className="text-xs text-gray-500">Use a very large number for unlimited.</span>
-              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-300 mb-1">
+                    Max Tenants Allowed
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="w-full rounded-xl border border-gray-800 bg-[#161616] px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"
+                    value={form.maxTenants}
+                    onChange={(e) =>
+                      setForm({ ...form, maxTenants: e.target.value })
+                    }
+                  />
+                  <span className="text-[10px] text-gray-500 mt-1 block">
+                    Use 1000000+ for unlimited.
+                  </span>
+                </div>
 
-              <label className="block text-sm">
-                <span className="text-gray-400">Sort order</span>
-                <input
-                  type="number"
-                  className="mt-1 w-full rounded-xl border border-[#2A2A2A] bg-black px-3 py-2 text-white"
-                  value={form.sortOrder}
-                  onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
-                />
-              </label>
+                <div>
+                  <label className="block text-xs font-medium text-gray-300 mb-1">
+                    Display Sort Order
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full rounded-xl border border-gray-800 bg-[#161616] px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"
+                    value={form.sortOrder}
+                    onChange={(e) =>
+                      setForm({ ...form, sortOrder: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
 
-              <label className="flex items-center gap-3 text-sm cursor-pointer">
+              <label className="flex items-center gap-3 p-3 rounded-xl bg-[#161616] border border-gray-800 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={form.enabled}
-                  onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
-                  className="h-4 w-4 rounded border-gray-600"
+                  onChange={(e) =>
+                    setForm({ ...form, enabled: e.target.checked })
+                  }
+                  className="h-4 w-4 rounded border-gray-600 accent-[#027A48]"
                 />
-                <span>Enabled for landlords (purchasable / visible)</span>
+                <span className="text-xs sm:text-sm text-gray-200">
+                  Enable plan for landlords (visible in pricing tier picker)
+                </span>
               </label>
 
               {editing.isFree && (
-                <p className="text-xs text-gray-500">
-                  Free plan has no Stripe price. Content and tenant limits can still be edited.
+                <p className="text-xs text-gray-400 bg-white/5 p-3 rounded-xl border border-gray-800">
+                  Free plan does not require a Stripe price ID. Features and limits can be modified freely.
                 </p>
               )}
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 pt-4 border-t border-gray-800/80 flex items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={closeEdit}
                 disabled={updateMutation.isPending}
-                className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300 hover:bg-white/5"
+                className="px-4 py-2 rounded-xl border border-gray-800 text-xs sm:text-sm text-gray-300 hover:bg-white/5 hover:text-white transition"
               >
                 Cancel
               </button>
@@ -331,40 +475,45 @@ function AdminPlansPage() {
                 type="button"
                 onClick={onSaveClick}
                 disabled={updateMutation.isPending}
-                className="px-4 py-2 rounded-full border border-emerald-600 text-sm text-emerald-300 hover:bg-emerald-900/20 disabled:opacity-50"
+                className="px-5 py-2 rounded-xl bg-[#027A48] text-xs sm:text-sm font-medium text-white hover:bg-[#02653d] active:scale-95 transition disabled:opacity-50"
               >
-                {updateMutation.isPending ? "Saving…" : "Save"}
+                {updateMutation.isPending ? "Saving Changes…" : "Save Plan"}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Price Change Confirmation */}
       {confirmOpen && editing && form && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-amber-900/50 bg-[#120c08] p-6 text-white">
-            <h3 className="text-lg font-semibold text-amber-200">Confirm price change</h3>
-            <p className="mt-3 text-sm text-gray-300">
-              You are changing <span className="text-white">{editing.title}</span> from{" "}
-              <span className="text-white">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-amber-900/60 bg-[#14100c] p-6 text-white shadow-2xl relative">
+            <h3 className="text-base sm:text-lg font-semibold text-amber-300">
+              Confirm Subscription Price Change
+            </h3>
+            <p className="mt-3 text-xs sm:text-sm text-gray-300 leading-relaxed">
+              You are updating the base monthly price of{" "}
+              <strong className="text-white">{editing.title}</strong> from{" "}
+              <span className="text-white font-mono">
                 £{((editing.priceCents || 0) / 100).toFixed(2)}
               </span>{" "}
-              to <span className="text-white">£{Number(form.pricePounds).toFixed(2)}</span>.
+              to{" "}
+              <span className="text-emerald-400 font-mono font-semibold">
+                £{Number(form.pricePounds).toFixed(2)}
+              </span>
+              .
             </p>
-            <p className="mt-2 text-sm text-gray-300">
-              <strong className="text-amber-200">
-                All {editing.activeSubscribers ?? 0} current subscriber(s) on this plan will be
-                charged the new amount on their next renewal.
-              </strong>{" "}
-              This period’s already-paid invoice is not recharged. Partner commissions for existing
-              referrals stay at their locked amounts.
+            <p className="mt-2 text-xs sm:text-sm text-amber-200/90 bg-amber-950/30 p-3 rounded-xl border border-amber-900/40 leading-relaxed">
+              All {editing.activeSubscribers ?? 0} active subscribers on this tier
+              will be billed the new rate on their next renewal cycle. Locked partner
+              referral commissions remain unchanged.
             </p>
-            <div className="mt-5 flex justify-end gap-3">
+            <div className="mt-5 flex items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setConfirmOpen(false)}
                 disabled={updateMutation.isPending}
-                className="px-4 py-2 rounded-full border border-[#2A2A2A] text-sm text-gray-300"
+                className="px-4 py-2 rounded-xl border border-gray-800 text-xs sm:text-sm text-gray-300 hover:bg-white/5 transition"
               >
                 Back
               </button>
@@ -372,9 +521,9 @@ function AdminPlansPage() {
                 type="button"
                 onClick={() => void submitUpdate()}
                 disabled={updateMutation.isPending}
-                className="px-4 py-2 rounded-full border border-amber-600 text-sm text-amber-200 hover:bg-amber-950/40 disabled:opacity-50"
+                className="px-5 py-2 rounded-xl bg-amber-700 hover:bg-amber-600 text-xs sm:text-sm font-medium text-white active:scale-95 transition disabled:opacity-50"
               >
-                {updateMutation.isPending ? "Updating…" : "Confirm & update"}
+                {updateMutation.isPending ? "Updating…" : "Confirm & Update Price"}
               </button>
             </div>
           </div>
@@ -385,3 +534,4 @@ function AdminPlansPage() {
 }
 
 export default withAuth(AdminPlansPage, ["superAdmin"]);
+

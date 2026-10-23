@@ -14,13 +14,13 @@ export default function ActivityView() {
       {/* Title */}
       <div>
         <h1 className="text-xl font-semibold text-white">Partner Activity Timeline</h1>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs md:text-sm text-[#535862] mt-1">
           Complete real-time log of customer signups, 14-day hold completions, 60-day resets, and monthly recurring
           commissions.
         </p>
       </div>
 
-      <div className="bg-[#111] border border-gray-800/50 rounded-xl p-5 md:p-6 space-y-4">
+      <div className="bg-[#111] border border-gray-800/50 rounded-xl p-4 md:p-6 space-y-4 shadow-md">
         {isLoading ? (
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
@@ -72,12 +72,12 @@ export default function ActivityView() {
                     </div>
 
                     <div>
-                      <span className="text-xs font-semibold text-white">{a.title}</span>
+                      <span className="text-xs sm:text-sm font-semibold text-white">{a.title}</span>
                       <span className="text-xs text-gray-400 ml-2">— {a.subtitle}</span>
                     </div>
                   </div>
 
-                  <span className="text-xs text-gray-500 font-mono">{dateStr}</span>
+                  <span className="text-xs text-gray-400 tabular-nums">{dateStr}</span>
                 </div>
               );
             })}
