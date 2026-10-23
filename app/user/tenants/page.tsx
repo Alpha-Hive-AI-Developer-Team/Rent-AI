@@ -6,6 +6,8 @@ import NewTenantModal from "@/components/user/new-tenant-modal";
 import RentScheduleFields, {
   buildRentSchedulePayload,
   scheduleFromTenant,
+  effectiveRentAmount,
+  currentRentFromSchedule,
   type RentAdjustmentRow,
 } from "@/components/user/rent-schedule-fields";
 import DueOnScheduleFields, {
@@ -1913,7 +1915,7 @@ export default function TenantsPage() {
                           ) : null}
                         </td>
                         <td className="px-4 py-3 text-sm tabular-nums text-gray-300">
-                          {typeof tenant.rent === "number" ? formatMoney(tenant.rent) : tenant.rent}
+                          {formatMoney(effectiveRentAmount(tenant))}
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <span
@@ -2014,7 +2016,7 @@ export default function TenantsPage() {
                   className="cursor-pointer border-t border-[#151515] transition hover:bg-[#0e0e0e]"
                 >
                   <td className="px-6 py-4 text-sm text-gray-300">{getTenantDisplayName(tenant)}</td>
-                  <td className="px-6 py-4 text-sm text-gray-300">{typeof tenant.rent === "number" ? formatMoney(tenant.rent) : tenant.rent}</td>
+                  <td className="px-6 py-4 text-sm text-gray-300">{formatMoney(effectiveRentAmount(tenant))}</td>
                   <td className="px-6 py-4 text-sm text-gray-300">
                     <span className={`rounded-full border px-2.5 py-1 text-xs ${statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
                       {getStatusLabel(tenant)}
@@ -2087,8 +2089,14 @@ export default function TenantsPage() {
                 <p>
                   {selectedTenant.rentFrequency === "weekly" ? "Weekly rent" : "Monthly rent"}{" "}
                   <span className="font-medium text-gray-200">
-                    {formatMoney(Number(selectedTenant.rent) || 0)}
+                    {formatMoney(effectiveRentAmount(selectedTenant))}
                   </span>
+                  {Array.isArray(selectedTenant.rentSchedule) &&
+                    selectedTenant.rentSchedule.length > 0 && (
+                      <span className="ml-1 text-xs text-gray-500">
+                        (started at {formatMoney(Number(scheduleFromTenant(selectedTenant).baseRent) || 0)})
+                      </span>
+                    )}
                 </p>
                 {Number(selectedTenant.depositAmount) > 0 && (
                   <p className="flex flex-wrap items-center gap-2">
@@ -3848,6 +3856,7 @@ export default function TenantsPage() {
                 adjustments={assignRentAdjustments}
                 onAdjustmentsChange={setAssignRentAdjustments}
                 hideBaseRent
+                moveInDate={assignMoveIn}
               />
             </div>
 
@@ -4120,6 +4129,7 @@ export default function TenantsPage() {
                   onBaseRentChange={setEditRent}
                   adjustments={editRentAdjustments}
                   onAdjustmentsChange={setEditRentAdjustments}
+                  moveInDate={editMoveIn}
                   frequency={
                     selectedTenant.rentFrequency === "weekly" ? "weekly" : "monthly"
                   }
@@ -4259,21 +4269,36 @@ export default function TenantsPage() {
                   <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">
                     {selectedTenant.rentFrequency === "weekly" ? "Weekly rent" : "Monthly rent"}
                   </p>
-                  <p className="text-sm text-gray-200">
-                    £{Number(editRent || 0).toFixed(2)}
-                    {editRentAdjustments.length > 0
-                      ? ` · ${editRentAdjustments.length} change${editRentAdjustments.length === 1 ? "" : "s"}`
-                      : ""}
-                  </p>
-                  {editRentAdjustments.length > 0 && (
-                    <ul className="mt-1 space-y-0.5 text-xs text-gray-500">
-                      {editRentAdjustments.map((a) => (
-                        <li key={a.id}>
-                          From {a.startMonth}: £{Number(a.amount || 0).toFixed(2)}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  {(() => {
+                    const current = currentRentFromSchedule(editRent, editRentAdjustments);
+                    const starting = Number(editRent || 0);
+                    return (
+                      <>
+                        <p className="text-sm text-gray-200">
+                          Current: £{current.toFixed(2)}
+                          {editRentAdjustments.length > 0 &&
+                          Math.abs(current - starting) > 0.0001
+                            ? ` · started at £${starting.toFixed(2)}`
+                            : ""}
+                          {editRentAdjustments.length > 0
+                            ? ` · ${editRentAdjustments.length} change${editRentAdjustments.length === 1 ? "" : "s"}`
+                            : ""}
+                        </p>
+                        {editRentAdjustments.length > 0 && (
+                          <ul className="mt-1 space-y-0.5 text-xs text-gray-500">
+                            <li>
+                              From move-in: £{starting.toFixed(2)}
+                            </li>
+                            {editRentAdjustments.map((a) => (
+                              <li key={a.id}>
+                                From {a.startMonth}: £{Number(a.amount || 0).toFixed(2)}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
               {selectedTenant.tenancyStatus !== "vacant" && (
@@ -4586,7 +4611,7 @@ export default function TenantsPage() {
                 if (!dueDayEffectiveFrom || !/^\d{4}-\d{2}-\d{2}$/.test(dueDayEffectiveFrom)) {
                   return null;
                 }
-                const monthly = Number(selectedTenant.rent) || 0;
+                const monthly = effectiveRentAmount(selectedTenant);
                 const preview = computeDueDayTransitionPreview(
                   monthly,
                   dueDayEffectiveFrom,

@@ -144,3 +144,61 @@ export async function getArrearsTrend(months: number = 6) {
   return res.data;
 }
 
+export async function getSubscriptionRevenue(months: number = 6) {
+  const res = await apiClient.get(`/stats/subscription-revenue`, { params: { months } });
+  return res.data;
+}
+
+// --- Subscription plan catalog (admin) ---
+export type AdminPlan = {
+	id: string;
+	key: string;
+	title: string;
+	description?: string;
+	features?: string[];
+	priceCents: number;
+	currency?: string;
+	priceDisplay?: string;
+	stripePriceId?: string | null;
+	maxTenants: number;
+	enabled: boolean;
+	sortOrder?: number;
+	isFree?: boolean;
+	activeSubscribers?: number;
+};
+
+export async function getAdminPlans() {
+	const res = await apiClient.get(`/plans/admin`);
+	return res.data as { success: boolean; data: AdminPlan[] };
+}
+
+export async function updateAdminPlan(
+	id: string,
+	payload: Partial<{
+		title: string;
+		description: string;
+		features: string[];
+		priceCents: number;
+		priceDisplay: string;
+		maxTenants: number;
+		enabled: boolean;
+		sortOrder: number;
+	}>
+) {
+	const res = await apiClient.patch(`/plans/admin/${id}`, payload);
+	return res.data as {
+		success: boolean;
+		message?: string;
+		data: {
+			plan: AdminPlan;
+			migration?: { migrated: number; failed: number; skipped: number; errors: any[] } | null;
+			activeSubscribers?: number;
+		};
+	};
+}
+
+export async function getEnabledPlans() {
+	const res = await apiClient.get(`/plans`);
+	return res.data as { success: boolean; data: AdminPlan[] };
+}
+

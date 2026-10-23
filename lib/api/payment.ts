@@ -1,6 +1,8 @@
 export interface CreateCheckoutPayload {
-	priceId: string;
+	priceId?: string;
 	planType?: string;
+	/** Preferred: catalog plan key; server resolves Stripe price from DB. */
+	planKey?: string;
 	successUrl?: string;
 	cancelUrl?: string;
 	/** Legacy: apply all available credits (capped by price / invoice). */

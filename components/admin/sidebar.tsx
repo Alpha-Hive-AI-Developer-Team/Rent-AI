@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Home, Building2, Users, Gift, LogOut, X } from "lucide-react";
+import { Home, Building2, Users, Gift, LogOut, X, CreditCard } from "lucide-react";
 import { useAuthUser } from "@/redux/useAuthUser";
 import { useCustomerLogout } from "@/hooks/useAuth";
 import { signOut } from "firebase/auth";
@@ -29,14 +29,19 @@ export default function Sidebar({ mobileOpen, onClose }: AdminSidebarProps) {
     { name: "Admin Management", path: "/admin/management", Icon: Users },
     { name: "Landlord Management", path: "/admin/landlords", Icon: Building2 },
     { name: "Tenant Management", path: "/admin/tenants", Icon: Users },
+    { name: "Subscription Plans", path: "/admin/plans", Icon: CreditCard },
     { name: "Referrals", path: "/admin/referrals", Icon: Gift },
   ];
 
   // determine role from auth user and decide which menu items to render
   const userRole = String(user?.role || "")
   const isSuper = ["superAdmin"].includes(userRole);
-  // show Admin Management only to super-admin; all other users see the menu without that item
-  const renderMenuItems = isSuper ? menuItems : menuItems.filter((m) => m.name !== "Admin Management");
+  // Admin Management + Subscription Plans are super-admin only
+  const renderMenuItems = isSuper
+    ? menuItems
+    : menuItems.filter(
+        (m) => m.name !== "Admin Management" && m.name !== "Subscription Plans"
+      );
 
   // Detect screen size (lg breakpoint)
   useEffect(() => {

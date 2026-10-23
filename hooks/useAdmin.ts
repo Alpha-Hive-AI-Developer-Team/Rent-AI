@@ -4,9 +4,9 @@ import { getAdminLandlords, getAdminReferralsTrend, getAdminTopReferrers } from 
 import { createExpense, getExpenses, getIncomeSummary } from "@/lib/api/adminApi";
 
 import { getLandlordTenants, getTenantTransactions, getAllTenants, getTenantStats, getAdminSummary, getAdminReferralsSummary } from "@/lib/api/adminApi";
-import { getPaidUnpaidSeries, getArrearsTrend } from "@/lib/api/adminApi";
+import { getPaidUnpaidSeries, getArrearsTrend, getSubscriptionRevenue } from "@/lib/api/adminApi";
 import { getAdmins, inviteAdmin, getAdminInvites, resendAdminInvite, revokeAdminInvite } from "@/lib/api/adminApi";
-import { updateAdminStatus } from "@/lib/api/adminApi";
+import { updateAdminStatus, getAdminPlans, updateAdminPlan, getEnabledPlans, type AdminPlan } from "@/lib/api/adminApi";
 
 export function useAdminLandlords(filters: { search?: string; plan?: string; status?: string; page?: number; limit?: number } = {}) {
 	return useQuery<any, Error, any>({
@@ -183,6 +183,48 @@ export function useAdminArrearsTrend(months: number = 6) {
 		queryKey: ["adminArrearsTrend", months],
 		queryFn: () => getArrearsTrend(months),
 		staleTime: 5 * 60_000,
+	});
+}
+
+export function useAdminSubscriptionRevenue(months: number = 6) {
+	return useQuery<any, Error, any>({
+		queryKey: ["adminSubscriptionRevenue", months],
+		queryFn: () => getSubscriptionRevenue(months),
+		staleTime: 5 * 60_000,
+	});
+}
+
+export function useAdminPlans() {
+	return useQuery<{ success: boolean; data: AdminPlan[] }, Error>({
+		queryKey: ["adminPlans"],
+		queryFn: () => getAdminPlans(),
+		staleTime: 0,
+	});
+}
+
+export function useUpdateAdminPlan() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({
+			id,
+			payload,
+		}: {
+			id: string;
+			payload: Parameters<typeof updateAdminPlan>[1];
+		}) => updateAdminPlan(id, payload),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["adminPlans"] });
+			qc.invalidateQueries({ queryKey: ["enabledPlans"] });
+			qc.invalidateQueries({ queryKey: ["adminSubscriptionRevenue"] });
+		},
+	});
+}
+
+export function useEnabledPlans() {
+	return useQuery<{ success: boolean; data: AdminPlan[] }, Error>({
+		queryKey: ["enabledPlans"],
+		queryFn: () => getEnabledPlans(),
+		staleTime: 60_000,
 	});
 }
 
