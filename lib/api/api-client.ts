@@ -109,7 +109,8 @@
 
 import axios, { AxiosError } from "axios";
 import toast from "react-hot-toast";
-import { auth } from "@/firebase"; 
+import { signOut } from "firebase/auth";
+import { auth } from "@/firebase";
 
 const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api",
@@ -161,16 +162,57 @@ apiClient.interceptors.request.use(async (config) => {
   return Promise.reject(error);
 });
 
+let sessionExpiryHandling = false;
+
+function isAuthPagePath(pathname: string) {
+  return (
+    pathname.startsWith("/auth") ||
+    pathname === "/" ||
+    pathname.startsWith("/sign-in") ||
+    pathname.startsWith("/login")
+  );
+}
+
+async function handleSessionExpired() {
+  if (typeof window === "undefined" || sessionExpiryHandling) return;
+  if (isAuthPagePath(window.location.pathname)) return;
+
+  sessionExpiryHandling = true;
+  try {
+    try {
+      await signOut(auth);
+    } catch {
+      // ignore firebase sign-out errors during expiry
+    }
+
+    localStorage.removeItem("authUser");
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+
+    toast.error("Session expired. Please login again.");
+    window.location.href = "/auth/sign-in";
+  } finally {
+    // keep flag true until navigation completes to avoid toast spam
+  }
+}
+
 // --- RESPONSE INTERCEPTOR ---
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    // If we get a 401, it means the token was invalid or the user is banned.
-    // Since we rely on Firebase SDK for auto-refreshing, manual retry logic isn't usually needed.
-    if (error.response?.status === 401) {
-       console.error("Unauthorized request");
-       // Optional: Redirect to login if needed
-       // window.location.href = "/auth?mode=login";
+    const status = error.response?.status;
+    const rawUrl = error.config?.url || "";
+    const pathOnly = rawUrl.split("?")[0];
+    const isAuthEndpoint =
+      /^\/auth\/(login|register|refresh-token|forgot-password|reset-password|verify-otp|verify-signup-otp|resend-otp|google|facebook|logout|admin-invite)(\/|$)/.test(
+        pathOnly
+      );
+
+    // Expired / invalid session — clear auth and go to login (skip auth endpoints)
+    if (status === 401 && !isAuthEndpoint) {
+      console.error("Unauthorized request — session expired");
+      await handleSessionExpired();
     }
     return Promise.reject(error);
   }
