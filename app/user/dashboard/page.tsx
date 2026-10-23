@@ -1,10 +1,8 @@
 "use client";
 
-import LineChartCard from "@/components/admin/chart-card";
 import StatCard from "@/components/admin/analytics-card";
 import TodaySection from "@/components/user/today-section";
-import Image from "next/image";
-import { Bell } from "lucide-react";
+import { LayoutDashboard } from "lucide-react";
 import useExpectedSeries, { useRentDetails, useCollectedSeries } from "@/hooks/useRentDetails";
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
@@ -17,10 +15,16 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
-import TransactionVolumeChart from "@/components/admin/volume-chart";
+
+const rangeOptions = [
+  { id: "3m", label: "3 Months" },
+  { id: "6m", label: "6 Months" },
+  { id: "30d", label: "30 Days" },
+  { id: "7d", label: "7 Days" },
+] as const;
 
 export default function DashboardPage() {
-  const { data: rentDataRes, isLoading: rentLoading, isError: rentError } = useRentDetails();
+  const { data: rentDataRes, isLoading: rentLoading } = useRentDetails();
   const rentData = rentDataRes?.data;
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -60,9 +64,9 @@ export default function DashboardPage() {
         : range === "30d"
           ? { granularity: "day", days: 30 }
           : { granularity: "day", days: 7 };
-  const { data: expectedRes, isLoading: expectedLoading } = useExpectedSeries(seriesOptions as any);
+  const { data: expectedRes } = useExpectedSeries(seriesOptions as any);
   const expectedSeries = expectedRes?.data?.series ?? [];
-  // collected has its own filters and API
+
   const collectedOptions =
     collectedRange === "3m"
       ? { granularity: "month", months: 3 }
@@ -74,233 +78,160 @@ export default function DashboardPage() {
 
   const { data: collectedRes, isLoading: collectedLoading } = useCollectedSeries(collectedOptions as any);
   let collectedSeries = collectedRes?.data?.series ?? [];
-  // fallback: if collected series is empty (API may fail), use collected values from expected series
+
   if ((!collectedSeries || collectedSeries.length === 0) && expectedSeries && expectedSeries.length > 0) {
     collectedSeries = expectedSeries.map((p: any) => ({ name: p.name, collected: Number(p.collected || 0) }));
   }
   const collectedData = collectedLoading ? [] : collectedSeries.map((p: any) => ({ name: p.name, collected: Number(p.collected || 0) }));
+
   const stats = [
-  {
+    {
       title: `Expected (${rentData?.monthName ?? ''})`,
       value: rentLoading ? "—" : `£${rentData?.current?.expected?.toLocaleString?.() ?? rentData?.current?.expected ?? 0}`,
       trend: rentData?.percentageChange?.expected ?? 0,
+      description: "Projected monthly rent roll",
+      subtext: "Current month",
     },
     {
       title: "Collected",
       value: rentLoading ? "—" : `£${rentData?.current?.collected?.toLocaleString?.() ?? rentData?.current?.collected ?? 0}`,
       trend: rentData?.percentageChange?.collected ?? 0,
+      description: "Successfully reconciled rent",
+      subtext: "Current month",
     },
     {
       title: "Arrears",
       value: rentLoading ? "—" : `£${rentData?.current?.arrears?.toLocaleString?.() ?? rentData?.current?.arrears ?? 0}`,
       trend: rentData?.percentageChange?.arrears ?? 0,
+      description: "Outstanding late balances",
+      subtext: "Current month",
     },
     {
       title: "Late Tenants",
       value: rentLoading ? "—" : `${rentData?.current?.lateCount ?? 0}`,
       trend: rentData?.percentageChange?.lateCount ?? 0,
+      description: "Tenants overdue on schedule",
+      subtext: "Current month",
     },
   ];
 
-  // dynamic collected series (last N months/days)
-  const transactionData = collectedData;
-
-  const arrearsData = [
-    { name: "Jan", series1: 4000, series2: 2400 },
-    { name: "Feb", series1: 3000, series2: 1398 },
-    { name: "Mar", series1: 2000, series2: 9800 },
-    { name: "Apr", series1: 2780, series2: 3908 },
-    { name: "May", series1: 1890, series2: 4800 },
-    { name: "Jun", series1: 2390, series2: 3800 },
-  ];
-  const expectedData = expectedLoading
-    ? []
-    : expectedSeries.map((p: any) => ({ name: p.name, expected: p.expected }));
+  const totalCollectedInRange = collectedData.reduce((acc: number, curr: any) => acc + (Number(curr.collected) || 0), 0);
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8">
+    <div className="min-h-screen bg-black text-white p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       {/* Header */}
-      <div className="flex items-center justify-end gap-4">
-        <h1 className="text-xl font-semibold mr-auto">Dashboard</h1>
-
-        {/* <div className="relative">
-          <Bell className="w-6 h-6 text-gray-300" />
-          <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
-            3
-          </span>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-2 border-b border-gray-800/60">
+        <div className="flex items-start gap-3">
+          <div className="p-2.5 rounded-xl bg-[#027A48]/10 border border-[#027A48]/20 text-emerald-400 hidden sm:flex items-center justify-center">
+            <LayoutDashboard className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+              Landlord Dashboard
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-400 mt-1">
+              Real-time rental income, collection velocity, and portfolio alerts
+            </p>
+          </div>
         </div>
-
-        <Image
-          src="/images/pexels.png"
-          alt="User Avatar"
-          width={36}
-          height={36}
-          className="rounded-full border border-gray-700"
-        /> */}
       </div>
 
       {/* Stats Section */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
         {stats.map((item, i) => (
           <StatCard key={i} {...item} />
         ))}
       </div>
 
-     {/* Charts Section — full width */}
-<div className="space-y-6">
-  {/* Chart with filter buttons */}
-  {/* <div className="bg-[#111] text-white rounded-xl p-4 sm:p-5 md:p-6 border border-gray-800/50 shadow-md w-full">
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-  
-      <div>
-        <h3 className="text-sm md:text-base font-medium text-gray-200">Expected {range}</h3>
-        <p className="text-xs md:text-sm text-gray-500 mt-1">Total for the last {range}</p>
-      </div>
+      {/* Charts Section */}
+      <div className="w-full bg-[#111] border border-gray-800/80 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-3 border-b border-gray-800/60">
+          <div>
+            <h3 className="text-base sm:text-lg font-semibold text-white">Collected Rent</h3>
+            <p className="text-xs sm:text-sm text-gray-400 mt-0.5">
+              Collected total for the last {collectedRange === "3m" ? "3 months" : collectedRange === "6m" ? "6 months" : collectedRange === "30d" ? "30 days" : "7 days"}
+            </p>
+          </div>
 
-      <div className="flex flex-wrap justify-start sm:justify-end gap-2">
-        <button
-          onClick={() => setRange("3m")}
-          className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
-            range === "3m" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
-          }`}
-        >
-          Last 3 months
-        </button>
-        <button
-          onClick={() => setRange("6m")}
-          className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
-            range === "6m" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
-          }`}
-        >
-          Last 6 months
-        </button>
-        <button
-          onClick={() => setRange("30d")}
-          className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
-            range === "30d" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
-          }`}
-        >
-          Last 30 days
-        </button>
-        <button
-          onClick={() => setRange("7d")}
-          className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
-            range === "7d" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
-          }`}
-        >
-          Last 7 days
-        </button>
-      </div>
-    </div>
-
-
-    <div className="w-full overflow-x-auto">
-   <div className="bg-[#111] text-white rounded-xl  shadow-md w-full">
-             <div className="mb-4">
-               <h3 className="text-sm font-medium text-gray-200">Expected Rent</h3>
-               <p className="text-xs text-gray-500 mt-1">Expected rent per month</p>
-             </div>
-   
-             <div className="h-56">
-               <ResponsiveContainer width="100%" height="100%">
-                 <LineChart data={expectedData} margin={{ left: 0, right: 10 }}>
-                   <CartesianGrid stroke="#2a2a2a" vertical={false} />
-                   <XAxis
-                     dataKey="name"
-                     axisLine={false}
-                     tickLine={false}
-                     tick={{ fill: "#9CA3AF", fontSize: 12 }}
-                     tickMargin={8}
-                   />
-                   <YAxis
-                     axisLine={false}
-                     tickLine={false}
-                     tick={{ fill: "#666", fontSize: 11 }}
-                   />
-                   <Tooltip
-                     contentStyle={{
-                       backgroundColor: "#1a1a1a",
-                       border: "1px solid #333",
-                       borderRadius: "8px",
-                     }}
-                     labelStyle={{ color: "#fff" }}
-                   />
-   
-                   <Line
-                     type="monotone"
-                     dataKey="expected"
-                     stroke="#ffffff"
-                     strokeWidth={2}
-                     dot={{ r: 3, stroke: '#ffffff', strokeWidth: 1, fill: '#111' }}
-                     activeDot={{ r: 5 }}
-                   />
-                 </LineChart>
-               </ResponsiveContainer>
-             </div>
-           </div>
-    </div>
-  </div> */}
-
-
-
-  {/* Second chart */}
-  <div className="w-full">
-    <div className="bg-[#111] text-white rounded-xl p-4 sm:p-5 md:p-6 border border-gray-800/50 shadow-md w-full">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <div>
-          <h3 className="text-sm md:text-base font-medium text-gray-200">Collected {collectedRange}</h3>
-          <p className="text-xs md:text-sm text-gray-500 mt-1">Collected total for the last {collectedRange}</p>
+          <div className="flex flex-wrap items-center gap-1.5 bg-[#0a0a0a] p-1 rounded-xl border border-gray-800/80">
+            {rangeOptions.map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => setCollectedRange(opt.id)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                  collectedRange === opt.id
+                    ? "bg-[#027A48] text-white shadow-sm"
+                    : "text-gray-400 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-wrap justify-start sm:justify-end gap-2">
-          <button
-            onClick={() => setCollectedRange("3m")}
-            className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
-              collectedRange === "3m" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
-            }`}
-          >
-            Last 3 months
-          </button>
-          <button
-            onClick={() => setCollectedRange("6m")}
-            className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
-              collectedRange === "6m" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
-            }`}
-          >
-            Last 6 months
-          </button>
-          <button
-            onClick={() => setCollectedRange("30d")}
-            className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
-              collectedRange === "30d" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
-            }`}
-          >
-            Last 30 days
-          </button>
-          <button
-            onClick={() => setCollectedRange("7d")}
-            className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-all duration-200 ${
-              collectedRange === "7d" ? "bg-[#1e1e1e] text-white border border-gray-700" : "bg-transparent text-gray-400 hover:bg-[#1a1a1a] border border-transparent"
-            }`}
-          >
-            Last 7 days
-          </button>
+
+        {collectedData.length === 0 ? (
+          <div className="text-sm text-gray-400 px-4 py-12 text-center">
+            No collected payments found for the selected range.
+          </div>
+        ) : (
+          <div className="w-full h-[280px] sm:h-[320px] pt-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={collectedData} margin={{ top: 10, right: 12, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="collectedGradient" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#027A48" />
+                    <stop offset="100%" stopColor="#10b981" />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  stroke="#6b7280"
+                  tick={{ fill: "#9ca3af", fontSize: 12 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  width={56}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#9ca3af", fontSize: 11 }}
+                  tickFormatter={(v) => `£${Number(v || 0).toFixed(0)}`}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#0d0d0d",
+                    border: "1px solid #374151",
+                    borderRadius: "12px",
+                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.5)",
+                    padding: "8px 12px",
+                  }}
+                  labelStyle={{ color: "#9ca3af", fontSize: "12px", marginBottom: "4px" }}
+                  itemStyle={{ color: "#34d399", fontWeight: 600, fontSize: "13px" }}
+                  formatter={(value: any) => [
+                    `£${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                    "Collected",
+                  ]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="collected"
+                  stroke="url(#collectedGradient)"
+                  strokeWidth={3}
+                  dot={{ fill: "#10b981", r: 4, strokeWidth: 2, stroke: "#000" }}
+                  activeDot={{ r: 6, fill: "#34d399", stroke: "#000", strokeWidth: 2 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        <div className="pt-2 border-t border-gray-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 text-xs text-gray-500">
+          <span>Collected total in range: <strong className="text-gray-200">£{totalCollectedInRange.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+          <span className="text-emerald-400 font-medium">Automatic bank reconciliation synced</span>
         </div>
       </div>
-
-      {collectedData.length === 0 ? (
-        <div className="text-sm text-gray-400 px-4 py-8">No collected payments found for the selected range.</div>
-      ) : (
-      <LineChartCard
-        title="Collected"
-        subtitle={`Last ${collectedRange}`}
-        data={transactionData}
-        lines={[{ key: "collected", color: "#00C6FF", name: "Collected" }]}
-        footer="Collected over selected range"
-      />
-      )}
-    </div>
-  </div>
-</div>
 
       {/* Recent Alerts Section */}
       <TodaySection />

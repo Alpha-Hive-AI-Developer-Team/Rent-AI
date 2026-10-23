@@ -741,7 +741,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-6"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-6 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -751,7 +751,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.98 }}
             transition={{ duration: 0.2 }}
-            className="flex max-h-[92vh] min-h-0 w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[#1f1f1f] bg-[#0c0c0c] text-white shadow-2xl"
+            className="flex max-h-[92vh] min-h-0 w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-800/80 bg-[#111] text-white shadow-2xl"
           >
             <div className="flex items-start justify-between border-b border-[#1a1a1a] px-5 py-5 sm:px-8">
               <div>
@@ -806,7 +806,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                 </ol>
               </aside>
 
-              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pb-4" style={{ scrollbarWidth: "thin" }}>
+              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pb-4 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                 <div className="space-y-5">
                 {step === 1 && (
                   <section className="rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] p-5">
