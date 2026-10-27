@@ -2575,7 +2575,9 @@ export default function TenantsPage() {
                 <thead>
                   <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
                     <th className="px-4 py-3 text-xs">Amount Due</th>
+                    {/* Temporarily hidden
                     <th className="px-4 py-3 text-xs">Amount Paid</th>
+                    */}
                     <th className="px-4 py-3 text-xs">Payment history</th>
                     <th className="px-4 py-3 text-xs">Due Date</th>
                     <th className="px-4 py-3 text-xs">Status</th>
@@ -2589,7 +2591,7 @@ export default function TenantsPage() {
                     if (detailLoading) {
                       return (
                         <tr>
-                          <td colSpan={8} className="py-8 text-center text-gray-400">
+                          <td colSpan={7} className="py-8 text-center text-gray-400">
                             Loading rent history…
                           </td>
                         </tr>
@@ -2625,7 +2627,7 @@ export default function TenantsPage() {
                     if (!visibleHistory.length) {
                       return (
                         <tr>
-                          <td colSpan={8} className="py-8 text-center text-gray-400">
+                          <td colSpan={7} className="py-8 text-center text-gray-400">
                             No rent history found for this tenant.
                           </td>
                         </tr>
@@ -2766,9 +2768,11 @@ export default function TenantsPage() {
                             </div>
                           )}
                         </td>
+                        {/* Temporarily hidden — Amount Paid column
                         <td className={`px-4 py-3 ${!isAdjustment && remaining > 0 ? "text-rose-400" : "text-gray-300"}`}>
                           {isAdjustment ? "—" : formatMoney(Number(entry.amountPaid) || 0)}
                         </td>
+                        */}
                         <td className="min-w-[7rem] px-4 py-3 align-top">
                           {isAdjustment ? (
                             <span className="text-sm text-gray-500">—</span>
