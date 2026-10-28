@@ -10,10 +10,9 @@ import {
   buildBankStatementTxsByHistoryIndex,
   buildPaymentPieceRoleMap,
   buildPaymentTotalsByGroup,
-  buildRunningBalancesByIndex,
+  buildRunningBalancesFromPaymentHistory,
   computeLandlordDisplayBalance,
   formatRentMoney,
-  getLastVisibleRentHistoryIndex,
   getOriginatingPaymentsForMonth,
   getPaymentPieces,
   getVisibleRentHistory,
@@ -45,13 +44,13 @@ export default function TenantRentHistoryTable({
   const history = Array.isArray(rentHistory) ? rentHistory : [];
   const paymentPieceRoles = useMemo(() => buildPaymentPieceRoleMap(history), [history]);
   const paymentTotalsByGroup = useMemo(() => buildPaymentTotalsByGroup(history), [history]);
-  const runningBalancesByIndex = useMemo(
-    () => buildRunningBalancesByIndex(history, paymentPieceRoles, paymentTotalsByGroup),
-    [history, paymentPieceRoles, paymentTotalsByGroup]
-  );
   const bankStatementByIndex = useMemo(
     () => buildBankStatementTxsByHistoryIndex(history),
     [history]
+  );
+  const runningBalancesByIndex = useMemo(
+    () => buildRunningBalancesFromPaymentHistory(history, bankStatementByIndex, paymentPieceRoles),
+    [history, bankStatementByIndex, paymentPieceRoles]
   );
 
   const depositAmount = Number(tenant?.depositAmount) || 0;
@@ -302,9 +301,6 @@ export default function TenantRentHistoryTable({
                   );
                 }
 
-                const lastVisibleRentIndex = getLastVisibleRentHistoryIndex(visibleHistory);
-                const overallBalance = computeLandlordDisplayBalance(tenant || { rentHistory: history });
-
                 return visibleHistory.map(({ entry, index }: { entry: any; index: number }) => {
                   const kind = String(entry?.kind || "rent");
                   const isAdjustment = kind === "discount" || kind === "refund";
@@ -405,11 +401,7 @@ export default function TenantRentHistoryTable({
                             return <span className="text-sm text-gray-500">—</span>;
                           }
                           const bal = resolveRowDisplayBalance(
-                            runningBalancesByIndex.get(index) ?? 0,
-                            {
-                              isLastVisibleRentRow: index === lastVisibleRentIndex,
-                              overallBalance,
-                            }
+                            runningBalancesByIndex.get(index) ?? 0
                           );
                           if (Math.abs(bal) < 0.005) {
                             return <span className="text-sm text-gray-400">Settled</span>;

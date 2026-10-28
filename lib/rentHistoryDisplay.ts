@@ -254,6 +254,11 @@ export function getOriginatingPaymentsForMonth(
   });
 }
 
+/**
+ * Legacy: running balance from reconciliation "originating" payment pieces.
+ * Prefer {@link buildRunningBalancesFromPaymentHistory} for the Balance column
+ * (aligned with the Payment history display).
+ */
 export function buildRunningBalancesByIndex(
   rentHistory: any[],
   roleMap: Map<string, PaymentPieceRole>,
@@ -393,23 +398,17 @@ export function computeLandlordDisplayBalance(tenant: any): number {
 
 /**
  * Balance column value for a rent row.
- * Intermediate rows keep the running month balance.
- * The last visible rent row parks the full remaining credit (unallocated bank
- * leftovers + prepaid on hidden future months) so surplus isn't stuck only in
- * the banner when only a few months exist on the ledger.
+ * Uses the payment-history running ledger only — do not park banner/overall
+ * surplus on the last row (that made every intermediate row look wrong).
  */
 export function resolveRowDisplayBalance(
   runningBalance: number,
-  options: {
-    isLastVisibleRentRow: boolean;
-    overallBalance: number;
+  _options?: {
+    isLastVisibleRentRow?: boolean;
+    overallBalance?: number;
   }
 ): number {
-  const running = Math.round((Number(runningBalance) || 0) * 100) / 100;
-  if (!options.isLastVisibleRentRow) return running;
-  const overall = Math.round((Number(options.overallBalance) || 0) * 100) / 100;
-  if (overall > running + 0.001) return overall;
-  return running;
+  return Math.round((Number(runningBalance) || 0) * 100) / 100;
 }
 
 /**
@@ -603,6 +602,104 @@ export function buildBankStatementTxsByHistoryIndex(
   });
 
   return result;
+}
+
+/**
+ * Max depositAllocated tagged on any piece for each payment group key.
+ * Deposit is held money — never rent credit in the Balance column.
+ */
+function depositAllocatedByPaymentKey(rentHistory: any[]): Map<string, number> {
+  const history = Array.isArray(rentHistory) ? rentHistory : [];
+  const deposits = new Map<string, number>();
+  history.forEach((entry: any, historyIndex: number) => {
+    const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
+    pieces.forEach((piece: any, pieceIndex: number) => {
+      const depositPart = Number(piece?.depositAllocated) || 0;
+      if (depositPart <= 0) return;
+      const key = getPaymentPieceGroupKey(piece, historyIndex, pieceIndex);
+      const prev = deposits.get(key) || 0;
+      if (depositPart > prev) deposits.set(key, depositPart);
+    });
+  });
+  return deposits;
+}
+
+/**
+ * Running Balance column: follows Payment history (bank statement per row) + cash
+ * received that month, minus deposit held, minus Amount Due. Credit is rolling —
+ * a month with no new payment still reduces credit by that month's rent.
+ *
+ * Deposit is excluded (e.g. £649.72 bank = £150 deposit + £499.72 rent → only
+ * £499.72 counts toward credit against a £499.72 due → Settled, not £150 credit).
+ *
+ * Example: due £500 / paid £1500 → £1000 credit; next month due £500 / no payment
+ * → Payment history empty, Balance £500 credit.
+ */
+export function buildRunningBalancesFromPaymentHistory(
+  rentHistory: any[],
+  bankStatementByIndex: Map<number, BankStatementTx[]>,
+  roleMap?: Map<string, PaymentPieceRole>
+): Map<number, number> {
+  const history = Array.isArray(rentHistory) ? rentHistory : [];
+  const ordered = history
+    .map((entry: any, index: number) => ({ entry, index }))
+    .sort((a, b) => {
+      const da = toUtcDayMs(a.entry?.dueDate ?? a.entry?.month) ?? Number.POSITIVE_INFINITY;
+      const db = toUtcDayMs(b.entry?.dueDate ?? b.entry?.month) ?? Number.POSITIVE_INFINITY;
+      if (da !== db) return da - db;
+      return a.index - b.index;
+    });
+
+  const depositByKey = depositAllocatedByPaymentKey(history);
+  const balances = new Map<number, number>();
+  const countedCashKeys = new Set<string>();
+  const depositSubtractedKeys = new Set<string>();
+  let running = 0;
+
+  for (const { entry, index } of ordered) {
+    const kind = String(entry?.kind || "rent");
+    if (kind === "discount" || kind === "refund") {
+      balances.set(index, running);
+      continue;
+    }
+
+    const txs = bankStatementByIndex.get(index) || [];
+    let received =
+      Math.round(txs.reduce((s, tx) => s + (Number(tx.amount) || 0), 0) * 100) / 100;
+
+    // Strip deposit from bank totals the first time that payment appears
+    for (const tx of txs) {
+      const key = String(tx.key || "");
+      if (!key || depositSubtractedKeys.has(key)) continue;
+      const depositPart = depositByKey.get(key) || 0;
+      if (depositPart > 0) {
+        received = Math.round((received - depositPart) * 100) / 100;
+        depositSubtractedKeys.add(key);
+      }
+    }
+
+    // Cash / non-bank money for this month (rent only — deposit is not credit)
+    const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
+    pieces.forEach((piece: any, pieceIndex: number) => {
+      if (isBankStatementPiece(piece)) return;
+      const role = roleMap ? getPaymentPieceRole(roleMap, index, pieceIndex) : "payment";
+      if (role === "credit") return;
+      const key = getPaymentPieceGroupKey(piece, index, pieceIndex);
+      if (countedCashKeys.has(key)) return;
+      countedCashKeys.add(key);
+      const amt = Number(piece?.amount) || 0;
+      // amount is rent applied; do not add depositAllocated into credit
+      received = Math.round((received + Math.max(0, amt)) * 100) / 100;
+    });
+
+    if (received < 0) received = 0;
+
+    const due = Number(entry?.amountDue ?? entry?.rent) || 0;
+    running = Math.round((running + received - due) * 100) / 100;
+    balances.set(index, running);
+  }
+
+  return balances;
 }
 
 export { isDueDayChangeLineItem };

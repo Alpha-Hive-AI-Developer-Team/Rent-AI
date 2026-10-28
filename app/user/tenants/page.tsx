@@ -47,7 +47,7 @@ import {
 } from "@/lib/dueDayChange";
 import {
   buildBankStatementTxsByHistoryIndex,
-  getLastVisibleRentHistoryIndex,
+  buildRunningBalancesFromPaymentHistory,
   resolveRowDisplayBalance,
 } from "@/lib/rentHistoryDisplay";
 import BankStatementCell from "@/components/tenants/BankStatementCell";
@@ -341,8 +341,8 @@ export default function TenantsPage() {
   const [search, setSearch] = useState("");
   const [listPage, setListPage] = useState(1);
   const listPageSize = 20;
-  /** When on: addresses sidebar (unique properties) + tenants for selected address. */
-  const [showAddress, setShowAddress] = useState(false);
+  /** When on: addresses sidebar (unique properties) + tenants for selected address. Default: grouped by address. */
+  const [showAddress, setShowAddress] = useState(true);
   const [selectedAddressKey, setSelectedAddressKey] = useState<string | null>(null);
   const [tenantSortBy, setTenantSortBy] = useState<TenantSortKey>("name");
   const [tenantSortDir, setTenantSortDir] = useState<"asc" | "desc">("asc");
@@ -397,6 +397,23 @@ export default function TenantsPage() {
   const [reconcileTotalPages, setReconcileTotalPages] = useState(1);
   const reconcilePageSize = 20;
   const [pendingBankReconcile, setPendingBankReconcile] = useState<any | null>(null);
+  /** When Apply matched finds payments that fit 2+ tenants, landlord picks per payment. */
+  const [ambiguousReconcileQueue, setAmbiguousReconcileQueue] = useState<
+    Array<{
+      transactionId: string | null;
+      _id?: string;
+      date?: string | null;
+      amount: number;
+      payerName?: string | null;
+      candidates: Array<{
+        _id: string;
+        tenantName?: any;
+        property?: string;
+        room?: string | null;
+      }>;
+    }>
+  >([]);
+  const [ambiguousChoiceTenantId, setAmbiguousChoiceTenantId] = useState<string>("");
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignName, setAssignName] = useState("");
   const [assignRent, setAssignRent] = useState("");
@@ -672,6 +689,8 @@ export default function TenantsPage() {
     setMatchingTxs([]);
     setReconcileSearch("");
     setPendingBankReconcile(null);
+    setAmbiguousReconcileQueue([]);
+    setAmbiguousChoiceTenantId("");
     setPaymentReview(null);
     setDepositReview(null);
     setReverseAllConfirmOpen(false);
@@ -1341,68 +1360,6 @@ export default function TenantsPage() {
   };
 
   /**
-   * Running credit/arrears after each history row (oldest due → newest).
-   * = rent money received from payments that originated on/before this row
-   *   (bank amount − deposit) − dues accrued through this row.
-   * Example: £1000 − £200 deposit − £263.01 first due → £536.99 credit.
-   */
-  const buildRunningBalancesByIndex = (
-    rentHistory: any[],
-    roleMap: Map<string, PaymentPieceRole>,
-    paymentTotals: Map<
-      string,
-      {
-        amount: number;
-        paidOn: any;
-        method: string;
-        depositAllocated: number;
-        rentApplied: number;
-        hasBankAmount: boolean;
-      }
-    >
-  ) => {
-    const history = Array.isArray(rentHistory) ? rentHistory : [];
-    const ordered = history
-      .map((entry: any, index: number) => ({ entry, index }))
-      .sort((a, b) => {
-        const da = toUtcDayMs(a.entry?.dueDate ?? a.entry?.month) ?? Number.POSITIVE_INFINITY;
-        const db = toUtcDayMs(b.entry?.dueDate ?? b.entry?.month) ?? Number.POSITIVE_INFINITY;
-        if (da !== db) return da - db;
-        return a.index - b.index;
-      });
-
-    const balances = new Map<number, number>();
-    const countedPaymentKeys = new Set<string>();
-    let rentIn = 0;
-    let dues = 0;
-
-    for (const { entry, index } of ordered) {
-      const kind = String(entry?.kind || "rent");
-      // Discount/refund audit rows don't change rent balance
-      if (kind !== "discount" && kind !== "refund") {
-        dues = Math.round((dues + (Number(entry?.amountDue) || 0)) * 100) / 100;
-      }
-
-      const originating = getOriginatingPaymentsForMonth(
-        entry,
-        index,
-        roleMap,
-        paymentTotals
-      );
-      for (const row of originating) {
-        if (countedPaymentKeys.has(row.key)) continue;
-        countedPaymentKeys.add(row.key);
-        const bankOrCash = Number(row.amount) || 0;
-        const depositPart = Number(row.depositAllocated) || 0;
-        rentIn = Math.round((rentIn + Math.max(0, bankOrCash - depositPart)) * 100) / 100;
-      }
-
-      balances.set(index, Math.round((rentIn - dues) * 100) / 100);
-    }
-    return balances;
-  };
-
-  /**
    * Payments that *originated* on this month (not leftover credit from an earlier month).
    * Shows full bank/cash amounts so a £870 payment is not shown as £670 + £200.
    */
@@ -1477,13 +1434,13 @@ export default function TenantsPage() {
 
   const paymentPieceRoles = buildPaymentPieceRoleMap(selectedTenant?.rentHistory || []);
   const paymentTotalsByGroup = buildPaymentTotalsByGroup(selectedTenant?.rentHistory || []);
-  const runningBalancesByIndex = buildRunningBalancesByIndex(
-    selectedTenant?.rentHistory || [],
-    paymentPieceRoles,
-    paymentTotalsByGroup
-  );
   const bankStatementByIndex = buildBankStatementTxsByHistoryIndex(
     selectedTenant?.rentHistory || []
+  );
+  const runningBalancesByIndex = buildRunningBalancesFromPaymentHistory(
+    selectedTenant?.rentHistory || [],
+    bankStatementByIndex,
+    paymentPieceRoles
   );
 
   const openPaymentReview = async (index: number, entry: any) => {
@@ -1688,6 +1645,8 @@ export default function TenantsPage() {
     setReconcileSearchQuery("");
     setReconcilePage(1);
     setMatchingTxs([]);
+    setAmbiguousReconcileQueue([]);
+    setAmbiguousChoiceTenantId("");
   };
 
   useEffect(() => {
@@ -1721,7 +1680,7 @@ export default function TenantsPage() {
       amount_gte_and_name: "Name + amount covers due",
       amount_partial_and_name: "Name + partial amount",
       name_only: "Name match only",
-      ambiguous_name_match: "Ambiguous tenant name",
+      ambiguous_name_match: "Matches more than one tenant — choose who",
       amount_exact_no_name: "Exact amount (no name match)",
       amount_exact_total_no_name: "Exact total arrears (no name)",
       amount_equals_rent_no_name: "Equals rent (no name match)",
@@ -1731,6 +1690,14 @@ export default function TenantsPage() {
     return map[reason] || reason.replace(/_/g, " ");
   };
 
+  const formatAmbiguousCandidateLabel = useCallback((c: any) => {
+    const names = Array.isArray(c?.tenantName)
+      ? c.tenantName.filter(Boolean).join(", ")
+      : c?.tenantName || "Tenant";
+    const place = [c?.property, c?.room ? `Room ${c.room}` : null].filter(Boolean).join(" · ");
+    return place ? `${names} (${place})` : String(names);
+  }, []);
+
   const applyLinkedPayerPaymentsForTenant = useCallback(
     async (tenantId: string, { silentEmpty = false }: { silentEmpty?: boolean } = {}) => {
       if (!tenantId || applyingLinkedPayers) return { applied: 0 };
@@ -1738,6 +1705,7 @@ export default function TenantsPage() {
       try {
         const res = await autoMatchTransactionsForTenant(tenantId);
         const applied = Number(res?.data?.applied) || 0;
+        const ambiguous = Array.isArray(res?.data?.ambiguous) ? res.data.ambiguous : [];
         if (applied > 0) {
           toast.success(
             `Applied ${applied} matched payment${applied === 1 ? "" : "s"} (oldest bank date first)`
@@ -1751,10 +1719,22 @@ export default function TenantsPage() {
           }
           qc.invalidateQueries({ queryKey: ["tenants", userId] });
           qc.invalidateQueries({ queryKey: ["unreconciledTransactions"] });
-        } else if (!silentEmpty) {
+        } else if (!silentEmpty && ambiguous.length === 0) {
           toast.success(res?.message || "No matched payments left to apply");
         }
-        return { applied };
+        if (ambiguous.length > 0) {
+          setAmbiguousReconcileQueue(ambiguous);
+          const first = ambiguous[0];
+          const preferred =
+            first?.candidates?.find((c: any) => String(c._id) === String(tenantId))?._id ||
+            first?.candidates?.[0]?._id ||
+            "";
+          setAmbiguousChoiceTenantId(preferred ? String(preferred) : "");
+          toast(
+            `${ambiguous.length} payment${ambiguous.length === 1 ? "" : "s"} matched more than one tenant — choose who each belongs to`
+          );
+        }
+        return { applied, ambiguousCount: ambiguous.length };
       } catch (err: any) {
         toast.error(err?.response?.data?.message || err?.message || "Failed to apply linked-payer payments");
         return { applied: 0 };
@@ -1771,6 +1751,32 @@ export default function TenantsPage() {
       pendingBankReconcile.transaction?.transactionId || pendingBankReconcile.transactionId;
     if (!transactionId) {
       toast.error("Missing transaction id");
+      return;
+    }
+
+    // Ambiguous name match: ask which tenant before forcing Accept.
+    const amb = Array.isArray(pendingBankReconcile.ambiguousTenants)
+      ? pendingBankReconcile.ambiguousTenants
+      : [];
+    if (pendingBankReconcile.matchReason === "ambiguous_name_match" && amb.length > 1) {
+      setAmbiguousReconcileQueue([
+        {
+          transactionId: String(transactionId),
+          _id: pendingBankReconcile.transaction?._id || pendingBankReconcile._id,
+          date: pendingBankReconcile.transaction?.date || pendingBankReconcile.date,
+          amount: Math.abs(
+            Number(pendingBankReconcile.transaction?.amount ?? pendingBankReconcile.amount) || 0
+          ),
+          payerName:
+            pendingBankReconcile.transaction?.payerName ||
+            pendingBankReconcile.payerName ||
+            pendingBankReconcile.transaction?.description ||
+            null,
+          candidates: amb,
+        },
+      ]);
+      setAmbiguousChoiceTenantId(String(selectedTenant._id));
+      setPendingBankReconcile(null);
       return;
     }
 
@@ -1813,6 +1819,78 @@ export default function TenantsPage() {
     }
   };
 
+  const resolveAmbiguousPayment = async (action: "apply" | "skip") => {
+    const current = ambiguousReconcileQueue[0];
+    if (!current || applyingLinkedPayers) return;
+
+    const advanceQueue = () => {
+      setAmbiguousReconcileQueue((prev) => {
+        const next = prev.slice(1);
+        if (next[0]?.candidates?.length) {
+          const preferred =
+            next[0].candidates.find((c) => String(c._id) === String(selectedTenant?._id))?._id ||
+            next[0].candidates[0]?._id ||
+            "";
+          setAmbiguousChoiceTenantId(preferred ? String(preferred) : "");
+        } else {
+          setAmbiguousChoiceTenantId("");
+        }
+        return next;
+      });
+    };
+
+    if (action === "skip") {
+      advanceQueue();
+      return;
+    }
+
+    const targetTenantId = ambiguousChoiceTenantId;
+    const transactionId = current.transactionId;
+    if (!targetTenantId || !transactionId) {
+      toast.error("Choose a tenant for this payment");
+      return;
+    }
+
+    setApplyingLinkedPayers(true);
+    try {
+      const res = await autoMatchTransactionsForTenant(targetTenantId, {
+        includeTransactionId: String(transactionId),
+      });
+      const applied = Number(res?.data?.applied) || 0;
+      if (applied > 0) {
+        toast.success(`Applied payment to ${formatAmbiguousCandidateLabel(
+          current.candidates.find((c) => String(c._id) === String(targetTenantId)) || { tenantName: "tenant" }
+        )}`);
+      } else {
+        toast("No payment applied for that choice");
+      }
+      if (selectedTenant?._id && String(targetTenantId) === String(selectedTenant._id)) {
+        try {
+          const fresh = await getTenantById(selectedTenant._id);
+          const tenant = fresh?.data || fresh;
+          if (tenant) setSelectedTenant(tenant);
+        } catch {
+          /* ignore */
+        }
+      }
+      qc.invalidateQueries({ queryKey: ["tenants", userId] });
+      qc.invalidateQueries({ queryKey: ["unreconciledTransactions"] });
+      if (selectedTenant?._id) {
+        loadReconcileTxs({
+          tenantId: selectedTenant._id,
+          page: reconcilePage,
+          search: reconcileSearchQuery,
+          showSpinner: false,
+        }).catch(() => {});
+      }
+      advanceQueue();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to apply payment");
+    } finally {
+      setApplyingLinkedPayers(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black text-white p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       {/* Header */}
@@ -1844,25 +1922,6 @@ export default function TenantsPage() {
 
       {/* Search & Controls Row */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#111] border border-gray-800/80 rounded-2xl p-3 sm:p-4 shadow-md">
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder={showAddress ? "Search tenants or address..." : "Search tenants..."}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-gray-800 bg-[#161616] py-2.5 pl-10 pr-9 text-xs sm:text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -1880,8 +1939,13 @@ export default function TenantsPage() {
                 ? "border-[#027A48] bg-[#027A48]/15 text-emerald-300 shadow-sm"
                 : "border-gray-800 bg-[#161616] text-gray-300 hover:text-white hover:bg-white/5"
             }`}
+            title={
+              showAddress
+                ? "Switch to a flat list of all tenants"
+                : "Group tenants by property address"
+            }
           >
-            <span>Group by address</span>
+            <span>{showAddress ? "Group by tenants" : "Group by address"}</span>
           </button>
 
           <button
@@ -1900,6 +1964,25 @@ export default function TenantsPage() {
             <Archive className="h-3.5 w-3.5" />
             <span>{showArchived ? "Archived" : "Show archived"}</span>
           </button>
+        </div>
+
+        <div className="relative flex-1 sm:max-w-md sm:ml-auto">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder={showAddress ? "Search tenants or address..." : "Search tenants..."}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-xl border border-gray-800 bg-[#161616] py-2.5 pl-10 pr-9 text-xs sm:text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -2634,8 +2717,6 @@ export default function TenantsPage() {
                       );
                     }
 
-                    const lastVisibleRentIndex = getLastVisibleRentHistoryIndex(visibleHistory);
-                    const overallBalance = getLandlordDisplayBalance(selectedTenant);
 
                     return visibleHistory.map(({ entry, index }: { entry: any; index: number }) => {
                       const kind = String(entry?.kind || "rent");
@@ -2795,11 +2876,7 @@ export default function TenantsPage() {
                               return <span className="text-sm text-gray-500">—</span>;
                             }
                             const bal = resolveRowDisplayBalance(
-                              runningBalancesByIndex.get(index) ?? 0,
-                              {
-                                isLastVisibleRentRow: index === lastVisibleRentIndex,
-                                overallBalance,
-                              }
+                              runningBalancesByIndex.get(index) ?? 0
                             );
                             if (Math.abs(bal) < 0.005) {
                               return (
@@ -3155,6 +3232,15 @@ export default function TenantsPage() {
                             {row.nameMatch ? (
                               <div className="mt-0.5 text-[10px] text-sky-400/80">Name match</div>
                             ) : null}
+                            {Array.isArray(row.ambiguousTenants) && row.ambiguousTenants.length > 1 ? (
+                              <div className="mt-0.5 text-[10px] text-amber-400/90">
+                                Also fits:{" "}
+                                {row.ambiguousTenants
+                                  .filter((c: any) => String(c._id) !== String(selectedTenant._id))
+                                  .map((c: any) => formatAmbiguousCandidateLabel(c))
+                                  .join(", ") || "another tenant"}
+                              </div>
+                            ) : null}
                           </td>
                           <td className="px-4 py-3 text-gray-300">{formatMoney(Number(tx.amount) || 0)}</td>
                           <td className="px-4 py-3">
@@ -3283,6 +3369,92 @@ export default function TenantsPage() {
                 {applyingLinkedPayers ? "Applying…" : "Accept"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {ambiguousReconcileQueue.length > 0 && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/75 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-amber-900/50 bg-[#0c0c0c] p-6 text-white shadow-xl">
+            <h3 className="mb-1 text-lg font-semibold">Which tenant is this payment for?</h3>
+            <p className="mb-1 text-xs text-gray-500">
+              {ambiguousReconcileQueue.length} payment
+              {ambiguousReconcileQueue.length === 1 ? "" : "s"} left to assign · one bank payment can only clear one
+              tenancy
+            </p>
+            {(() => {
+              const item = ambiguousReconcileQueue[0];
+              return (
+                <>
+                  <div className="mt-3 rounded-xl border border-gray-800 bg-[#111] px-3 py-3 text-sm">
+                    <div className="text-gray-200">
+                      {formatMoney(Number(item.amount) || 0)}
+                      {item.date ? (
+                        <span className="ml-2 text-xs text-gray-500">{formatDate(item.date)}</span>
+                      ) : null}
+                    </div>
+                    <div className="mt-1 truncate text-xs text-gray-400" title={item.payerName || ""}>
+                      {item.payerName || "Bank payment"}
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    {(item.candidates || []).map((c) => {
+                      const id = String(c._id);
+                      const selected = ambiguousChoiceTenantId === id;
+                      return (
+                        <label
+                          key={id}
+                          className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 text-sm transition ${
+                            selected
+                              ? "border-sky-700 bg-sky-950/30"
+                              : "border-gray-800 bg-[#0f0f0f] hover:border-gray-700"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="ambiguous-tenant"
+                            className="mt-1"
+                            checked={selected}
+                            onChange={() => setAmbiguousChoiceTenantId(id)}
+                          />
+                          <span className="text-gray-200">{formatAmbiguousCandidateLabel(c)}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-5 flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAmbiguousReconcileQueue([]);
+                        setAmbiguousChoiceTenantId("");
+                      }}
+                      className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+                      disabled={applyingLinkedPayers}
+                    >
+                      Cancel all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => resolveAmbiguousPayment("skip")}
+                      className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+                      disabled={applyingLinkedPayers}
+                    >
+                      Skip
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => resolveAmbiguousPayment("apply")}
+                      disabled={applyingLinkedPayers || !ambiguousChoiceTenantId}
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-700 bg-emerald-900/40 px-4 py-2 text-sm text-emerald-200 hover:bg-emerald-900/60 disabled:opacity-60"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      {applyingLinkedPayers ? "Applying…" : "Apply to selected"}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
