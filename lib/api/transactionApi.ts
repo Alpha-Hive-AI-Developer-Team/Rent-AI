@@ -30,13 +30,14 @@ export async function autoMatchUnreconciledTransactions() {
 /** Apply matched bank payments for one tenant, oldest bank date first. */
 export async function autoMatchTransactionsForTenant(
   tenantId: string,
-  opts: { includeTransactionId?: string } = {}
+  opts: { includeTransactionId?: string; applyFrom?: string } = {}
 ) {
   const res = await apiClient.post(`/transactions/auto-match-tenant`, {
     tenantId,
     ...(opts.includeTransactionId
       ? { includeTransactionId: opts.includeTransactionId }
       : {}),
+    ...(opts.applyFrom ? { applyFrom: opts.applyFrom } : {}),
   });
   return res.data;
 }

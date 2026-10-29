@@ -200,7 +200,7 @@ export async function unreconcileRentEntry(
   return res.data;
 }
 
-/** Reverse all rent + deposit payments and unreconcile linked bank txs. */
+/** Reverse all rent payments; keep deposit record; unreconcile linked bank txs. */
 export async function unreconcileAllPayments(tenantId: string) {
   const res = await apiClient.post(`/tenants/${tenantId}/unreconcile-all`);
   return res.data;
