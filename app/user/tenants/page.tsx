@@ -8,6 +8,7 @@ import RentScheduleFields, {
   scheduleFromTenant,
   effectiveRentAmount,
   currentRentFromSchedule,
+  rentForMonth,
   type RentAdjustmentRow,
 } from "@/components/user/rent-schedule-fields";
 import DueOnScheduleFields, {
@@ -754,7 +755,6 @@ export default function TenantsPage() {
       if ((Number(h.amountPaid) || 0) > 0) return true;
       if ((h.linkedTransactionIds || []).length > 0) return true;
       if ((h.linkedPayments || []).length > 0) return true;
-      if (h.paymentMethod && h.paymentMethod !== "none") return true;
       return false;
     });
 
@@ -1053,10 +1053,39 @@ export default function TenantsPage() {
       const prevRent = Number(selectedTenant.rent) || 0;
       const nextSchedule = buildRentSchedulePayload(editRentAdjustments);
       const prevSchedule = buildRentSchedulePayload(scheduleFromTenant(selectedTenant).adjustments);
+      const scheduleChanged =
+        JSON.stringify(nextSchedule) !== JSON.stringify(prevSchedule);
+      // Always re-send schedule when present so ledger months re-stamp even if the
+      // schedule was saved earlier but history dues were left on the old rent.
+      const shouldResyncSchedule =
+        scheduleChanged ||
+        (nextSchedule.length > 0 &&
+          (Array.isArray(selectedTenant.rentHistory) ? selectedTenant.rentHistory : []).some(
+            (h: any) => {
+              if (!h || (h.kind && h.kind !== "rent")) return false;
+              if ((Number(h.amountPaid) || 0) > 0) return false;
+              if ((h.linkedPayments || []).length > 0) return false;
+              if ((h.linkedTransactionIds || []).length > 0) return false;
+              const monthSrc = h.month || h.dueDate;
+              if (!monthSrc) return false;
+              const d = new Date(monthSrc);
+              if (Number.isNaN(d.getTime())) return false;
+              const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+              const expected = rentForMonth(nextRent, editRentAdjustments, ym);
+              const lineAdj = Array.isArray(h.lineItems)
+                ? h.lineItems.reduce((sum: number, li: any) => {
+                    const amt = Number(li?.amount) || 0;
+                    const t = String(li?.type || "charge").toLowerCase();
+                    return sum + (t === "discount" || t === "refund" ? -amt : amt);
+                  }, 0)
+                : 0;
+              return Math.abs((Number(h.amountDue) || 0) - (expected + lineAdj)) > 0.05;
+            }
+          ));
       if (Math.abs(nextRent - prevRent) > 0.0001) {
         payload.rent = nextRent;
       }
-      if (JSON.stringify(nextSchedule) !== JSON.stringify(prevSchedule)) {
+      if (shouldResyncSchedule) {
         payload.rentSchedule = nextSchedule;
         if (payload.rent === undefined) payload.rent = nextRent;
       }
