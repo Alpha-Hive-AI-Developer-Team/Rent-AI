@@ -431,7 +431,6 @@ export default function TenantsPage() {
   const [adjustmentOpen, setAdjustmentOpen] = useState(false);
   const [adjustmentType, setAdjustmentType] = useState<"charge" | "discount" | "refund">("charge");
   const [adjustmentAmount, setAdjustmentAmount] = useState("");
-  const [adjustmentDate, setAdjustmentDate] = useState("");
   const [adjustmentDescription, setAdjustmentDescription] = useState("");
   const [adjustmentMonthLink, setAdjustmentMonthLink] = useState("");
   /** When set, modal edits an existing folded line item instead of adding. */
@@ -2589,7 +2588,6 @@ export default function TenantsPage() {
                     setEditingLineItem(null);
                     setAdjustmentType("charge");
                     setAdjustmentAmount("");
-                    setAdjustmentDate(new Date().toISOString().slice(0, 10));
                     setAdjustmentDescription("");
                     setAdjustmentMonthLink("");
                     setAdjustmentOpen(true);
@@ -2858,9 +2856,6 @@ export default function TenantsPage() {
                                         const t = (["charge", "discount", "refund"].includes(itemType)
                                           ? itemType
                                           : "charge") as "charge" | "discount" | "refund";
-                                        const rawDate = item?.date
-                                          ? new Date(item.date).toISOString().slice(0, 10)
-                                          : new Date().toISOString().slice(0, 10);
                                         const monthSrc = entry?.month || entry?.dueDate;
                                         let monthLabel = "";
                                         let monthLink = "";
@@ -2883,7 +2878,6 @@ export default function TenantsPage() {
                                         });
                                         setAdjustmentType(t);
                                         setAdjustmentAmount(String(itemAmt.toFixed(2)));
-                                        setAdjustmentDate(rawDate);
                                         setAdjustmentDescription(String(item?.label || ""));
                                         setAdjustmentMonthLink(monthLink);
                                         setAdjustmentOpen(true);
@@ -5030,14 +5024,21 @@ export default function TenantsPage() {
 
             <div className="space-y-3">
               <label className="block text-sm text-gray-400">
-                Date recorded
-                <DateInput
-                  value={adjustmentDate}
-                  onChange={setAdjustmentDate}
-                  className="mt-1 w-full rounded-lg border border-[#222] bg-[#050505] px-3 py-2 text-gray-200"
+                {editingLineItem ? "Applied to month" : "Apply to month"}
+                <input
+                  type="month"
+                  value={adjustmentMonthLink}
+                  onChange={(e) => setAdjustmentMonthLink(e.target.value)}
+                  required={!editingLineItem}
+                  disabled={!!editingLineItem}
+                  className="mt-1 w-full rounded-lg border border-[#222] bg-[#050505] px-3 py-2 text-gray-200 disabled:opacity-60"
                 />
                 <span className="mt-1 block text-[11px] text-gray-500">
-                  When this was added (for your records only). Not a due date — the month&apos;s rent due date stays the same.
+                  {editingLineItem
+                    ? "Month can’t be changed here — remove and re-add to move it."
+                    : adjustmentType === "charge"
+                      ? "Adds this amount onto that month’s rent — no extra row."
+                      : "Applies against this month’s unpaid rent first."}
                 </span>
               </label>
               <label className="block text-sm text-gray-400">
@@ -5067,28 +5068,6 @@ export default function TenantsPage() {
                   }
                   className="mt-1 w-full rounded-lg border border-[#222] bg-[#050505] px-3 py-2 text-gray-200"
                 />
-              </label>
-              <label className="block text-sm text-gray-400">
-                {editingLineItem
-                  ? "Applied to month"
-                  : adjustmentType === "charge"
-                    ? "Apply to month"
-                    : "Link to month (optional)"}
-                <input
-                  type="month"
-                  value={adjustmentMonthLink}
-                  onChange={(e) => setAdjustmentMonthLink(e.target.value)}
-                  required={!editingLineItem && adjustmentType === "charge"}
-                  disabled={!!editingLineItem}
-                  className="mt-1 w-full rounded-lg border border-[#222] bg-[#050505] px-3 py-2 text-gray-200 disabled:opacity-60"
-                />
-                <span className="mt-1 block text-[11px] text-gray-500">
-                  {editingLineItem
-                    ? "Month can’t be changed here — remove and re-add to move it."
-                    : adjustmentType === "charge"
-                      ? "Adds this amount onto that month’s rent — no extra row."
-                      : "Prefer applying a discount/refund against this month first."}
-                </span>
               </label>
             </div>
 
@@ -5127,7 +5106,6 @@ export default function TenantsPage() {
                         payload: {
                           amount: amt,
                           description: adjustmentDescription.trim(),
-                          date: adjustmentDate || undefined,
                         },
                       },
                       {
@@ -5140,8 +5118,8 @@ export default function TenantsPage() {
                     );
                     return;
                   }
-                  if (adjustmentType === "charge" && !adjustmentMonthLink) {
-                    toast.error("Pick which month this charge adds to");
+                  if (!adjustmentMonthLink) {
+                    toast.error("Pick which month this applies to");
                     return;
                   }
                   addAdjustmentMutation.mutate(
@@ -5151,7 +5129,6 @@ export default function TenantsPage() {
                         type: adjustmentType,
                         amount: amt,
                         description: adjustmentDescription.trim(),
-                        date: adjustmentDate || undefined,
                         monthLink: adjustmentMonthLink
                           ? `${adjustmentMonthLink}-01`
                           : null,
