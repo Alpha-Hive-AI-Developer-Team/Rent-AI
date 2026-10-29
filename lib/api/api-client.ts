@@ -173,7 +173,7 @@ function isAuthPagePath(pathname: string) {
   );
 }
 
-async function handleSessionExpired() {
+async function handleSessionExpired(message?: string) {
   if (typeof window === "undefined" || sessionExpiryHandling) return;
   if (isAuthPagePath(window.location.pathname)) return;
 
@@ -190,11 +190,17 @@ async function handleSessionExpired() {
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
 
-    toast.error("Session expired. Please login again.");
+    toast.error(message || "Session expired. Please login again.");
     window.location.href = "/auth/sign-in";
   } finally {
     // keep flag true until navigation completes to avoid toast spam
   }
+}
+
+function isAccountDisabledError(error: AxiosError) {
+  const data = error.response?.data as { message?: string } | undefined;
+  const msg = String(data?.message || "").toLowerCase();
+  return msg.includes("disabled") || msg.includes("disable");
 }
 
 // --- RESPONSE INTERCEPTOR ---
@@ -209,10 +215,19 @@ apiClient.interceptors.response.use(
         pathOnly
       );
 
-    // Expired / invalid session — clear auth and go to login (skip auth endpoints)
-    if (status === 401 && !isAuthEndpoint) {
-      console.error("Unauthorized request — session expired");
-      await handleSessionExpired();
+    // Expired / invalid / disabled session — clear auth and go to login
+    if ((status === 401 || (status === 403 && isAccountDisabledError(error))) && !isAuthEndpoint) {
+      const disabled = isAccountDisabledError(error);
+      console.error(
+        disabled
+          ? "Unauthorized request — account disabled"
+          : "Unauthorized request — session expired"
+      );
+      await handleSessionExpired(
+        disabled
+          ? "Your account has been disabled. Contact support."
+          : undefined
+      );
     }
     return Promise.reject(error);
   }
