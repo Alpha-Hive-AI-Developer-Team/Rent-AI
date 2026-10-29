@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Archive, ArchiveRestore, CalendarClock, Users } from "lucide-react";
+import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, ChevronDown, Archive, ArchiveRestore, CalendarClock, Users } from "lucide-react";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import NewTenantModal from "@/components/user/new-tenant-modal";
 import RentScheduleFields, {
@@ -397,6 +397,10 @@ export default function TenantsPage() {
   const [reconcileTotalPages, setReconcileTotalPages] = useState(1);
   const reconcilePageSize = 20;
   const [pendingBankReconcile, setPendingBankReconcile] = useState<any | null>(null);
+  /** Apply matched: choose which rent month to start FIFO from. */
+  const [applyMatchedOpen, setApplyMatchedOpen] = useState(false);
+  const [applyMatchedFromMonth, setApplyMatchedFromMonth] = useState<string>("");
+  const [applyMatchedMonthMenuOpen, setApplyMatchedMonthMenuOpen] = useState(false);
   /** When Apply matched finds payments that fit 2+ tenants, landlord picks per payment. */
   const [ambiguousReconcileQueue, setAmbiguousReconcileQueue] = useState<
     Array<{
@@ -691,6 +695,9 @@ export default function TenantsPage() {
     setPendingBankReconcile(null);
     setAmbiguousReconcileQueue([]);
     setAmbiguousChoiceTenantId("");
+    setApplyMatchedOpen(false);
+    setApplyMatchedFromMonth("");
+    setApplyMatchedMonthMenuOpen(false);
     setPaymentReview(null);
     setDepositReview(null);
     setReverseAllConfirmOpen(false);
@@ -1698,17 +1705,89 @@ export default function TenantsPage() {
     return place ? `${names} (${place})` : String(names);
   }, []);
 
+  const monthKeyFromValue = (value: any): string | null => {
+    if (!value) return null;
+    if (typeof value === "string" && /^\d{4}-\d{2}/.test(value)) return value.slice(0, 7);
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  };
+
+  const formatApplyMonthLabel = (ym: string) => {
+    const [y, m] = ym.split("-").map(Number);
+    if (!y || !m) return ym;
+    const label = new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en-GB", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+    return label;
+  };
+
+  /** Rent-month options for Apply matched start picker. */
+  const getApplyMatchedMonthOptions = useCallback((tenant: any) => {
+    const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
+    const keys = new Set<string>();
+    for (const entry of history) {
+      const kind = String(entry?.kind || "rent");
+      if (kind === "discount" || kind === "refund") continue;
+      const key = monthKeyFromValue(entry?.dueDate ?? entry?.month);
+      if (key) keys.add(key);
+    }
+    return Array.from(keys).sort();
+  }, []);
+
+  /** Default start = earliest month that has a bank payment in Payment history, else first rent month. */
+  const getDefaultApplyMatchedFrom = useCallback((tenant: any) => {
+    const options = getApplyMatchedMonthOptions(tenant);
+    if (!options.length) {
+      const now = new Date();
+      return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+    }
+    const bankByIndex = buildBankStatementTxsByHistoryIndex(tenant?.rentHistory || []);
+    const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
+    let earliestBankMonth: string | null = null;
+    history.forEach((entry: any, index: number) => {
+      const txs = bankByIndex.get(index) || [];
+      if (!txs.length) return;
+      const key = monthKeyFromValue(entry?.dueDate ?? entry?.month);
+      if (!key) return;
+      if (!earliestBankMonth || key < earliestBankMonth) earliestBankMonth = key;
+    });
+    if (earliestBankMonth && options.includes(earliestBankMonth)) return earliestBankMonth;
+    return options[0];
+  }, [getApplyMatchedMonthOptions]);
+
+  const openApplyMatchedModal = useCallback(() => {
+    if (!selectedTenant?._id || applyingLinkedPayers) return;
+    // Empty = default (first Payment history month). Landlord may optionally pick a month.
+    setApplyMatchedFromMonth("");
+    setApplyMatchedMonthMenuOpen(false);
+    setApplyMatchedOpen(true);
+  }, [selectedTenant, applyingLinkedPayers]);
+
   const applyLinkedPayerPaymentsForTenant = useCallback(
-    async (tenantId: string, { silentEmpty = false }: { silentEmpty?: boolean } = {}) => {
+    async (
+      tenantId: string,
+      {
+        silentEmpty = false,
+        applyFrom,
+      }: { silentEmpty?: boolean; applyFrom?: string } = {}
+    ) => {
       if (!tenantId || applyingLinkedPayers) return { applied: 0 };
       setApplyingLinkedPayers(true);
       try {
-        const res = await autoMatchTransactionsForTenant(tenantId);
+        const res = await autoMatchTransactionsForTenant(tenantId, {
+          ...(applyFrom ? { applyFrom } : {}),
+        });
         const applied = Number(res?.data?.applied) || 0;
         const ambiguous = Array.isArray(res?.data?.ambiguous) ? res.data.ambiguous : [];
+        const fromUsed = res?.data?.applyFrom || applyFrom || null;
         if (applied > 0) {
           toast.success(
-            `Applied ${applied} matched payment${applied === 1 ? "" : "s"} (oldest bank date first)`
+            `Applied ${applied} matched payment${applied === 1 ? "" : "s"} (oldest first${
+              fromUsed ? ` from ${formatApplyMonthLabel(String(fromUsed))}` : ""
+            })`
           );
           try {
             const fresh = await getTenantById(tenantId);
@@ -2526,7 +2605,7 @@ export default function TenantsPage() {
                     onClick={() => setReverseAllConfirmOpen(true)}
                     disabled={unreconcileAllMutation.isPending}
                     className="inline-flex items-center gap-2 rounded-full border border-rose-800 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
-                    title="Reverse all rent and deposit payments and unreconcile linked bank transactions"
+                    title="Reverse all rent payments and unlink bank txs; deposit record is kept for re-apply"
                   >
                     Reverse all payments
                   </button>
@@ -2566,18 +2645,9 @@ export default function TenantsPage() {
                   <button
                     type="button"
                     disabled={applyingLinkedPayers}
-                    onClick={async () => {
-                      await applyLinkedPayerPaymentsForTenant(selectedTenant._id);
-                      if (reconcileOpen) {
-                        loadReconcileTxs({
-                          tenantId: selectedTenant._id,
-                          page: reconcilePage,
-                          search: reconcileSearchQuery,
-                          showSpinner: false,
-                        }).catch(() => {});
-                      }
-                    }}
+                    onClick={openApplyMatchedModal}
                     className="shrink-0 rounded-full border border-sky-800 px-3 py-1 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
+                    title="Apply matched bank payments (optionally choose a start month)"
                   >
                     {applyingLinkedPayers ? "Applying…" : "Apply matched (oldest first)"}
                   </button>
@@ -3144,17 +3214,9 @@ export default function TenantsPage() {
                 <button
                   type="button"
                   disabled={applyingLinkedPayers || reconcileLoading}
-                  onClick={async () => {
-                    await applyLinkedPayerPaymentsForTenant(selectedTenant._id);
-                    loadReconcileTxs({
-                      tenantId: selectedTenant._id,
-                      page: reconcilePage,
-                      search: reconcileSearchQuery,
-                      showSpinner: false,
-                    }).catch(() => {});
-                  }}
+                  onClick={openApplyMatchedModal}
                   className="rounded-full border border-sky-800 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
-                  title="Applies all Matched bank payments oldest first (e.g. 05/06 before later months)"
+                  title="Apply matched bank payments (optionally choose a start month)"
                 >
                   {applyingLinkedPayers ? "Applying…" : "Apply matched (oldest first)"}
                 </button>
@@ -4097,20 +4159,144 @@ export default function TenantsPage() {
         </div>
       )}
 
+      {applyMatchedOpen && selectedTenant && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="relative my-4 w-full max-w-md rounded-2xl border border-gray-800/80 bg-[#111] p-6 text-white shadow-2xl">
+            <h3 className="mb-2 text-lg font-semibold">Apply matched payments</h3>
+            <p className="mb-4 text-sm text-gray-400">
+              Apply matched bank payments for{" "}
+              <span className="text-gray-200">{getTenantDisplayName(selectedTenant)}</span> oldest
+              first. Leave start month on default to begin from the first Payment history month, or
+              pick a month to start later.
+            </p>
+            <label className="mb-1 block text-xs uppercase tracking-wide text-gray-500">
+              Start from month{" "}
+              <span className="normal-case tracking-normal text-gray-600">(optional)</span>
+            </label>
+            <div className="relative mb-2">
+              <button
+                type="button"
+                disabled={applyingLinkedPayers}
+                onClick={() => setApplyMatchedMonthMenuOpen((o) => !o)}
+                className="flex w-full items-center justify-between gap-2 rounded-xl border border-gray-800 bg-[#0c0c0c] px-3 py-2.5 text-left text-sm text-gray-200 hover:border-gray-700 focus:outline-none focus:ring-1 focus:ring-sky-800 disabled:opacity-50"
+              >
+                <span className="min-w-0 truncate">
+                  {applyMatchedFromMonth
+                    ? formatApplyMonthLabel(applyMatchedFromMonth)
+                    : `Default — first Payment history month${
+                        getDefaultApplyMatchedFrom(selectedTenant)
+                          ? ` (${formatApplyMonthLabel(getDefaultApplyMatchedFrom(selectedTenant))})`
+                          : ""
+                      }`}
+                </span>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-gray-400 transition ${
+                    applyMatchedMonthMenuOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+              {applyMatchedMonthMenuOpen ? (
+                <div className="absolute left-1/2 z-20 mt-2 w-full max-w-full -translate-x-1/2 overflow-hidden rounded-xl border border-gray-800 bg-[#0c0c0c] shadow-xl">
+                  <div
+                    className="max-h-56 overflow-y-auto overscroll-contain no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                    style={{ scrollbarWidth: "none" }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setApplyMatchedFromMonth("");
+                        setApplyMatchedMonthMenuOpen(false);
+                      }}
+                      className={`block w-full px-3 py-2.5 text-left text-sm transition ${
+                        !applyMatchedFromMonth
+                          ? "bg-sky-950/50 text-sky-200"
+                          : "text-gray-200 hover:bg-white/5"
+                      }`}
+                    >
+                      Default — first Payment history month
+                      {getDefaultApplyMatchedFrom(selectedTenant)
+                        ? ` (${formatApplyMonthLabel(getDefaultApplyMatchedFrom(selectedTenant))})`
+                        : ""}
+                    </button>
+                    {getApplyMatchedMonthOptions(selectedTenant).map((ym) => (
+                      <button
+                        key={ym}
+                        type="button"
+                        onClick={() => {
+                          setApplyMatchedFromMonth(ym);
+                          setApplyMatchedMonthMenuOpen(false);
+                        }}
+                        className={`block w-full px-3 py-2.5 text-left text-sm transition ${
+                          applyMatchedFromMonth === ym
+                            ? "bg-sky-950/50 text-sky-200"
+                            : "text-gray-200 hover:bg-white/5"
+                        }`}
+                      >
+                        {formatApplyMonthLabel(ym)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <p className="mb-5 text-xs text-gray-500">
+              Months before the start stay unpaid for manual cash/bank marking.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setApplyMatchedMonthMenuOpen(false);
+                  setApplyMatchedOpen(false);
+                }}
+                disabled={applyingLinkedPayers}
+                className="rounded-full border border-[#2A2A2A] px-4 py-2 text-sm text-gray-300 hover:bg-white/5 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={applyingLinkedPayers}
+                onClick={async () => {
+                  const tenantId = selectedTenant._id;
+                  const from = applyMatchedFromMonth.trim() || undefined;
+                  setApplyMatchedMonthMenuOpen(false);
+                  setApplyMatchedOpen(false);
+                  await applyLinkedPayerPaymentsForTenant(tenantId, {
+                    ...(from ? { applyFrom: from } : {}),
+                  });
+                  if (reconcileOpen) {
+                    loadReconcileTxs({
+                      tenantId,
+                      page: reconcilePage,
+                      search: reconcileSearchQuery,
+                      showSpinner: false,
+                    }).catch(() => {});
+                  }
+                }}
+                className="rounded-full border border-sky-800 bg-sky-950/40 px-4 py-2 text-sm text-sky-200 hover:bg-sky-950/60 disabled:opacity-60"
+              >
+                {applyingLinkedPayers ? "Applying…" : "Apply matched"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {reverseAllConfirmOpen && selectedTenant && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <div className="w-full max-w-md rounded-2xl border border-gray-800/80 bg-[#111] p-6 text-white shadow-2xl">
             <h3 className="mb-2 text-lg font-semibold">Reverse all payments?</h3>
             <p className="mb-3 text-sm text-gray-400">
-              This clears every payment for{" "}
+              This clears rent payments for{" "}
               <span className="text-gray-200">{getTenantDisplayName(selectedTenant)}</span> and
               releases linked bank transactions so you can reconcile again from scratch.
             </p>
             <ul className="mb-5 list-disc space-y-1.5 pl-5 text-sm text-gray-500">
               <li>All rent months go back to unpaid / unsettled.</li>
-              <li>Deposit held is cleared; deposit-linked bank txs are unreconciled.</li>
+              <li>Deposit held and paid date are kept; only the deposit bank link is removed.</li>
               <li>Cash and bank payments are removed; bank txs stay in Transactions.</li>
-              <li>Saved linked payers are kept so you can re-apply matched payments.</li>
+              <li>Saved linked payers are kept — Apply matched can re-sync rent and deposit.</li>
             </ul>
             <div className="flex justify-end gap-3">
               <button

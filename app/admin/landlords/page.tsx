@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import useAdminLandlords, { useLandlordTenants, useTenantTransactions, useExpenses, useIncomeSummary, useCreateExpense } from "@/hooks/useAdmin";
+import useAdminLandlords, {
+  useLandlordTenants,
+  useTenantTransactions,
+  useExpenses,
+  useIncomeSummary,
+  useCreateExpense,
+  useUpdateLandlordStatus,
+} from "@/hooks/useAdmin";
 import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
 import { Input } from "@/components/ui/input";
@@ -11,7 +18,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Search, Plus, X, ChevronLeft, Building2 } from "lucide-react";
+import {
+  ChevronDown,
+  Search,
+  Plus,
+  X,
+  ChevronLeft,
+  Building2,
+  MoreVertical,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+} from "lucide-react";
 import CustomTable from "@/components/admin/custom-table";
 import TenantRentHistoryTable from "@/components/tenants/TenantRentHistoryTable";
 import { formatDate } from "@/lib/utils";
@@ -36,6 +54,44 @@ export default function LandlordManagement() {
 
   const { data: adminResp, isLoading: adminLoading, error: adminError } = useAdminLandlords({ ...appliedFilters, page, limit });
   const { data: tenantsResp, isLoading: tenantsLoading, error: tenantsError } = useLandlordTenants(selectedLandlordId || undefined);
+  const updateLandlordStatusMutation = useUpdateLandlordStatus();
+  const [statusConfirm, setStatusConfirm] = useState<{
+    id: string;
+    name: string;
+    nextStatus: "active" | "disable";
+  } | null>(null);
+
+  const confirmChangeStatus = () => {
+    if (!statusConfirm) return;
+    updateLandlordStatusMutation.mutate(
+      { id: statusConfirm.id, status: statusConfirm.nextStatus },
+      {
+        onSuccess: () => {
+          toast.success(
+            statusConfirm.nextStatus === "active"
+              ? "Landlord account activated"
+              : "Landlord account disabled"
+          );
+          setStatusConfirm(null);
+          if (
+            selectedLandlord &&
+            String(selectedLandlord.id) === String(statusConfirm.id)
+          ) {
+            setSelectedLandlord({
+              ...selectedLandlord,
+              status: statusConfirm.nextStatus,
+            });
+          }
+        },
+        onError: (err: any) =>
+          toast.error(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Failed to update landlord status"
+          ),
+      }
+    );
+  };
 
   // keep UI controls (search, dropdown labels) in sync with appliedFilters
   useEffect(() => {
@@ -155,11 +211,67 @@ export default function LandlordManagement() {
               row.status === "active" ? "bg-emerald-400" : "bg-rose-400"
             }`}
           />
-          {row.status}
+          {row.status === "disable" ? "Disabled" : row.status}
         </span>
       ),
     },
     { key: "created", label: "Created" },
+    {
+      key: "actions",
+      label: "Actions",
+      render: (row: any) => {
+        const isActive = row.status === "active";
+        return (
+          <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="p-2 rounded-lg hover:bg-white/5 text-gray-400 hover:text-white transition"
+                  aria-label="Landlord actions"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="bg-[#141414] border border-gray-800 text-gray-200 rounded-xl shadow-xl min-w-[160px] p-1 z-50"
+              >
+                {isActive ? (
+                  <DropdownMenuItem
+                    onClick={() =>
+                      setStatusConfirm({
+                        id: String(row.id),
+                        name: row.name || row.email,
+                        nextStatus: "disable",
+                      })
+                    }
+                    className="cursor-pointer text-rose-400 hover:bg-rose-950/30 rounded-lg text-xs px-3 py-2 flex items-center gap-2"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>Disable Account</span>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem
+                    onClick={() =>
+                      setStatusConfirm({
+                        id: String(row.id),
+                        name: row.name || row.email,
+                        nextStatus: "active",
+                      })
+                    }
+                    className="cursor-pointer text-emerald-400 hover:bg-emerald-950/30 rounded-lg text-xs px-3 py-2 flex items-center gap-2"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Activate Account</span>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        );
+      },
+    },
   ];
 
   const [selectedAddressIndex, setSelectedAddressIndex] = useState<number>(0);
@@ -359,6 +471,75 @@ export default function LandlordManagement() {
         }}
       />
 
+      {/* Status confirmation modal */}
+      {statusConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md bg-[#111] border border-gray-800 rounded-2xl p-6 text-white shadow-2xl relative">
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  statusConfirm.nextStatus === "disable"
+                    ? "bg-rose-500/10 border border-rose-500/20 text-rose-400"
+                    : "bg-[#027A48]/15 border border-[#027A48]/30 text-emerald-400"
+                }`}
+              >
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold text-white">
+                  {statusConfirm.nextStatus === "disable"
+                    ? "Disable Landlord Account"
+                    : "Reactivate Landlord Account"}
+                </h3>
+                <p className="text-xs text-gray-400">Confirm account access change</p>
+              </div>
+            </div>
+
+            <p className="text-xs sm:text-sm text-gray-300 mb-6 leading-relaxed bg-[#161616] p-3.5 rounded-xl border border-gray-800/60">
+              {statusConfirm.nextStatus === "disable" ? (
+                <>
+                  Are you sure you want to disable access for{" "}
+                  <strong className="text-white">{statusConfirm.name}</strong>?
+                  They will be signed out and cannot log in until reactivated.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to activate access for{" "}
+                  <strong className="text-white">{statusConfirm.name}</strong>?
+                  They will be able to sign in again.
+                </>
+              )}
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setStatusConfirm(null)}
+                className="px-4 py-2 rounded-xl border border-gray-800 text-xs sm:text-sm text-gray-300 hover:bg-white/5 hover:text-white transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmChangeStatus}
+                disabled={updateLandlordStatusMutation.isPending}
+                className={`px-5 py-2 rounded-xl text-white text-xs sm:text-sm font-medium transition active:scale-95 disabled:opacity-50 ${
+                  statusConfirm.nextStatus === "disable"
+                    ? "bg-rose-700 hover:bg-rose-600 shadow-sm shadow-rose-900/30"
+                    : "bg-[#027A48] hover:bg-[#02653d] shadow-sm shadow-[#027A48]/30"
+                }`}
+              >
+                {updateLandlordStatusMutation.isPending
+                  ? "Updating..."
+                  : statusConfirm.nextStatus === "disable"
+                  ? "Disable Account"
+                  : "Activate Account"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Landlord details modal */}
       {selectedLandlord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-6 animate-in fade-in">
@@ -369,20 +550,46 @@ export default function LandlordManagement() {
                 <p className="mt-0.5 truncate text-xs sm:text-sm text-gray-400">
                   {selectedLandlord.email || "Landlord details"}
                   {selectedLandlord.plan ? ` · ${String(selectedLandlord.plan).toUpperCase()}` : ""}
+                  {selectedLandlord.status
+                    ? ` · ${selectedLandlord.status === "disable" ? "Disabled" : "Active"}`
+                    : ""}
                 </p>
               </div>
-              <button
-                onClick={() => {
-                  setSelectedLandlord(null);
-                  setSelectedLandlordId(null);
-                  setModalView("landlord");
-                  setSelectedTenantId(null);
-                  setSelectedTenantName(null);
-                }}
-                className="shrink-0 rounded-xl p-1.5 text-gray-400 hover:bg-white/5 hover:text-white transition"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={`h-9 px-3 rounded-xl text-xs border ${
+                    selectedLandlord.status === "active"
+                      ? "border-rose-800/60 text-rose-400 hover:bg-rose-950/30 hover:text-rose-300"
+                      : "border-emerald-700/50 text-emerald-400 hover:bg-emerald-950/30 hover:text-emerald-300"
+                  }`}
+                  onClick={() =>
+                    setStatusConfirm({
+                      id: String(selectedLandlord.id),
+                      name: selectedLandlord.name || selectedLandlord.email,
+                      nextStatus:
+                        selectedLandlord.status === "active" ? "disable" : "active",
+                    })
+                  }
+                >
+                  {selectedLandlord.status === "active"
+                    ? "Disable Account"
+                    : "Activate Account"}
+                </Button>
+                <button
+                  onClick={() => {
+                    setSelectedLandlord(null);
+                    setSelectedLandlordId(null);
+                    setModalView("landlord");
+                    setSelectedTenantId(null);
+                    setSelectedTenantName(null);
+                  }}
+                  className="rounded-xl p-1.5 text-gray-400 hover:bg-white/5 hover:text-white transition"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
             <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-12 overflow-hidden">

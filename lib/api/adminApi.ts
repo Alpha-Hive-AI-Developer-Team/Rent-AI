@@ -49,6 +49,11 @@ export async function updateAdminStatus(adminId: string, status: 'active' | 'dis
 	return res.data;
 }
 
+export async function updateLandlordStatus(landlordId: string, status: 'active' | 'disable') {
+	const res = await apiClient.put(`/auth/landlords/${landlordId}/status`, { status });
+	return res.data;
+}
+
 export async function getLandlordTenants(filters: { landlordId?: string } = {}) {
 	const params: Record<string, any> = {};
 	if (filters.landlordId) params.landlordId = filters.landlordId;
@@ -105,7 +110,7 @@ export async function getAdminTopReferrers() {
 	return res.data;
 }
 
-export default { getAdminLandlords, getLandlordTenants, getTenantTransactions, getAllTenants, getAdmins, inviteAdmin, getAdminInvites, resendAdminInvite, revokeAdminInvite, updateAdminStatus, getAdminReferralsSummary, getAdminTopReferrers };
+export default { getAdminLandlords, getLandlordTenants, getTenantTransactions, getAllTenants, getAdmins, inviteAdmin, getAdminInvites, resendAdminInvite, revokeAdminInvite, updateAdminStatus, updateLandlordStatus, getAdminReferralsSummary, getAdminTopReferrers };
 
 // --- Expenses & Income Summary ---
 export async function createExpense(payload: { landlordId?: string; address: string; description: string; amount: number; date?: string }) {

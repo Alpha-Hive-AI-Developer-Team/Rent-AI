@@ -6,7 +6,7 @@ import { createExpense, getExpenses, getIncomeSummary } from "@/lib/api/adminApi
 import { getLandlordTenants, getTenantTransactions, getAllTenants, getTenantStats, getAdminSummary, getAdminReferralsSummary } from "@/lib/api/adminApi";
 import { getPaidUnpaidSeries, getArrearsTrend, getSubscriptionRevenue } from "@/lib/api/adminApi";
 import { getAdmins, inviteAdmin, getAdminInvites, resendAdminInvite, revokeAdminInvite } from "@/lib/api/adminApi";
-import { updateAdminStatus, getAdminPlans, updateAdminPlan, getEnabledPlans, type AdminPlan } from "@/lib/api/adminApi";
+import { updateAdminStatus, updateLandlordStatus, getAdminPlans, updateAdminPlan, getEnabledPlans, type AdminPlan } from "@/lib/api/adminApi";
 
 export function useAdminLandlords(filters: { search?: string; plan?: string; status?: string; page?: number; limit?: number } = {}) {
 	return useQuery<any, Error, any>({
@@ -134,6 +134,15 @@ export function useUpdateAdminStatus() {
         mutationFn: ({ id, status }: { id: string; status: 'active' | 'disable' }) => updateAdminStatus(id, status),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["adminsList"] }),
     });
+}
+
+export function useUpdateLandlordStatus() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({ id, status }: { id: string; status: "active" | "disable" }) =>
+			updateLandlordStatus(id, status),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["adminLandlords"] }),
+	});
 }
 
 // --- Expenses & Income Summary Hooks ---
