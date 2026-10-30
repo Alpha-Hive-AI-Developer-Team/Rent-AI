@@ -1198,21 +1198,30 @@ export default function TransactionsPage() {
                   Array.isArray(data?.applyErrors) && data.applyErrors.length
                     ? ` (${data.applyErrors[0]})`
                     : "";
+                const linkedApplied = Number(data?.linkedPayerApplied) || 0;
+                const nameApplied = Number(data?.clearNameApplied) || 0;
+                const appliedMsg =
+                  appliedCount > 0
+                    ? linkedApplied > 0 && nameApplied > 0
+                      ? `Reconciled ${appliedCount} payment${appliedCount === 1 ? "" : "s"} (${linkedApplied} linked payer, ${nameApplied} unique name match).`
+                      : nameApplied > 0
+                        ? `Reconciled ${appliedCount} payment${appliedCount === 1 ? "" : "s"} via unique payer name match.`
+                        : `Reconciled ${appliedCount} payment${appliedCount === 1 ? "" : "s"} via linked bank payer.`
+                    : null;
                 setSyncFeedback({
                   type: "success",
                   title: "Auto-Reconcile finished",
                   message:
-                    appliedCount > 0
-                      ? `Reconciled ${appliedCount} payment${appliedCount === 1 ? "" : "s"} via linked bank payer fingerprint${appliedCount === 1 ? "" : "s"}.`
-                      : reason === "no_linked_payers"
-                        ? "No linked bank payers yet. Accept a match on a tenant once to save a fingerprint, then Auto-Reconcile will apply future payments from that payer."
-                        : failures > 0
-                          ? `Found linked-payer matches but ${failures} could not be applied${failHint}.`
-                          : ambiguous > 0
-                            ? `Checked ${scanned} transaction${scanned === 1 ? "" : "s"} — ${ambiguous} matched more than one tenant’s linked payer (needs manual Accept).`
-                            : scanned > 0
-                              ? `Checked ${scanned} transaction${scanned === 1 ? "" : "s"} against saved fingerprints — none uniquely matched a linked payer with unpaid rent.`
-                              : "No unreconciled transactions matched a saved linked payer fingerprint.",
+                    appliedMsg ??
+                    (reason === "no_active_tenants"
+                      ? "No active tenants to match against."
+                      : failures > 0
+                        ? `Found unique matches but ${failures} could not be applied${failHint}.`
+                        : ambiguous > 0
+                          ? `Checked ${scanned} transaction${scanned === 1 ? "" : "s"} — ${ambiguous} matched more than one tenant (needs manual Accept).`
+                          : scanned > 0
+                            ? `Checked ${scanned} payment${scanned === 1 ? "" : "s"} against linked payers and unique names — none could be applied automatically.`
+                            : "No unreconciled transactions to auto-reconcile."),
                 });
               } catch (err: any) {
                 setSyncFeedback({

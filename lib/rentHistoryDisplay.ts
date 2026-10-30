@@ -422,23 +422,6 @@ export function calendarMonthKey(value: any): string | null {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-/** True when `value` is the last calendar day of its UTC month (30 or 31, etc.). */
-export function isLastDayOfUtcMonth(value: any): boolean {
-  const ms = toUtcDayMs(value);
-  if (ms == null) return false;
-  const d = new Date(ms);
-  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
-  return d.getUTCDate() === lastDay;
-}
-
-/** 1st of the UTC month after `value` — used to correct last-day timezone skew. */
-export function nextUtcMonthFirst(value: any): Date | null {
-  const ms = toUtcDayMs(value);
-  if (ms == null) return null;
-  const d = new Date(ms);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
-}
-
 function isBankStatementPiece(piece: any): boolean {
   if (piece?.transactionId != null && String(piece.transactionId).trim() !== "") return true;
   return String(piece?.method || "").toLowerCase() === "bank";
@@ -453,43 +436,15 @@ export type BankStatementTx = {
 type BankStatementRentRow = { index: number; monthKey: string; dueMs: number };
 
 /**
- * Prior rent rows (due before `beforeMs`) are settled without counting `paymentKey`.
- * Used so a last-day UTC payment that actually paid an earlier month stays on that month.
- */
-function priorRentsSettledExcludingPayment(
-  history: any[],
-  rentRows: BankStatementRentRow[],
-  beforeMs: number,
-  paymentKey: string
-): boolean {
-  for (const row of rentRows) {
-    if (row.dueMs >= beforeMs) continue;
-    const entry = history[row.index];
-    const due = Number(entry?.amountDue ?? entry?.rent) || 0;
-    if (due <= 0) continue;
-    const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
-    let paidExcluding = 0;
-    pieces.forEach((piece: any, pieceIndex: number) => {
-      const pieceKey = getPaymentPieceGroupKey(piece, row.index, pieceIndex);
-      if (pieceKey === paymentKey) return;
-      paidExcluding += Number(piece?.amount) || 0;
-    });
-    if (paidExcluding + 0.001 < due) return false;
-  }
-  return true;
-}
-
-/**
  * Display-only map: rentHistory index → unique bank txs shown like a bank app
- * (full statement amount + paid date), bucketed by calendar month of `paidOn`.
+ * (full statement amount + paid date), bucketed by calendar month of `paidOn` as stored in DB.
  *
  * Rules (do not affect reconciliation):
  * - Two April bank payments → both on the April rent row
  * - Pay in February → February row
  * - Pay before the first rent month (e.g. 31 Mar when move-in is 1 Apr) → first rent row
- * - Last day of month (30/31) when prior rents are already settled → next month as 1st
- *   (UTC timezone skew: landlord paid 1 Nov, bank/server stored 31 Oct)
  * - Each bank payment appears once (deduped by transaction / payment group)
+ * - Dates are shown as stored — no last-day-of-month → next-month rewriting
  */
 export function buildBankStatementTxsByHistoryIndex(
   rentHistory: any[]
@@ -549,24 +504,8 @@ export function buildBankStatementTxsByHistoryIndex(
   };
 
   unique.forEach(({ amount, paidOn }, key) => {
-    let effectivePaidOn = paidOn;
-    let payMonth = calendarMonthKey(paidOn);
-    let payMs = toUtcDayMs(paidOn);
-
-    // UTC skew: last day of month + prior rents already settled → treat as 1st of next month
-    if (isLastDayOfUtcMonth(paidOn)) {
-      const nextFirst = nextUtcMonthFirst(paidOn);
-      const nextMs = nextFirst ? toUtcDayMs(nextFirst) : null;
-      if (
-        nextFirst &&
-        nextMs != null &&
-        priorRentsSettledExcludingPayment(history, rentRows, nextMs, key)
-      ) {
-        effectivePaidOn = nextFirst.toISOString();
-        payMonth = calendarMonthKey(nextFirst);
-        payMs = nextMs;
-      }
-    }
+    const payMonth = calendarMonthKey(paidOn);
+    const payMs = toUtcDayMs(paidOn);
 
     let targetIndex: number | null = null;
 
@@ -594,7 +533,7 @@ export function buildBankStatementTxsByHistoryIndex(
     }
 
     if (targetIndex == null) return;
-    assign(targetIndex, { key, amount, paidOn: effectivePaidOn });
+    assign(targetIndex, { key, amount, paidOn });
   });
 
   result.forEach((list) => {

@@ -2,7 +2,7 @@
 
 import { X, Home, Users, Trash2, ChevronRight, Plus, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useCreatePropertySetup from "@/hooks/useCreatePropertySetup";
 import { assignTenantToRoom, endTenancy, getPayerSuggestions } from "@/lib/api/tenantsApi";
 import { useTenantAddresses } from "@/hooks/useTenantAddresses";
@@ -51,6 +51,8 @@ type RoomTenant = {
   rentFrequency: RentFrequency;
   moveInDate: string;
   room: string;
+  /** When true, landlord types a free-text label (Flat A). Default: number → "Room N". */
+  customRoomLabel?: boolean;
   /** Already on this property — shown read-only when adding more rooms */
   isExisting?: boolean;
   /** New room kept empty (no occupant yet) */
@@ -117,9 +119,32 @@ function roomNumberFromLabel(label: string): number {
   return match ? Number(match[1]) : 0;
 }
 
+/** True when label is the standard "Room 12" form (any casing/spacing). */
+function isStandardRoomLabel(label: string): boolean {
+  return /^room\s*\d+$/i.test(String(label || "").trim());
+}
+
+function roomLabelFromNumber(n: number | string): string {
+  const num = Math.max(1, Math.floor(Number(n) || 0) || 1);
+  return `Room ${num}`;
+}
+
 function nextRoomIndex(rooms: RoomTenant[]): number {
   const max = rooms.reduce((acc, r) => Math.max(acc, roomNumberFromLabel(r.room)), 0);
   return max + 1;
+}
+
+/** Sort rooms Room 1, Room 2, Room 3… (labels without numbers go last). */
+function compareRoomsByNumber(a: RoomTenant, b: RoomTenant): number {
+  const aNum = roomNumberFromLabel(a.room);
+  const bNum = roomNumberFromLabel(b.room);
+  if (aNum && bNum && aNum !== bNum) return aNum - bNum;
+  if (aNum && !bNum) return -1;
+  if (!aNum && bNum) return 1;
+  return String(a.room || "").localeCompare(String(b.room || ""), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
 }
 
 /** Days in the month of a YYYY-MM-DD date; defaults to 31 if unset. */
@@ -203,7 +228,8 @@ function newRoom(index: number): RoomTenant {
     dueOn: 1,
     rentFrequency: "monthly",
     moveInDate: "",
-    room: `Room ${index}`,
+    room: roomLabelFromNumber(index),
+    customRoomLabel: false,
     isExisting: false,
     vacant: false,
     hasDeposit: false,
@@ -231,6 +257,9 @@ function buildExistingRoomsForProperty(address: string, tenants: any[]): RoomTen
       rentFrequency: t.rentFrequency === "weekly" ? "weekly" : "monthly",
       moveInDate: t.moveInDate ? String(t.moveInDate).slice(0, 10) : "",
       room: t.room ? String(t.room).trim() : "",
+      customRoomLabel: t.room
+        ? !isStandardRoomLabel(String(t.room).trim())
+        : false,
       isExisting: true,
       vacant: t.tenancyStatus === "vacant",
       assigning: false,
@@ -242,23 +271,21 @@ function buildExistingRoomsForProperty(address: string, tenants: any[]): RoomTen
           ? String(t.depositStartDate).slice(0, 10)
           : "",
     }))
-    .sort((a, b) => {
-      const aNum = roomNumberFromLabel(a.room);
-      const bNum = roomNumberFromLabel(b.room);
-      if (aNum && bNum) return aNum - bNum;
-      if (aNum) return -1;
-      if (bNum) return 1;
-      return formatTenantNames(a.tenantNames).localeCompare(formatTenantNames(b.tenantNames));
-    })
-    .map((room, i) => ({
-      ...room,
-      room: room.room || `Room ${i + 1}`,
-    }));
+    .sort(compareRoomsByNumber)
+    .map((room, i) => {
+      const label = room.room || roomLabelFromNumber(i + 1);
+      return {
+        ...room,
+        room: label,
+        customRoomLabel: room.customRoomLabel ?? !isStandardRoomLabel(label),
+      };
+    });
 }
 
 function roomsForExistingProperty(address: string, tenants: any[]): RoomTenant[] {
   const existing = buildExistingRoomsForProperty(address, tenants);
-  return [...existing, newRoom(nextRoomIndex(existing))];
+  // New draft room first so it's visible without scrolling past existing rooms.
+  return [newRoom(nextRoomIndex(existing)), ...existing];
 }
 
 export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
@@ -408,6 +435,32 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
 
   const newRooms = useMemo(() => rooms.filter((r) => !r.isExisting), [rooms]);
 
+  /** New drafts at top (newest first); existing rooms chronological Room 1, 2, 3… */
+  const displayRooms = useMemo(() => {
+    const drafts = rooms.filter((r) => !r.isExisting);
+    const existing = rooms.filter((r) => r.isExisting).sort(compareRoomsByNumber);
+    return [...drafts, ...existing];
+  }, [rooms]);
+
+  const roomsListRef = useRef<HTMLDivElement | null>(null);
+  const roomCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [activeRoomNavId, setActiveRoomNavId] = useState<string | null>(null);
+
+  const scrollToRoom = (roomId: string) => {
+    const card = roomCardRefs.current[roomId];
+    if (!card) return;
+    setActiveRoomNavId(roomId);
+    const scrollParent = card.closest(".overflow-y-auto");
+    if (scrollParent instanceof HTMLElement) {
+      const parentRect = scrollParent.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      const offset = cardRect.top - parentRect.top + scrollParent.scrollTop - 16;
+      scrollParent.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
+    } else {
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   const validateStep3 = () => {
     if (tenancyType === "single" && !addingToExisting) {
       const names = finalizeTenantNames(singleTenant.tenantNames, singleTenant.nameDraft);
@@ -421,7 +474,9 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     return (
       editable.length > 0 &&
       editable.every((r) => {
-        if (!r.room.trim()) return false;
+        const label = String(r.room || "").trim();
+        if (!label) return false;
+        if (!r.customRoomLabel && !isStandardRoomLabel(label)) return false;
         if (r.vacant) {
           const rentVal = r.rent.trim();
           return rentVal === "" || Number(rentVal) >= 0;
@@ -467,7 +522,15 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     });
   };
 
-  const addRoom = () => setRooms((prev) => [...prev, newRoom(nextRoomIndex(prev))]);
+  const addRoom = () => {
+    const created = newRoom(nextRoomIndex(rooms));
+    setRooms((prev) => [created, ...prev]);
+    setActiveRoomNavId(created.id);
+    // New card is prepended — scroll to it so the form is immediately visible.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => scrollToRoom(created.id));
+    });
+  };
 
   const removeRoom = (id: string) => {
     setRooms((prev) => {
@@ -700,7 +763,9 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                 ? undefined
                 : clampDueOnForFrequency(r.dueOn, r.moveInDate, freq),
               moveInDate: r.vacant ? undefined : r.moveInDate || undefined,
-              room: r.room.trim(),
+              room: r.customRoomLabel
+                ? r.room.trim()
+                : roomLabelFromNumber(roomNumberFromLabel(r.room) || 1),
               vacant: Boolean(r.vacant),
               ...(r.vacant
                 ? { depositAmount: 0, depositPaidDate: null }
@@ -1068,8 +1133,58 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                     {addingToExisting && (
                       <p className="mb-4 rounded-lg border border-[#222] bg-[#0c0c0c] px-3 py-2 text-sm text-gray-400">
                         Adding to <span className="text-white">{property}</span>
-                        {" — "}existing rooms are shown below (vacant ones can be assigned or removed). New rooms only are saved with Add room.
+                        {" — "}new rooms appear at the top. Existing rooms follow in order (Room 1, 2, 3…). Vacant ones can be assigned or removed. Only new rooms are saved with Add room.
                       </p>
+                    )}
+
+                    {(tenancyType === "hmo" || addingToExisting) && displayRooms.length > 1 && (
+                      <div className="mb-4">
+                        <p className="mb-2 text-xs text-gray-500">
+                          Jump to room
+                        </p>
+                        <div
+                          className="flex gap-2 overflow-x-auto pb-1 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                          role="navigation"
+                          aria-label="Rooms"
+                        >
+                          {displayRooms.map((room) => {
+                            const label = String(room.room || "").trim() || "Room";
+                            const isActive = activeRoomNavId === room.id;
+                            const isVacant = Boolean(room.vacant) && !room.assigning;
+                            const isNew = !room.isExisting;
+                            return (
+                              <button
+                                key={`nav-${room.id}`}
+                                type="button"
+                                onClick={() => scrollToRoom(room.id)}
+                                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                  isActive
+                                    ? "border-emerald-600 bg-emerald-950/50 text-emerald-300"
+                                    : isNew
+                                      ? "border-sky-800/70 bg-sky-950/30 text-sky-300 hover:border-sky-600"
+                                      : isVacant
+                                        ? "border-amber-800/60 bg-amber-950/20 text-amber-300 hover:border-amber-600"
+                                        : "border-[#2a2a2a] bg-[#111] text-gray-300 hover:border-gray-600 hover:text-white"
+                                }`}
+                                title={
+                                  isNew
+                                    ? `${label} (new)`
+                                    : isVacant
+                                      ? `${label} (vacant)`
+                                      : label
+                                }
+                              >
+                                {label}
+                                {isNew ? (
+                                  <span className="ml-1 opacity-70">· new</span>
+                                ) : isVacant ? (
+                                  <span className="ml-1 opacity-70">· vacant</span>
+                                ) : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     )}
 
                     {tenancyType === "single" && !addingToExisting ? (
@@ -1349,8 +1464,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                         </div>
                       </div>
                     ) : (
-                      <div className="space-y-3">
-                        {rooms.map((room, index) => {
+                      <div ref={roomsListRef} className="space-y-3">
+                        {displayRooms.map((room) => {
                           const isExisting = Boolean(room.isExisting);
                           const isVacant = Boolean(room.vacant);
                           const isAssigning = Boolean(room.assigning);
@@ -1365,22 +1480,92 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                           return (
                           <div
                             key={room.id}
-                            className={`rounded-xl border p-4 ${
+                            ref={(el) => {
+                              roomCardRefs.current[room.id] = el;
+                            }}
+                            id={`room-card-${room.id}`}
+                            className={`scroll-mt-3 rounded-xl border p-4 ${
                               isExisting && !isAssigning
                                 ? "border-[#2a2a2a] bg-[#111] opacity-90"
                                 : isVacant || isAssigning
                                   ? "border-amber-900/50 bg-[#0c0c0c]"
                                   : "border-[#222] bg-[#0c0c0c]"
+                            } ${
+                              activeRoomNavId === room.id
+                                ? "ring-1 ring-emerald-600/50"
+                                : ""
                             }`}
                           >
                             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                               <div className="flex flex-wrap items-center gap-2">
-                                <input
-                                  value={room.room}
-                                  onChange={(e) => updateRoom(room.id, { room: e.target.value })}
-                                  disabled={isExisting}
-                                  className="w-32 rounded-md border border-[#2a2a2a] bg-transparent px-2 py-1 text-sm font-medium text-white outline-none focus:border-emerald-600 disabled:cursor-not-allowed disabled:text-gray-400"
-                                />
+                                {isExisting ? (
+                                  <span className="rounded-md border border-[#2a2a2a] bg-[#0b0b0b] px-2.5 py-1 text-sm font-medium text-gray-300">
+                                    {room.room || "Room"}
+                                  </span>
+                                ) : room.customRoomLabel ? (
+                                  <input
+                                    value={room.room}
+                                    onChange={(e) =>
+                                      updateRoom(room.id, { room: e.target.value })
+                                    }
+                                    placeholder="e.g. Flat A"
+                                    className="w-36 rounded-md border border-[#2a2a2a] bg-transparent px-2 py-1 text-sm font-medium text-white outline-none focus:border-emerald-600"
+                                    aria-label="Custom room label"
+                                  />
+                                ) : (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-sm font-medium text-gray-400">Room</span>
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
+                                      value={
+                                        roomNumberFromLabel(room.room)
+                                          ? String(roomNumberFromLabel(room.room))
+                                          : ""
+                                      }
+                                      onChange={(e) => {
+                                        const digits = e.target.value.replace(/\D/g, "");
+                                        if (!digits) {
+                                          updateRoom(room.id, { room: "Room ", customRoomLabel: false });
+                                          return;
+                                        }
+                                        updateRoom(room.id, {
+                                          room: roomLabelFromNumber(digits),
+                                          customRoomLabel: false,
+                                        });
+                                      }}
+                                      className="w-14 rounded-md border border-[#2a2a2a] bg-transparent px-2 py-1 text-sm font-medium text-white outline-none focus:border-emerald-600"
+                                      aria-label="Room number"
+                                    />
+                                  </div>
+                                )}
+                                {!isExisting && (
+                                  <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(room.customRoomLabel)}
+                                      onChange={(e) => {
+                                        const useCustom = e.target.checked;
+                                        if (useCustom) {
+                                          updateRoom(room.id, { customRoomLabel: true });
+                                          return;
+                                        }
+                                        const n =
+                                          roomNumberFromLabel(room.room) ||
+                                          nextRoomIndex(
+                                            rooms.filter((r) => r.id !== room.id)
+                                          );
+                                        updateRoom(room.id, {
+                                          customRoomLabel: false,
+                                          room: roomLabelFromNumber(n),
+                                        });
+                                      }}
+                                      className="h-3.5 w-3.5 rounded border-gray-600 bg-transparent text-emerald-600 focus:ring-emerald-600"
+                                    />
+                                    Custom label
+                                  </label>
+                                )}
                                 {isExisting && (
                                   <span className="rounded-full border border-[#333] px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
                                     Existing
@@ -1452,7 +1637,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                     }
                                     disabled={removingRoomId === room.id}
                                     className="rounded-md p-1.5 text-rose-400 transition hover:bg-rose-950/40 disabled:opacity-50"
-                                    aria-label={`Remove ${room.room || `room ${index + 1}`}`}
+                                    aria-label={`Remove ${room.room || "room"}`}
                                     title={canRemoveVacant ? "Remove vacant room" : "Remove room"}
                                   >
                                     <Trash2 className="h-4 w-4" />
