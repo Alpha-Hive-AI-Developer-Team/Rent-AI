@@ -3093,72 +3093,21 @@ export default function TenantsPage() {
                               originating.length === 0 &&
                               pieces.length > 0;
 
-                            if (totalPaid <= 0 && !creditOnly) {
+                            if ((totalPaid <= 0 && !creditOnly) || !recorded) {
                               return <span className="text-sm text-gray-500">—</span>;
                             }
-
-                            const bankDisplay = originating.reduce(
-                              (s, row) => s + (Number(row.amount) || 0),
-                              0
-                            );
-                            const displayAmount =
-                              originating.length > 0 && bankDisplay > 0 ? bankDisplay : totalPaid;
-                            const depositPart = originating.reduce(
-                              (s, row) => s + (Number(row.depositAllocated) || 0),
-                              0
-                            );
-                            const rentFromBank = originating.reduce(
-                              (s, row) => s + (Number(row.appliedThisMonth) || 0),
-                              0
-                            );
 
                             return (
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (recorded) openPaymentReview(index, entry);
+                                  openPaymentReview(index, entry);
                                 }}
-                                className={`text-left ${recorded ? "hover:opacity-90" : "cursor-default"}`}
-                                title={
-                                  pieces.length >= 1
-                                    ? "Click to see bank payment breakdown"
-                                    : recorded
-                                      ? "Click for payment details"
-                                      : undefined
-                                }
+                                className="inline-flex items-center rounded-lg border border-gray-700 bg-[#141414] px-2.5 py-1 text-xs font-medium text-sky-300 transition hover:border-sky-500/50 hover:text-sky-200"
+                                title="View payment details"
                               >
-                                <span className="block tabular-nums text-sm font-medium text-gray-200">
-                                  {formatMoney(displayAmount)}
-                                </span>
-                                {originating.length > 0 && (depositPart > 0.001 || rentFromBank + 0.001 < displayAmount) ? (
-                                  <span className="mt-0.5 block text-[11px] text-sky-400/90">
-                                    {depositPart > 0.001
-                                      ? `${formatMoney(depositPart)} deposit`
-                                      : ""}
-                                    {depositPart > 0.001 && rentFromBank > 0.001 ? " · " : ""}
-                                    {rentFromBank > 0.001
-                                      ? `${formatMoney(rentFromBank)} rent`
-                                      : ""}
-                                    {displayAmount - depositPart - rentFromBank > 0.001
-                                      ? ` · ${formatMoney(displayAmount - depositPart - rentFromBank)} credit`
-                                      : ""}
-                                    {" · view"}
-                                  </span>
-                                ) : pieces.length >= 1 && !creditOnly ? (
-                                  <span className="mt-0.5 block text-[11px] text-sky-400/90">
-                                    {pieces.length} payment
-                                    {pieces.length === 1 ? "" : "s"} · view breakdown
-                                  </span>
-                                ) : creditOnly ? (
-                                  <span className="mt-0.5 block text-[11px] text-emerald-400/90">
-                                    From earlier credit
-                                  </span>
-                                ) : entry.paidOn ? (
-                                  <span className="mt-0.5 block text-[11px] text-gray-500">
-                                    {formatDate(entry.paidOn)}
-                                  </span>
-                                ) : null}
+                                Details
                               </button>
                             );
                           })()}
