@@ -362,6 +362,7 @@ export default function TenantsPage() {
   const [editTenantNames, setEditTenantNames] = useState<string[]>([]);
   const [currentEditName, setCurrentEditName] = useState("");
   const [editRoom, setEditRoom] = useState("");
+  const [editRoomCustomLabel, setEditRoomCustomLabel] = useState(false);
   const [editMoveIn, setEditMoveIn] = useState("");
   const [editDueOn, setEditDueOn] = useState(1);
   const [editDueOnAdjustments, setEditDueOnAdjustments] = useState<DueOnAdjustmentRow[]>([]);
@@ -782,7 +783,11 @@ export default function TenantsPage() {
     const isVacant = selectedTenant.tenancyStatus === "vacant";
     setEditTenantNames(isVacant ? [] : normalizeTenantNames(selectedTenant.tenantName));
     setCurrentEditName("");
-    setEditRoom(String(selectedTenant.room || "").trim());
+    {
+      const roomLabel = String(selectedTenant.room || "").trim();
+      setEditRoom(roomLabel);
+      setEditRoomCustomLabel(Boolean(roomLabel) && !/^room\s*\d+$/i.test(roomLabel));
+    }
     setEditMoveIn(
       selectedTenant.moveInDate
         ? new Date(selectedTenant.moveInDate).toISOString().slice(0, 10)
@@ -908,6 +913,7 @@ export default function TenantsPage() {
     setEditTenantNames([]);
     setCurrentEditName("");
     setEditRoom("");
+    setEditRoomCustomLabel(false);
     setEditMoveIn("");
     setEditDueOn(1);
     setEditHasDeposit(false);
@@ -948,9 +954,16 @@ export default function TenantsPage() {
       }
     }
 
-    if (showRoomEditField(selectedTenant) && !editRoom.trim()) {
-      toast.error("Room label is required.");
-      return;
+    if (showRoomEditField(selectedTenant)) {
+      const label = editRoom.trim();
+      if (!label) {
+        toast.error("Room number is required.");
+        return;
+      }
+      if (!editRoomCustomLabel && !/^room\s*\d+$/i.test(label)) {
+        toast.error("Enter a room number, or enable Custom label.");
+        return;
+      }
     }
 
     if (!isVacant && editHasDeposit) {
@@ -1008,7 +1021,14 @@ export default function TenantsPage() {
       rentSchedule?: Array<{ effectiveFrom: string; amount: number }>;
     } = {};
     if (!isVacant) payload.tenantName = finalEditNames;
-    if (showRoomEditField(selectedTenant)) payload.room = editRoom.trim();
+    if (showRoomEditField(selectedTenant)) {
+      if (editRoomCustomLabel) {
+        payload.room = editRoom.trim();
+      } else {
+        const n = Number(String(editRoom).match(/(\d+)/)?.[1] || 0);
+        payload.room = `Room ${Math.max(1, n || 1)}`;
+      }
+    }
     if (canEditScheduleFields(selectedTenant)) {
       // Only send schedule fields when they actually change — otherwise a deposit-only
       // edit rebuilds rentHistory and wipes recorded charges/discounts.
@@ -4648,12 +4668,47 @@ export default function TenantsPage() {
               {showRoomEditField(selectedTenant) && (
                 <div>
                   <label className="mb-1.5 block text-base text-gray-200">Room</label>
-                  <input
-                    value={editRoom}
-                    onChange={(e) => setEditRoom(e.target.value)}
-                    className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
-                    placeholder="e.g. Room 3"
-                  />
+                  {editRoomCustomLabel ? (
+                    <input
+                      value={editRoom}
+                      onChange={(e) => setEditRoom(e.target.value)}
+                      className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                      placeholder="e.g. Flat A"
+                    />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-base text-gray-400">Room</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={String(editRoom).match(/(\d+)/)?.[1] || ""}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, "");
+                          setEditRoom(digits ? `Room ${Number(digits)}` : "Room ");
+                        }}
+                        className="w-24 rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
+                        placeholder="3"
+                        aria-label="Room number"
+                      />
+                    </div>
+                  )}
+                  <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-sm text-gray-400">
+                    <input
+                      type="checkbox"
+                      checked={editRoomCustomLabel}
+                      onChange={(e) => {
+                        const useCustom = e.target.checked;
+                        setEditRoomCustomLabel(useCustom);
+                        if (!useCustom) {
+                          const n = Number(String(editRoom).match(/(\d+)/)?.[1] || 1);
+                          setEditRoom(`Room ${Math.max(1, n || 1)}`);
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-gray-600 bg-transparent text-emerald-600 focus:ring-emerald-600"
+                    />
+                    Custom label
+                  </label>
                 </div>
               )}
 
