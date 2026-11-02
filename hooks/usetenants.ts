@@ -78,6 +78,7 @@ export function useUpdateTenant() {
         tenantName?: string[];
         room?: string;
         moveInDate?: string | null;
+        bankReconcileFrom?: string | null;
         dueOn?: number;
         depositAmount?: number | string;
         depositPaidDate?: string | null;
@@ -116,6 +117,7 @@ export function useAssignTenant() {
         rent?: number | string;
         dueOn?: number;
         moveInDate?: string;
+        bankReconcileFrom?: string | null;
         depositAmount?: number | string;
         depositPaidDate?: string | null;
         firstPaymentAmount?: number | string;
