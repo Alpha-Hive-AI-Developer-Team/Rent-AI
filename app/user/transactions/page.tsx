@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Plus, Search, Check, X, Bell, ChevronDown, Info, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, CreditCard, RefreshCw, Zap } from "lucide-react";
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { usePlaidLink } from "react-plaid-link";
-import { useConnectedAccounts, useUnreconciledTransactions, useConnectedInstitution, useReconcileTransaction, useAutoMatchTransactions, useClassifyTransaction, useClassifiedTransactions } from "@/hooks/useTransactions";
+import { useConnectedAccounts, useUnreconciledTransactions, useReconciledTransactions, useConnectedInstitution, useReconcileTransaction, useAutoMatchTransactions, useClassifyTransaction, useClassifiedTransactions } from "@/hooks/useTransactions";
 import { createPlaidLinkToken, exchangePlaidPublicToken, getPlaidTransactions, simulatePlaidIncoming } from "@/lib/api/transactionApi";
 import { getTenantById } from "@/lib/api/tenantsApi";
 import { formatDate } from "@/lib/utils";
@@ -58,6 +58,7 @@ export default function TransactionsPage() {
     const timer = setTimeout(() => {
       setSearchQuery(search.trim());
       setPage(1);
+      setReconciledPage(1);
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
@@ -70,6 +71,7 @@ export default function TransactionsPage() {
       setTxSortDir(key === "date" || key === "status" ? "desc" : "asc");
     }
     setPage(1);
+    setReconciledPage(1);
   };
 
   const transactions: Transaction[] = [
@@ -99,14 +101,23 @@ export default function TransactionsPage() {
   };
  
   // Fetch unreconciled transactions from API (keep the full query so we can refetch)
-  const [txListTab, setTxListTab] = useState<"rent" | "deposit">("rent");
+  const [txListTab, setTxListTab] = useState<"rent" | "reconciled" | "deposit">("rent");
   const [depositPage, setDepositPage] = useState(1);
+  const [reconciledPage, setReconciledPage] = useState(1);
   const unreconciledQuery = useUnreconciledTransactions({
     page,
     limit: pageSize,
     search: searchQuery || undefined,
     sortBy: txSortBy,
     sortDir: txSortDir,
+  });
+  const reconciledQuery = useReconciledTransactions({
+    page: reconciledPage,
+    limit: pageSize,
+    search: searchQuery || undefined,
+    sortBy: txSortBy === "status" ? "date" : txSortBy,
+    sortDir: txSortDir,
+    enabled: txListTab === "reconciled",
   });
   const classifiedQuery = useClassifiedTransactions({
     classification: "deposit",
@@ -122,9 +133,30 @@ export default function TransactionsPage() {
   const startIndex = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const endIndex = total === 0 ? 0 : Math.min(page * pageSize, total);
 
+  const reconciledDocs = reconciledQuery.data?.data?.docs ?? [];
+  const reconciledTotal = Number(reconciledQuery.data?.data?.total) || 0;
+  const reconciledTotalPages = Math.max(1, Number(reconciledQuery.data?.data?.totalPages) || 1);
+  const reconciledStart =
+    reconciledTotal === 0 ? 0 : (reconciledPage - 1) * pageSize + 1;
+  const reconciledEnd =
+    reconciledTotal === 0 ? 0 : Math.min(reconciledPage * pageSize, reconciledTotal);
+
   const depositDocs = classifiedQuery.data?.data?.docs ?? [];
   const depositTotal = Number(classifiedQuery.data?.data?.total) || 0;
   const depositTotalPages = Math.max(1, Number(classifiedQuery.data?.data?.totalPages) || 1);
+
+  const formatAppliedMonths = (months: string[] | undefined) => {
+    if (!Array.isArray(months) || months.length === 0) return "";
+    return months
+      .map((ym) => {
+        if (!/^\d{4}-\d{2}$/.test(ym)) return ym;
+        const [y, m] = ym.split("-").map(Number);
+        const d = new Date(Date.UTC(y, m - 1, 1));
+        return d.toLocaleString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+      })
+      .join(", ");
+  };
+
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -192,7 +224,7 @@ export default function TransactionsPage() {
       setSyncingAccounts((prev) => (prev.includes(accountId) ? prev : [...prev, accountId]));
       const res = await getPlaidTransactions({ accountId });
       try {
-        await unreconciledQuery.refetch();
+        await Promise.all([unreconciledQuery.refetch(), reconciledQuery.refetch()]);
       } catch (e) {
         console.warn("Failed to refetch unreconciled transactions", e);
       }
@@ -237,7 +269,7 @@ export default function TransactionsPage() {
           await connectedAccountsQuery.refetch();
         } catch (e) {}
         try {
-          await unreconciledQuery.refetch();
+          await Promise.all([unreconciledQuery.refetch(), reconciledQuery.refetch()]);
         } catch (e) {}
         const inserted = res?.data?.saved?.inserted ?? res?.saved?.inserted;
         const detail =
@@ -537,7 +569,7 @@ export default function TransactionsPage() {
           setViewModalOpen(false);
           setSelectedTransaction(null);
           try {
-            await unreconciledQuery.refetch();
+            await Promise.all([unreconciledQuery.refetch(), reconciledQuery.refetch()]);
           } catch (e) {
             console.warn("Failed to refetch unreconciled transactions", e);
           }
@@ -584,7 +616,7 @@ export default function TransactionsPage() {
           setViewModalOpen(false);
           setSelectedTransaction(null);
           try {
-            await unreconciledQuery.refetch();
+            await Promise.all([unreconciledQuery.refetch(), reconciledQuery.refetch()]);
             await classifiedQuery.refetch();
           } catch (e) {
             console.warn("Failed to refetch transactions", e);
@@ -608,7 +640,7 @@ export default function TransactionsPage() {
           toast.success("Deposit cleared — transaction is back in the rent queue");
           try {
             await classifiedQuery.refetch();
-            await unreconciledQuery.refetch();
+            await Promise.all([unreconciledQuery.refetch(), reconciledQuery.refetch()]);
           } catch (e) {
             console.warn("Failed to refetch transactions", e);
           }
@@ -1245,7 +1277,7 @@ export default function TransactionsPage() {
                 try {
                   setSimulating(true);
                   const res = await simulatePlaidIncoming({ amount: 1200, description: "RENT JACK LEAH" });
-                  await unreconciledQuery.refetch();
+                  await Promise.all([unreconciledQuery.refetch(), reconciledQuery.refetch()]);
                   const inserted = res?.data?.saved?.inserted ?? 0;
                   setSyncFeedback({
                     type: res?.data?.created || inserted > 0 ? "success" : "error",
@@ -1292,6 +1324,28 @@ export default function TransactionsPage() {
               txListTab === "rent" ? "bg-emerald-800/80 text-emerald-100" : "bg-gray-800 text-gray-400"
             }`}>
               {total}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setTxListTab("reconciled");
+            setReconciledPage(1);
+          }}
+          className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-medium border transition-all duration-200 flex items-center gap-2 ${
+            txListTab === "reconciled"
+              ? "bg-sky-500/20 border-sky-500/60 text-sky-200 shadow-md shadow-sky-950/40"
+              : "bg-[#111111] border-gray-800 text-gray-400 hover:text-gray-200 hover:border-gray-700"
+          }`}
+        >
+          <span>Reconciled</span>
+          {reconciledTotal > 0 && (
+            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+              txListTab === "reconciled" ? "bg-sky-500/30 text-sky-100" : "bg-gray-800 text-gray-400"
+            }`}>
+              {reconciledTotal}
             </span>
           )}
         </button>
@@ -1364,6 +1418,71 @@ export default function TransactionsPage() {
               );
             })
           )
+        ) : txListTab === "reconciled" ? (
+          reconciledQuery.isLoading ? (
+            <div className="p-8 text-center text-sm text-gray-400 bg-[#111111] rounded-2xl border border-gray-800/80">
+              Loading reconciled transactions…
+            </div>
+          ) : reconciledDocs.length === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-400 bg-[#111111] rounded-2xl border border-gray-800/80">
+              {searchQuery
+                ? `No reconciled transactions match “${searchQuery}”.`
+                : "No reconciled bank payments yet."}
+            </div>
+          ) : (
+            reconciledDocs.map((row: any, i: number) => {
+              const tx = row.transaction || {};
+              const tenant = row.tenant;
+              const months = formatAppliedMonths(row.appliedMonths);
+              const txId = String(tx.transactionId || tx._id || i);
+              return (
+                <div
+                  key={txId}
+                  className="p-4 rounded-2xl bg-[#111111] border border-gray-800/80 shadow-md space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-white text-sm truncate">
+                        {tx.payerName || "—"}
+                      </p>
+                      {(tx.description || tx.reference) && (
+                        <p className="text-xs text-gray-400 truncate mt-0.5">
+                          {tx.description || tx.reference}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {tx.date ? formatDate(tx.date) : "—"}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-base font-bold text-emerald-400 tabular-nums block">
+                        {typeof tx.amount === "number" ? `£${tx.amount}` : String(tx.amount ?? "—")}
+                      </span>
+                      <span className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] rounded-full border bg-sky-500/10 text-sky-300 border-sky-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                        Reconciled
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-[#0a0a0a] border border-gray-800/60 text-xs text-gray-300">
+                    <span className="text-gray-500 block">Reconciled to</span>
+                    <span className="font-medium text-white">{tenant?.tenantName || "—"}</span>
+                    {(tenant?.address || tenant?.property) && (
+                      <span className="block text-gray-400 text-[11px] mt-0.5">
+                        {[tenant.address || tenant.property, tenant.room].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
+                    {months ? (
+                      <span className="block text-sky-300/90 text-[11px] mt-1">
+                        Applied to: {months}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })
+          )
         ) : (
           txLoading && filteredDisplay.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-400 bg-[#111111] rounded-2xl border border-gray-800/80">
@@ -1373,7 +1492,7 @@ export default function TransactionsPage() {
             <div className="p-8 text-center text-sm text-gray-400 bg-[#111111] rounded-2xl border border-gray-800/80">
               {searchQuery
                 ? `No unreconciled transactions match “${searchQuery}”.`
-                : "No unreconciled transactions. Reconciled payments are on each tenant’s history."}
+                : "No unreconciled transactions. Check the Reconciled tab for applied payments."}
             </div>
           ) : (
             filteredDisplay.map((t) => {
@@ -1471,6 +1590,120 @@ export default function TransactionsPage() {
               )}
             </tbody>
           </table>
+        ) : txListTab === "reconciled" ? (
+          <table className="min-w-full text-sm border-collapse">
+            <thead>
+              <tr className="text-gray-400 text-left bg-[#0c0c0c] border-b border-gray-800">
+                {(
+                  [
+                    { key: "date" as TxSortKey, label: "Date" },
+                    { key: "payer" as TxSortKey, label: "Payer" },
+                    { key: "amount" as TxSortKey, label: "Amount" },
+                  ] as const
+                ).map((col) => {
+                  const active = txSortBy === col.key;
+                  return (
+                    <th
+                      key={col.key}
+                      className="py-4 px-6 font-medium whitespace-nowrap text-xs md:text-sm"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleSort(col.key)}
+                        className={`inline-flex items-center gap-1.5 hover:text-gray-200 transition ${
+                          active ? "text-gray-100 font-semibold" : "text-gray-400"
+                        }`}
+                        aria-label={`Sort by ${col.label}`}
+                      >
+                        <span>{col.label}</span>
+                        {active ? (
+                          txSortDir === "asc" ? (
+                            <ArrowUp className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                          )
+                        ) : (
+                          <span className="inline-flex flex-col leading-none opacity-40">
+                            <ArrowUp className="w-2.5 h-2.5" />
+                            <ArrowDown className="w-2.5 h-2.5 -mt-0.5" />
+                          </span>
+                        )}
+                      </button>
+                    </th>
+                  );
+                })}
+                <th className="py-4 px-6 font-medium text-xs md:text-sm">Tenant</th>
+                <th className="py-4 px-6 font-medium text-xs md:text-sm">Applied to</th>
+                <th className="py-4 px-6 font-medium text-xs md:text-sm">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reconciledQuery.isLoading ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-gray-400">
+                    Loading reconciled transactions…
+                  </td>
+                </tr>
+              ) : reconciledDocs.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-gray-400">
+                    {searchQuery
+                      ? `No reconciled transactions match “${searchQuery}”.`
+                      : "No reconciled bank payments yet."}
+                  </td>
+                </tr>
+              ) : (
+                reconciledDocs.map((row: any, i: number) => {
+                  const tx = row.transaction || {};
+                  const tenant = row.tenant;
+                  const months = formatAppliedMonths(row.appliedMonths);
+                  const txId = String(tx.transactionId || tx._id || i);
+                  return (
+                    <tr
+                      key={txId}
+                      className="border-t border-gray-800/60 hover:bg-white/[0.02] transition"
+                    >
+                      <td className="py-4 px-6 text-gray-300 text-sm">
+                        {tx.date ? formatDate(tx.date) : "—"}
+                      </td>
+                      <td className="py-4 px-6 text-gray-200 font-medium text-sm">
+                        <div>{tx.payerName || "—"}</div>
+                        {(tx.description || tx.reference) && (
+                          <div className="text-xs text-gray-500 mt-0.5 truncate max-w-sm">
+                            {tx.description || tx.reference}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-emerald-400 font-semibold text-sm tabular-nums">
+                        {typeof tx.amount === "number" ? `£${tx.amount}` : String(tx.amount ?? "—")}
+                      </td>
+                      <td className="py-4 px-6 text-gray-300 text-sm">
+                        <span className="font-medium text-white">
+                          {tenant?.tenantName || "—"}
+                        </span>
+                        {(tenant?.address || tenant?.property) && (
+                          <span className="block text-xs text-gray-500 mt-0.5">
+                            {[tenant.address || tenant.property, tenant.room]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-sm text-gray-400">
+                        {months || "—"}
+                      </td>
+                      <td className="py-4 px-6 text-sm">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-full border bg-sky-500/10 text-sky-300 border-sky-500/20">
+                          <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                          Reconciled
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         ) : (
           <table className="min-w-full text-sm border-collapse">
             <thead>
@@ -1529,7 +1762,7 @@ export default function TransactionsPage() {
                   <td colSpan={4} className="py-8 text-center text-gray-400">
                     {searchQuery
                       ? `No unreconciled transactions match “${searchQuery}”.`
-                      : "No unreconciled transactions. Reconciled payments are on each tenant’s history."}
+                      : "No unreconciled transactions. Check the Reconciled tab for applied payments."}
                   </td>
                 </tr>
               ) : (
@@ -1589,6 +1822,42 @@ export default function TransactionsPage() {
                 type="button"
                 onClick={() => setDepositPage((prev) => Math.min(depositTotalPages, prev + 1))}
                 disabled={depositPage >= depositTotalPages || classifiedQuery.isFetching}
+                className="inline-flex items-center gap-1.5 rounded-full border border-gray-800 px-4 py-2 text-xs sm:text-sm text-gray-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )
+      ) : txListTab === "reconciled" ? (
+        reconciledTotal > 0 && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-2">
+            <p className="text-xs sm:text-sm text-gray-400">
+              Showing {reconciledStart} to {reconciledEnd} of {reconciledTotal} reconciled
+              transaction{reconciledTotal === 1 ? "" : "s"}
+              {reconciledQuery.isFetching && !reconciledQuery.isLoading ? " · Updating…" : ""}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setReconciledPage((prev) => Math.max(1, prev - 1))}
+                disabled={reconciledPage <= 1 || reconciledQuery.isFetching}
+                className="inline-flex items-center gap-1.5 rounded-full border border-gray-800 px-4 py-2 text-xs sm:text-sm text-gray-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </button>
+              <span className="text-xs sm:text-sm text-gray-400 px-1">
+                Page <span className="text-white font-medium">{reconciledPage}</span> of{" "}
+                {reconciledTotalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setReconciledPage((prev) => Math.min(reconciledTotalPages, prev + 1))
+                }
+                disabled={reconciledPage >= reconciledTotalPages || reconciledQuery.isFetching}
                 className="inline-flex items-center gap-1.5 rounded-full border border-gray-800 px-4 py-2 text-xs sm:text-sm text-gray-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next
