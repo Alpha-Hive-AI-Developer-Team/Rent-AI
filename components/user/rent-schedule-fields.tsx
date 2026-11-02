@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus, X } from "lucide-react";
+import { parsePositiveMoney, sanitizeMoneyInput } from "@/lib/utils";
 
 export type RentAdjustmentRow = {
   id: string;
@@ -27,6 +28,8 @@ function formatMonthLabel(ym: string) {
 }
 
 function parseAmount(value: string | number | null | undefined) {
+  const money = parsePositiveMoney(value, { allowZero: true });
+  if (money != null) return money;
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
@@ -170,7 +173,7 @@ type Props = {
 };
 
 function sanitizeRent(value: string) {
-  return value.replace(/[^0-9.]/g, "");
+  return sanitizeMoneyInput(value);
 }
 
 function newId() {

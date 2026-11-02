@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { cn, dmyToIso, isoToDmy } from "@/lib/utils";
+import { cn, dmyToIso, isValidIsoDate, isoToDmy } from "@/lib/utils";
 
 type DateInputProps = {
   value?: string;
@@ -13,6 +13,11 @@ type DateInputProps = {
   placeholder?: string;
   required?: boolean;
 };
+
+/** Strip letters/symbols; keep digits and date separators only. */
+function sanitizeDateTyping(raw: string): string {
+  return raw.replace(/[^\d/\-.]/g, "").slice(0, 10);
+}
 
 /**
  * Date field that always displays DD/MM/YYYY (UK), while emitting ISO yyyy-mm-dd
@@ -45,7 +50,7 @@ export default function DateInput({
       return;
     }
     const iso = dmyToIso(trimmed);
-    if (!iso) {
+    if (!iso || !isValidIsoDate(iso)) {
       // Revert invalid typing to the last known value
       setText(isoToDmy(value));
       return;
@@ -54,8 +59,19 @@ export default function DateInput({
     onChange(iso);
   };
 
+  // Width/max-width must live on the relative wrapper so the calendar icon
+  // stays inside the field when callers pass max-w-* on className.
+  const widthClass = className
+    ?.split(/\s+/)
+    .filter((c) => /^(w-|max-w-|min-w-|flex-|basis-|grow|shrink)/.test(c))
+    .join(" ");
+  const inputClass = className
+    ?.split(/\s+/)
+    .filter((c) => c && !/^(w-|max-w-|min-w-|flex-|basis-|grow|shrink)/.test(c))
+    .join(" ");
+
   return (
-    <div className="relative">
+    <div className={cn("relative w-full", widthClass)}>
       <input
         id={inputId}
         name={name}
@@ -66,7 +82,7 @@ export default function DateInput({
         disabled={disabled}
         required={required}
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => setText(sanitizeDateTyping(e.target.value))}
         onBlur={() => commitText(text)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
@@ -74,7 +90,7 @@ export default function DateInput({
             commitText(text);
           }
         }}
-        className={cn(className, "pr-10")}
+        className={cn(inputClass, "w-full pr-10")}
       />
       <input
         ref={pickerRef}
@@ -82,13 +98,16 @@ export default function DateInput({
         tabIndex={-1}
         aria-hidden
         disabled={disabled}
-        value={value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : ""}
+        min="1970-01-01"
+        max="2100-12-31"
+        value={value && isValidIsoDate(value) ? value : ""}
         onChange={(e) => {
           const iso = e.target.value || "";
+          if (iso && !isValidIsoDate(iso)) return;
           setText(isoToDmy(iso));
           onChange(iso);
         }}
-        className="absolute inset-y-0 right-0 w-10 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+        className="absolute inset-y-0 right-0 z-10 w-10 cursor-pointer opacity-0 disabled:cursor-not-allowed"
       />
       <button
         type="button"

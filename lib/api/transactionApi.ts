@@ -66,6 +66,28 @@ export async function getClassifiedTransactions(
   return res.data;
 }
 
+/** Already-reconciled rent bank txs with linked tenant details. */
+export async function getReconciledTransactions(
+  params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    sortBy?: "date" | "amount" | "payer";
+    sortDir?: "asc" | "desc";
+  } = {}
+) {
+  const res = await apiClient.get(`/transactions/reconciled`, {
+    params: {
+      page: params.page ?? 1,
+      limit: params.limit ?? 20,
+      ...(params.search?.trim() ? { search: params.search.trim() } : {}),
+      ...(params.sortBy ? { sortBy: params.sortBy } : {}),
+      ...(params.sortDir ? { sortDir: params.sortDir } : {}),
+    },
+  });
+  return res.data;
+}
+
 /** Unreconciled bank txs scored for a tenant (matched first, then others). Supports search + pagination. */
 export async function getTransactionsMatchingTenant(
   tenantId: string,

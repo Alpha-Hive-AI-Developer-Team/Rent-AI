@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	getUnreconciledTransactions,
+	getReconciledTransactions,
 	getConnectedBank,
 	getConnectedAccounts,
 	autoMatchUnreconciledTransactions,
@@ -76,6 +77,7 @@ export function useReconcileTransaction() {
 			markRentPaidWithTransaction(tenantId, transactionId),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["unreconciledTransactions"] });
+			qc.invalidateQueries({ queryKey: ["reconciledTransactions"] });
 			qc.invalidateQueries({ queryKey: ["tenants", userId] });
 			qc.invalidateQueries({ queryKey: ["todaySummary", userId] });
 		},
@@ -92,6 +94,7 @@ export function useAutoMatchTransactions() {
 		mutationFn: () => autoMatchUnreconciledTransactions(),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["unreconciledTransactions"] });
+			qc.invalidateQueries({ queryKey: ["reconciledTransactions"] });
 			qc.invalidateQueries({ queryKey: ["tenants", userId] });
 			qc.invalidateQueries({ queryKey: ["todaySummary", userId] });
 		},
@@ -112,6 +115,7 @@ export function useClassifyTransaction() {
 		}) => classifyTransaction(payload),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["unreconciledTransactions"] });
+			qc.invalidateQueries({ queryKey: ["reconciledTransactions"] });
 			qc.invalidateQueries({ queryKey: ["classifiedTransactions"] });
 			qc.invalidateQueries({ queryKey: ["tenants", userId] });
 			qc.invalidateQueries({ queryKey: ["todaySummary", userId] });
@@ -131,6 +135,40 @@ export function useClassifiedTransactions(
 	return useQuery<any, Error, any>({
 		queryKey: ["classifiedTransactions", classification, page, limit],
 		queryFn: () => getClassifiedTransactions({ classification, page, limit }),
+		enabled,
+		staleTime: 30_000,
+		placeholderData: (prev: any) => prev,
+	});
+}
+
+/** Already-reconciled rent bank txs with linked tenant. */
+export function useReconciledTransactions(
+	params: {
+		page?: number;
+		limit?: number;
+		search?: string;
+		sortBy?: "date" | "amount" | "payer";
+		sortDir?: "asc" | "desc";
+		enabled?: boolean;
+	} = {}
+) {
+	const page = params.page ?? 1;
+	const limit = params.limit ?? 20;
+	const search = params.search?.trim() || "";
+	const sortBy = params.sortBy ?? "date";
+	const sortDir = params.sortDir ?? "desc";
+	const enabled = params.enabled !== false;
+
+	return useQuery<any, Error, any>({
+		queryKey: ["reconciledTransactions", page, limit, search, sortBy, sortDir],
+		queryFn: () =>
+			getReconciledTransactions({
+				page,
+				limit,
+				search: search || undefined,
+				sortBy,
+				sortDir,
+			}),
 		enabled,
 		staleTime: 30_000,
 		placeholderData: (prev: any) => prev,

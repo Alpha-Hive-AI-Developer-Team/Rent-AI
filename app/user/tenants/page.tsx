@@ -39,7 +39,13 @@ import { autoMatchTransactionsForTenant, getTransactionsMatchingTenant } from "@
 import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthUser } from "@/redux/useAuthUser";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import {
+  formatDate,
+  formatDateTime,
+  isValidIsoDate,
+  parsePositiveMoney,
+  sanitizeMoneyInput,
+} from "@/lib/utils";
 import DateInput from "@/components/ui/date-input";
 import {
   computeDueDayTransitionPreview,
@@ -325,8 +331,19 @@ export default function TenantsPage() {
 
   const getStatusColorKey = (tenant: any) => getEffectiveStatus(tenant).key;
 
+  /** Street address + postcode (avoids duplicating if postcode is already in the address). */
+  const formatAddressLine = (tenant: any) => {
+    const address = String(tenant?.property || tenant?.propertyName || "").trim();
+    const postcode = String(tenant?.postcode || "").trim();
+    if (!address && !postcode) return "";
+    if (!address) return postcode;
+    if (!postcode) return address;
+    if (address.toLowerCase().includes(postcode.toLowerCase())) return address;
+    return `${address}, ${postcode}`;
+  };
+
   const getPropertyDisplay = (tenant: any) => {
-    const address = tenant?.property || "";
+    const address = formatAddressLine(tenant);
     const room = tenant?.room ? String(tenant.room).trim() : "";
     if (address && room) return `${address} · ${room}`;
     return address || "—";
@@ -336,6 +353,21 @@ export default function TenantsPage() {
   const getAddressKey = (tenant: any) => {
     const raw = String(tenant?.property || tenant?.propertyName || "").trim();
     return raw || "Unknown address";
+  };
+
+  const getAddressPostcode = (tenants: any[]) => {
+    for (const t of tenants || []) {
+      const pc = String(t?.postcode || "").trim();
+      if (pc) return pc;
+    }
+    return "";
+  };
+
+  const formatGroupAddress = (address: string, tenants: any[]) => {
+    const postcode = getAddressPostcode(tenants);
+    if (!postcode) return address;
+    if (address.toLowerCase().includes(postcode.toLowerCase())) return address;
+    return `${address}, ${postcode}`;
   };
 
   type TenantSortKey = "name" | "property" | "rent" | "status" | "lastPayment";
@@ -364,6 +396,7 @@ export default function TenantsPage() {
   const [editRoom, setEditRoom] = useState("");
   const [editRoomCustomLabel, setEditRoomCustomLabel] = useState(false);
   const [editMoveIn, setEditMoveIn] = useState("");
+  const [editBankReconcileFrom, setEditBankReconcileFrom] = useState("");
   const [editDueOn, setEditDueOn] = useState(1);
   const [editDueOnAdjustments, setEditDueOnAdjustments] = useState<DueOnAdjustmentRow[]>([]);
   const [editHasDeposit, setEditHasDeposit] = useState(false);
@@ -595,26 +628,42 @@ export default function TenantsPage() {
     const groups = Array.from(byAddress.entries())
       .map(([address, tenants]) => {
         const sortedTenants = sortTenants(tenants);
-        const addressMatch = !q || address.toLowerCase().includes(q);
+        const displayAddress = formatGroupAddress(address, tenants);
+        const postcode = getAddressPostcode(tenants);
+        const addressMatch =
+          !q ||
+          address.toLowerCase().includes(q) ||
+          displayAddress.toLowerCase().includes(q) ||
+          postcode.toLowerCase().includes(q);
         const matchingTenants = q
           ? sortedTenants.filter(
               (t) =>
                 getTenantDisplayName(t).toLowerCase().includes(q) ||
                 (t.room || "").toLowerCase().includes(q) ||
-                getPropertyDisplay(t).toLowerCase().includes(q)
+                getPropertyDisplay(t).toLowerCase().includes(q) ||
+                String(t.postcode || "")
+                  .toLowerCase()
+                  .includes(q)
             )
           : sortedTenants;
         return {
           address,
+          displayAddress,
           tenants: addressMatch ? sortedTenants : matchingTenants,
           totalCount: tenants.length,
         };
       })
       .filter((g) => {
         if (!q) return true;
-        return g.address.toLowerCase().includes(q) || g.tenants.length > 0;
+        return (
+          g.address.toLowerCase().includes(q) ||
+          g.displayAddress.toLowerCase().includes(q) ||
+          g.tenants.length > 0
+        );
       })
-      .sort((a, b) => a.address.localeCompare(b.address, undefined, { sensitivity: "base" }));
+      .sort((a, b) =>
+        a.displayAddress.localeCompare(b.displayAddress, undefined, { sensitivity: "base" })
+      );
 
     return groups;
   }, [activeTenants, search, sortTenants]);
@@ -793,6 +842,11 @@ export default function TenantsPage() {
         ? new Date(selectedTenant.moveInDate).toISOString().slice(0, 10)
         : ""
     );
+    setEditBankReconcileFrom(
+      selectedTenant.bankReconcileFrom
+        ? new Date(selectedTenant.bankReconcileFrom).toISOString().slice(0, 10)
+        : ""
+    );
     const existingDeposit = Number(selectedTenant.depositAmount) || 0;
     setEditHasDeposit(existingDeposit > 0);
     setEditDeposit(existingDeposit > 0 ? String(existingDeposit) : "");
@@ -856,23 +910,38 @@ export default function TenantsPage() {
       toast.error("Enter a valid tenant name (letters only).");
       return;
     }
-    const rentNum = Number(assignRent);
-    if (!Number.isFinite(rentNum) || rentNum <= 0) {
-      toast.error("Enter a positive monthly rent.");
+    const rentNum = parsePositiveMoney(assignRent);
+    if (rentNum == null) {
+      toast.error("Enter a valid monthly rent (positive amount, max 2 decimals).");
       return;
     }
-    if (!assignMoveIn) {
-      toast.error("Select a move-in date.");
+    if (!assignMoveIn || !isValidIsoDate(assignMoveIn)) {
+      toast.error("Enter a valid move-in date (dd/mm/yyyy).");
       return;
     }
-    if (assignHasDeposit) {
-      const dep = Number(assignDeposit);
-      if (!Number.isFinite(dep) || dep <= 0) {
-        toast.error("Enter the deposit amount, or uncheck Record deposit.");
+    const dueDay = Number(assignDueOn);
+    if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) {
+      toast.error("Due day must be a whole number between 1 and 31.");
+      return;
+    }
+    for (const adj of assignRentAdjustments) {
+      if (!adj.startMonth || !/^\d{4}-\d{2}$/.test(adj.startMonth)) {
+        toast.error("Each rent change needs a valid start month.");
         return;
       }
-      if (!assignDepositPaid) {
-        toast.error("Enter the date the deposit was paid.");
+      if (parsePositiveMoney(adj.amount, { allowZero: true }) == null) {
+        toast.error("Each rent change needs a valid amount (0 or more, max 2 decimals).");
+        return;
+      }
+    }
+    if (assignHasDeposit) {
+      const dep = parsePositiveMoney(assignDeposit);
+      if (dep == null) {
+        toast.error("Enter a valid deposit amount, or uncheck Record deposit.");
+        return;
+      }
+      if (!assignDepositPaid || !isValidIsoDate(assignDepositPaid)) {
+        toast.error("Enter a valid deposit paid date (dd/mm/yyyy).");
         return;
       }
     }
@@ -883,11 +952,13 @@ export default function TenantsPage() {
         payload: {
           tenantName: [name],
           rent: rentNum,
-          dueOn: assignDueOn,
+          dueOn: dueDay,
           moveInDate: assignMoveIn,
-          depositAmount: assignHasDeposit && Number(assignDeposit) > 0 ? Number(assignDeposit) : 0,
+          depositAmount: assignHasDeposit ? parsePositiveMoney(assignDeposit) || 0 : 0,
           depositPaidDate:
-            assignHasDeposit && Number(assignDeposit) > 0 ? assignDepositPaid || null : null,
+            assignHasDeposit && parsePositiveMoney(assignDeposit) != null
+              ? assignDepositPaid || null
+              : null,
           rentSchedule: buildRentSchedulePayload(assignRentAdjustments),
           dueOnSchedule: buildDueOnSchedulePayload(assignDueOnAdjustments),
         },
@@ -915,6 +986,7 @@ export default function TenantsPage() {
     setEditRoom("");
     setEditRoomCustomLabel(false);
     setEditMoveIn("");
+    setEditBankReconcileFrom("");
     setEditDueOn(1);
     setEditHasDeposit(false);
     setEditDeposit("");
@@ -942,6 +1014,7 @@ export default function TenantsPage() {
     e.preventDefault();
     if (!selectedTenant) return;
     const isVacant = selectedTenant.tenancyStatus === "vacant";
+    const weekly = selectedTenant.rentFrequency === "weekly";
 
     if (!isVacant) {
       if (finalEditNames.length === 0) {
@@ -956,46 +1029,89 @@ export default function TenantsPage() {
 
     if (showRoomEditField(selectedTenant)) {
       const label = editRoom.trim();
-      if (!label) {
+      if (!label || label === "Room") {
         toast.error("Room number is required.");
         return;
       }
-      if (!editRoomCustomLabel && !/^room\s*\d+$/i.test(label)) {
-        toast.error("Enter a room number, or enable Custom label.");
+      if (!editRoomCustomLabel) {
+        const n = Number(String(label).match(/(\d+)/)?.[1] || 0);
+        if (!Number.isInteger(n) || n < 1 || n > 999) {
+          toast.error("Enter a room number between 1 and 999, or enable Custom label.");
+          return;
+        }
+      } else if (label.length > 80) {
+        toast.error("Custom room label is too long.");
         return;
       }
     }
 
-    if (!isVacant && editHasDeposit) {
-      const dep = Number(editDeposit);
-      if (!Number.isFinite(dep) || dep <= 0) {
-        toast.error("Enter the deposit amount, or uncheck Record deposit.");
+    if (!isVacant && canEditScheduleFields(selectedTenant)) {
+      if (!editMoveIn || !isValidIsoDate(editMoveIn)) {
+        toast.error("Enter a valid move-in date (dd/mm/yyyy).");
         return;
       }
-      if (!editDepositPaid) {
-        toast.error("Enter the date the deposit was paid.");
+      const dueDay = Number(editDueOn);
+      if (weekly) {
+        if (!Number.isInteger(dueDay) || dueDay < 0 || dueDay > 6) {
+          toast.error("Pick a valid rent due weekday.");
+          return;
+        }
+      } else if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) {
+        toast.error("Rent due day must be a whole number between 1 and 31.");
+        return;
+      }
+      for (const adj of editDueOnAdjustments) {
+        if (!adj.startMonth || !/^\d{4}-\d{2}$/.test(adj.startMonth)) {
+          toast.error("Each due-day change needs a valid start month.");
+          return;
+        }
+        const d = Number(adj.dueOn);
+        if (weekly) {
+          if (!Number.isInteger(d) || d < 0 || d > 6) {
+            toast.error("Each due-day change needs a valid weekday.");
+            return;
+          }
+        } else if (!Number.isInteger(d) || d < 1 || d > 31) {
+          toast.error("Each due-day change needs a day between 1 and 31.");
+          return;
+        }
+      }
+    }
+
+    if (!isVacant && editBankReconcileFrom && !isValidIsoDate(editBankReconcileFrom)) {
+      toast.error("Ignore bank payments before must be a valid date (dd/mm/yyyy), or leave blank.");
+      return;
+    }
+
+    if (!isVacant && editHasDeposit) {
+      const dep = parsePositiveMoney(editDeposit);
+      if (dep == null) {
+        toast.error("Enter a valid deposit amount, or uncheck Record deposit.");
+        return;
+      }
+      if (!editDepositPaid || !isValidIsoDate(editDepositPaid)) {
+        toast.error("Enter a valid deposit paid date (dd/mm/yyyy).");
         return;
       }
     }
 
     if (!isVacant) {
-      const rentNum = Number(editRent);
-      if (!Number.isFinite(rentNum) || rentNum <= 0) {
+      const rentNum = parsePositiveMoney(editRent);
+      if (rentNum == null) {
         toast.error(
-          selectedTenant.rentFrequency === "weekly"
-            ? "Enter a positive weekly rent."
-            : "Enter a positive monthly rent."
+          weekly
+            ? "Enter a valid weekly rent (positive amount, max 2 decimals)."
+            : "Enter a valid monthly rent (positive amount, max 2 decimals)."
         );
         return;
       }
       for (const adj of editRentAdjustments) {
-        if (!adj.startMonth) {
-          toast.error("Each rent change needs a start month.");
+        if (!adj.startMonth || !/^\d{4}-\d{2}$/.test(adj.startMonth)) {
+          toast.error("Each rent change needs a valid start month.");
           return;
         }
-        const amt = Number(adj.amount);
-        if (!Number.isFinite(amt) || amt < 0) {
-          toast.error("Each rent change needs a valid amount.");
+        if (parsePositiveMoney(adj.amount, { allowZero: true }) == null) {
+          toast.error("Each rent change needs a valid amount (0 or more, max 2 decimals).");
           return;
         }
       }
@@ -1013,6 +1129,7 @@ export default function TenantsPage() {
       tenantName?: string[];
       room?: string;
       moveInDate?: string | null;
+      bankReconcileFrom?: string | null;
       dueOn?: number;
       dueOnSchedule?: Array<{ effectiveFrom: string; dueOn: number }>;
       depositAmount?: number;
@@ -1054,6 +1171,15 @@ export default function TenantsPage() {
       if (JSON.stringify(nextDueOnSched) !== JSON.stringify(prevDueOnSched)) {
         payload.dueOnSchedule = nextDueOnSched;
         if (payload.dueOn === undefined) payload.dueOn = editDueOn;
+      }
+    }
+    if (!isVacant) {
+      const prevBankFrom = selectedTenant.bankReconcileFrom
+        ? new Date(selectedTenant.bankReconcileFrom).toISOString().slice(0, 10)
+        : "";
+      const nextBankFrom = editBankReconcileFrom || "";
+      if (nextBankFrom !== prevBankFrom) {
+        payload.bankReconcileFrom = editBankReconcileFrom || null;
       }
     }
     if (!isVacant) {
@@ -1749,7 +1875,9 @@ export default function TenantsPage() {
     const names = Array.isArray(c?.tenantName)
       ? c.tenantName.filter(Boolean).join(", ")
       : c?.tenantName || "Tenant";
-    const place = [c?.property, c?.room ? `Room ${c.room}` : null].filter(Boolean).join(" · ");
+    const place = [formatAddressLine(c), c?.room ? String(c.room) : null]
+      .filter(Boolean)
+      .join(" · ");
     return place ? `${names} (${place})` : String(names);
   }, []);
 
@@ -2145,7 +2273,9 @@ export default function TenantsPage() {
                           : "border-gray-800/80 bg-[#161616] text-gray-300 hover:border-gray-700 hover:text-white"
                       }`}
                     >
-                      <div className="text-xs sm:text-sm font-medium text-gray-100 truncate">{group.address}</div>
+                      <div className="text-xs sm:text-sm font-medium text-gray-100 truncate">
+                        {group.displayAddress}
+                      </div>
                       <div className="mt-1 text-xs text-gray-400">
                         {count} tenant{count === 1 ? "" : "s"}
                       </div>
@@ -2159,7 +2289,9 @@ export default function TenantsPage() {
           <div className="min-h-0 overflow-y-auto px-4 py-4 sm:px-6 md:col-span-8 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="mb-4 pb-2 border-b border-gray-800/60">
               <h4 className="text-base font-semibold text-gray-100 truncate">
-                {selectedAddressGroup?.address || "Tenants"}
+                {selectedAddressGroup?.displayAddress ||
+                  selectedAddressGroup?.address ||
+                  "Tenants"}
               </h4>
               <p className="text-xs text-gray-400 mt-0.5">
                 Click a tenant row to open their payment ledger and details
@@ -2352,9 +2484,9 @@ export default function TenantsPage() {
                     <div className="font-semibold text-white text-sm truncate">
                       {getTenantDisplayName(tenant)}
                     </div>
-                    {tenant.property ? (
+                    {formatAddressLine(tenant) ? (
                       <div className="text-xs text-gray-400 truncate mt-0.5">
-                        {tenant.property}
+                        {formatAddressLine(tenant)}
                       </div>
                     ) : null}
                   </div>
@@ -3201,6 +3333,12 @@ export default function TenantsPage() {
                 <p className="text-sm text-gray-400">
                   {getPropertyDisplay(selectedTenant)} · matched first, then other unreconciled
                 </p>
+                {selectedTenant.bankReconcileFrom ? (
+                  <p className="mt-1 text-xs text-sky-400/90">
+                    Ignoring bank payments before {formatDate(selectedTenant.bankReconcileFrom)} —
+                    those stay available for other tenancies.
+                  </p>
+                ) : null}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -4416,8 +4554,9 @@ export default function TenantsPage() {
                 <label className="mb-1 block text-sm text-gray-200">Monthly rent (£)</label>
                 <input
                   value={assignRent}
-                  onChange={(e) => setAssignRent(e.target.value.replace(/[^0-9.]/g, ""))}
+                  onChange={(e) => setAssignRent(sanitizeMoneyInput(e.target.value))}
                   placeholder="e.g. 650"
+                  inputMode="decimal"
                   className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
                 />
               </div>
@@ -4513,8 +4652,9 @@ export default function TenantsPage() {
                     <label className="mb-1 block text-sm text-gray-200">Deposit amount (£)</label>
                     <input
                       value={assignDeposit}
-                      onChange={(e) => setAssignDeposit(e.target.value.replace(/[^0-9.]/g, ""))}
+                      onChange={(e) => setAssignDeposit(sanitizeMoneyInput(e.target.value))}
                       placeholder="e.g. 780"
+                      inputMode="decimal"
                       className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
                     />
                   </div>
@@ -4633,7 +4773,7 @@ export default function TenantsPage() {
                         pattern="[0-9]*"
                         value={String(editRoom).match(/(\d+)/)?.[1] || ""}
                         onChange={(e) => {
-                          const digits = e.target.value.replace(/\D/g, "");
+                          const digits = e.target.value.replace(/\D/g, "").slice(0, 3);
                           setEditRoom(digits ? `Room ${Number(digits)}` : "Room ");
                         }}
                         className="w-24 rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
@@ -4662,7 +4802,8 @@ export default function TenantsPage() {
               )}
 
               {selectedTenant.tenancyStatus !== "vacant" && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
                   <div>
                     <label className="mb-1.5 block text-base text-gray-200">Move-in date</label>
                     <DateInput
@@ -4682,6 +4823,9 @@ export default function TenantsPage() {
                       disabled={!canEditScheduleFields(selectedTenant)}
                       className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
                     />
+                    <p className="mt-1.5 text-xs leading-snug text-gray-500">
+                      When they moved into this property (rent schedule start).
+                    </p>
                   </div>
                   <div>
                     <label className="mb-1.5 block text-base text-gray-200">
@@ -4727,9 +4871,31 @@ export default function TenantsPage() {
                         })()}
                       </select>
                     )}
+                    <p className="mt-1.5 text-xs leading-snug text-gray-500">
+                      Day rent is due each{" "}
+                      {selectedTenant.rentFrequency === "weekly" ? "week" : "month"}.
+                    </p>
                   </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-base text-gray-200">
+                      Ignore bank payments before
+                      <span className="ml-1.5 text-sm font-normal text-gray-500">optional</span>
+                    </label>
+                    <DateInput
+                      value={editBankReconcileFrom}
+                      onChange={setEditBankReconcileFrom}
+                      className="w-full max-w-sm rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700"
+                    />
+                    <p className="mt-1.5 max-w-xl text-xs leading-snug text-gray-500">
+                      Bank matching start for this tenancy. Only payments on/after this date match
+                      here; earlier same-payer payments stay free for other tenancies.
+                    </p>
+                  </div>
+
                   {!canEditScheduleFields(selectedTenant) && (
-                    <p className="text-sm text-amber-400 sm:col-span-2">
+                    <p className="text-sm text-amber-400">
                       Move-in and due day schedule are locked after payments. Current due day:{" "}
                       {selectedTenant.rentFrequency === "weekly"
                         ? weekdayLabel(getCurrentDueOnFromTenant(selectedTenant))
@@ -4824,8 +4990,9 @@ export default function TenantsPage() {
                         <label className="mb-1.5 block text-base text-gray-200">Deposit (£)</label>
                         <input
                           value={editDeposit}
-                          onChange={(e) => setEditDeposit(e.target.value.replace(/[^0-9.]/g, ""))}
+                          onChange={(e) => setEditDeposit(sanitizeMoneyInput(e.target.value))}
                           placeholder="200"
+                          inputMode="decimal"
                           className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2.5 text-base text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-700"
                         />
                       </div>
@@ -4892,6 +5059,15 @@ export default function TenantsPage() {
                 <div>
                   <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Room</p>
                   <p className="text-sm text-gray-200">{editRoom.trim()}</p>
+                </div>
+              )}
+              {selectedTenant.tenancyStatus !== "vacant" && (
+                <div>
+                  <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">
+                    Ignore bank payments before
+                  </p>
+                  <p className="text-sm text-gray-200">{editBankReconcileFrom || "—"}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">Bank matching start for this tenancy</p>
                 </div>
               )}
               {canEditScheduleFields(selectedTenant) && (

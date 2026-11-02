@@ -48,6 +48,7 @@ export async function createTenant(payload: {
   dueOn?: number;
   rentFrequency?: "monthly" | "weekly";
   moveInDate?: string;
+  bankReconcileFrom?: string | null;
   room?: string;
   propertyName?: string;
   postcode?: string;
@@ -111,6 +112,7 @@ export async function updateTenant(
     tenantName?: string | string[];
     room?: string;
     moveInDate?: string | null;
+    bankReconcileFrom?: string | null;
     dueOn?: number;
     rentFrequency?: "monthly" | "weekly";
     depositAmount?: number | string;
@@ -136,6 +138,7 @@ export async function assignTenantToRoom(
     dueOn?: number;
     rentFrequency?: "monthly" | "weekly";
     moveInDate?: string;
+    bankReconcileFrom?: string | null;
     depositAmount?: number | string;
     depositPaidDate?: string | null;
     firstPaymentAmount?: number | string;
