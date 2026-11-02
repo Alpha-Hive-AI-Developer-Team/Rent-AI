@@ -10,6 +10,7 @@ import { getTenantById } from "@/lib/api/tenantsApi";
 import { formatDate } from "@/lib/utils";
 import toast from "react-hot-toast";
 import TenantRentHistoryTable from "@/components/tenants/TenantRentHistoryTable";
+import { useIsImpersonating } from "@/hooks/useImpersonation";
 // Table is implemented inline to avoid dependency on shared DataTable component
 
 interface Transaction {
@@ -47,6 +48,7 @@ interface TenantTxn {
 type TxSortKey = "date" | "amount" | "payer" | "status";
 
 export default function TransactionsPage() {
+  const impersonating = useIsImpersonating();
   const [search, setSearch] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -1191,12 +1193,27 @@ export default function TransactionsPage() {
         <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
           <button
             type="button"
-            onClick={startPlaidConnect}
-            disabled={connecting}
+            onClick={() => {
+              if (impersonating) {
+                toast.error("Bank linking is locked while acting as this landlord");
+                return;
+              }
+              startPlaidConnect();
+            }}
+            disabled={connecting || impersonating}
+            title={impersonating ? "Locked while acting as landlord" : undefined}
             className="inline-flex items-center gap-2 bg-[#027A48] hover:bg-[#027A48]/90 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition shadow-md shadow-emerald-950/40 disabled:opacity-50"
           >
             <Plus className="w-4 h-4" />
-            <span>{connecting ? "Connecting…" : connectedInstitution ? "Reconnect bank" : "Connect bank"}</span>
+            <span>
+              {impersonating
+                ? "Bank link locked"
+                : connecting
+                  ? "Connecting…"
+                  : connectedInstitution
+                    ? "Reconnect bank"
+                    : "Connect bank"}
+            </span>
           </button>
 
           <button
