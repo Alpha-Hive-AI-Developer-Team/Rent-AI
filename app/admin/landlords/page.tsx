@@ -29,10 +29,15 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  LogIn,
+  History,
 } from "lucide-react";
 import CustomTable from "@/components/admin/custom-table";
 import TenantRentHistoryTable from "@/components/tenants/TenantRentHistoryTable";
 import { formatDate } from "@/lib/utils";
+import { useAuthUser } from "@/redux/useAuthUser";
+import { useStartImpersonation } from "@/hooks/useImpersonation";
+import ImpersonationActivityModal from "@/components/admin/ImpersonationActivityModal";
 
 function getInitials(name?: string): string {
   if (!name || !name.trim()) return "LL";
@@ -42,6 +47,10 @@ function getInitials(name?: string): string {
 }
 
 export default function LandlordManagement() {
+  const authUser = useAuthUser();
+  const isSuperAdmin = String(authUser?.role || "") === "superAdmin";
+  const startImpersonation = useStartImpersonation();
+
   const [planFilter, setPlanFilter] = useState("All Plan");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [search, setSearch] = useState("");
@@ -60,6 +69,21 @@ export default function LandlordManagement() {
     name: string;
     nextStatus: "active" | "disable";
   } | null>(null);
+  const [loginAsConfirm, setLoginAsConfirm] = useState<{
+    id: string;
+    name: string;
+    email?: string;
+  } | null>(null);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityLandlord, setActivityLandlord] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
+  const openActivity = (landlord?: { id: string; name: string } | null) => {
+    setActivityLandlord(landlord || null);
+    setActivityOpen(true);
+  };
 
   const confirmChangeStatus = () => {
     if (!statusConfirm) return;
@@ -235,8 +259,37 @@ export default function LandlordManagement() {
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="bg-[#141414] border border-gray-800 text-gray-200 rounded-xl shadow-xl min-w-[160px] p-1 z-50"
+                className="bg-[#141414] border border-gray-800 text-gray-200 rounded-xl shadow-xl min-w-[180px] p-1 z-50"
               >
+                {isActive && (
+                  <DropdownMenuItem
+                    onClick={() =>
+                      setLoginAsConfirm({
+                        id: String(row.id),
+                        name: row.name || row.email,
+                        email: row.email,
+                      })
+                    }
+                    className="cursor-pointer text-emerald-300 hover:bg-emerald-950/30 rounded-lg text-xs px-3 py-2 flex items-center gap-2"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Log in as</span>
+                  </DropdownMenuItem>
+                )}
+                {isSuperAdmin && (
+                  <DropdownMenuItem
+                    onClick={() =>
+                      openActivity({
+                        id: String(row.id),
+                        name: row.name || row.email,
+                      })
+                    }
+                    className="cursor-pointer text-gray-200 hover:bg-white/5 rounded-lg text-xs px-3 py-2 flex items-center gap-2"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>View activity</span>
+                  </DropdownMenuItem>
+                )}
                 {isActive ? (
                   <DropdownMenuItem
                     onClick={() =>
@@ -361,6 +414,16 @@ export default function LandlordManagement() {
             </p>
           </div>
         </div>
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={() => openActivity(null)}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-gray-700 bg-[#161616] px-3.5 text-xs sm:text-sm font-medium text-gray-200 hover:bg-white/10 hover:text-white transition"
+          >
+            <History className="w-4 h-4 text-emerald-400" />
+            Login-as activity
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -538,6 +601,68 @@ export default function LandlordManagement() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Log in as confirmation */}
+      {loginAsConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md bg-[#111] border border-gray-800 rounded-2xl p-6 text-white shadow-2xl relative">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-[#027A48]/15 border border-[#027A48]/30 text-emerald-400">
+                <LogIn className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold text-white">Log in as landlord</h3>
+                <p className="text-xs text-gray-400">Open their account with support controls</p>
+              </div>
+            </div>
+            <p className="text-xs sm:text-sm text-gray-300 mb-6 leading-relaxed bg-[#161616] p-3.5 rounded-xl border border-gray-800/60">
+              Open <strong className="text-white">{loginAsConfirm.name}</strong>
+              {loginAsConfirm.email ? ` (${loginAsConfirm.email})` : ""}? You can edit tenants, rents, and
+              payments. Bank link, payouts, and subscription changes stay locked.
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setLoginAsConfirm(null)}
+                className="px-4 py-2 rounded-xl border border-gray-800 text-xs sm:text-sm text-gray-300 hover:bg-white/5 hover:text-white transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={startImpersonation.isPending}
+                onClick={() => {
+                  const [firstName, ...rest] = String(loginAsConfirm.name || "").trim().split(/\s+/);
+                  startImpersonation.mutate({
+                    landlordId: loginAsConfirm.id,
+                    landlordHint: {
+                      id: loginAsConfirm.id,
+                      firstName: firstName || loginAsConfirm.name,
+                      lastName: rest.join(" ") || undefined,
+                      email: loginAsConfirm.email,
+                    },
+                  });
+                }}
+                className="px-5 py-2 rounded-xl text-white text-xs sm:text-sm font-medium transition active:scale-95 disabled:opacity-50 bg-[#027A48] hover:bg-[#02653d]"
+              >
+                {startImpersonation.isPending ? "Opening…" : "Log in as"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSuperAdmin && (
+        <ImpersonationActivityModal
+          open={activityOpen}
+          onClose={() => {
+            setActivityOpen(false);
+            setActivityLandlord(null);
+          }}
+          initialLandlordId={activityLandlord?.id || null}
+          initialLandlordName={activityLandlord?.name || null}
+        />
       )}
 
       {/* Landlord details modal */}

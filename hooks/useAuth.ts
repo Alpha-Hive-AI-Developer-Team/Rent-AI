@@ -90,7 +90,19 @@ export function useCustomerLogout() {
   const dispatch = useAppDispatch();
 
   return useMutation({
-    mutationFn: logoutUser,
+    mutationFn: async () => {
+      try {
+        const { getImpersonationSessionId } = await import("@/lib/impersonation");
+        const { endImpersonation } = await import("@/lib/api/impersonationApi");
+        const sessionId = getImpersonationSessionId();
+        if (sessionId) {
+          await endImpersonation(sessionId).catch(() => {});
+        }
+      } catch {
+        // ignore impersonation cleanup errors on logout
+      }
+      return logoutUser();
+    },
     onSuccess: () => {
       // ✅ Dispatch Redux logout action which also clears localStorage
       dispatch(logoutAction());

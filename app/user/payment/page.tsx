@@ -10,8 +10,10 @@ import usePayout from '@/hooks/usePayout';
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog';
 import { toast } from "react-hot-toast";
 import { formatDate } from "@/lib/utils";
+import { useIsImpersonating } from "@/hooks/useImpersonation";
 
 export default function PaymentPage() {
+  const impersonating = useIsImpersonating();
   const {
     startCheckout,
     cancelSubscription,
@@ -53,8 +55,14 @@ export default function PaymentPage() {
     const currentRank = planRank[activePlan] ?? 0;
     const targetRank = planRank[planKey] ?? 0;
     const isCurrent = activePlan === planKey;
-    const disabled = loading || isCurrent || currentRank > targetRank; // disable if loading, current plan, or target is lower than current
-    const label = isCurrent ? "Current plan" : (currentRank > targetRank ? "Select" : "Select");
+    const disabled = loading || impersonating || isCurrent || currentRank > targetRank; // disable if loading, current plan, or target is lower than current
+    const label = isCurrent
+      ? "Current plan"
+      : impersonating
+        ? "View only"
+        : currentRank > targetRank
+          ? "Select"
+          : "Select";
     const highlight = isCurrent;
     return { disabled, label, highlight } as { disabled: boolean; label: string; highlight: boolean };
   };
@@ -195,7 +203,7 @@ export default function PaymentPage() {
   };
 
   const handleSelectPlan = (planKey: string) => {
-    if (planKey === "free") return;
+    if (planKey === "free" || impersonating) return;
     const currentRank = planRank[activePlan] ?? 0;
     const targetRank = planRank[planKey] ?? 0;
     // Mid-cycle upgrade / proration — ask for confirmation (not new Stripe Checkout).
@@ -258,7 +266,13 @@ export default function PaymentPage() {
         {/* Top Header Actions */}
         <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
           {/* Cancel Subscription Action (if active) */}
-          {activePlan !== 'free' && profileResp?.data?.subscriptionStatus === 'active' && !profileResp?.data?.cancelAtPeriodEnd && (
+          {impersonating && (
+            <div className="w-full sm:w-auto rounded-xl border border-amber-700/40 bg-amber-950/30 px-3.5 py-2 text-xs text-amber-200">
+              Subscription and payout changes are locked while acting as this landlord.
+            </div>
+          )}
+
+          {activePlan !== 'free' && profileResp?.data?.subscriptionStatus === 'active' && !profileResp?.data?.cancelAtPeriodEnd && !impersonating && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <button className="inline-flex items-center justify-center rounded-xl border border-rose-800/60 bg-rose-950/20 text-rose-300 px-3.5 py-2 text-xs sm:text-sm font-medium hover:bg-rose-950/40 transition w-full sm:w-auto">
@@ -542,6 +556,7 @@ export default function PaymentPage() {
                   <button
                     type="button"
                     onClick={async () => {
+                      if (impersonating) return;
                       setConnectLoading(true);
                       try {
                         toast.loading("Redirecting to Stripe onboarding...", { id: "onboard" });
@@ -554,7 +569,7 @@ export default function PaymentPage() {
                         setConnectLoading(false);
                       }
                     }}
-                    disabled={connectLoading}
+                    disabled={connectLoading || impersonating}
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-700/60 bg-emerald-950/30 px-4 py-2.5 text-xs sm:text-sm font-medium text-emerald-300 hover:bg-emerald-950/50 transition disabled:opacity-50"
                   >
                     {connectLoading ? "Connecting…" : "Connect Payout Bank"}
@@ -565,9 +580,9 @@ export default function PaymentPage() {
                       <AlertDialogTrigger asChild>
                         <button
                           type="button"
-                          disabled={withdrawLoading || (walletBalance || 0) <= 0}
+                          disabled={impersonating || withdrawLoading || (walletBalance || 0) <= 0}
                           className={`w-full sm:w-auto inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-xs sm:text-sm font-semibold text-white transition ${
-                            withdrawLoading || (walletBalance || 0) <= 0
+                            impersonating || withdrawLoading || (walletBalance || 0) <= 0
                               ? "cursor-not-allowed bg-gray-800 text-gray-500"
                               : "bg-[#027A48] hover:bg-emerald-600 shadow-md shadow-emerald-950/40"
                           }`}
@@ -839,7 +854,9 @@ export default function PaymentPage() {
                     <button
                       type="button"
                       disabled={
-                        applyNextCreditMutation.isPending || !(nextRenewalCreditPounds > 0)
+                        impersonating ||
+                        applyNextCreditMutation.isPending ||
+                        !(nextRenewalCreditPounds > 0)
                       }
                       className="inline-flex items-center justify-center rounded-xl bg-sky-600 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500 transition shadow-md shadow-sky-950/40"
                     >

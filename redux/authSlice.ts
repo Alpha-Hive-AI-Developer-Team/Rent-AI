@@ -39,6 +39,12 @@ const authSlice = createSlice({
         localStorage.removeItem('authUser');
         localStorage.removeItem('authToken');
         localStorage.removeItem('refreshToken');
+        try {
+          sessionStorage.removeItem('impersonateSessionId');
+          sessionStorage.removeItem('impersonateLandlord');
+        } catch {
+          // ignore
+        }
       }
     },
     initializeAuth: (state, action: PayloadAction<{ user: any; token: string, shopId?: string } | null>) => {

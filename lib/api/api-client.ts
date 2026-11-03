@@ -111,6 +111,10 @@ import axios, { AxiosError } from "axios";
 import toast from "react-hot-toast";
 import { signOut } from "firebase/auth";
 import { auth } from "@/firebase";
+import {
+  clearImpersonationSession,
+  getImpersonationSessionId,
+} from "@/lib/impersonation";
 
 const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api",
@@ -119,6 +123,20 @@ const apiClient = axios.create({
   },
   withCredentials: true, 
 });
+
+function shouldAttachImpersonationHeader(urlPath: string) {
+  // Impersonation control endpoints need the real staff identity; still allow
+  // ending with body sessionId. Attach header for landlord app work and for
+  // end/current so the server can resolve the active session.
+  if (/^\/auth\/impersonate\/audit(\/|$)/.test(urlPath)) return false;
+  if (/^\/auth\/impersonate$/.test(urlPath)) return false; // start
+  if (typeof window === "undefined") return false;
+  const pathname = window.location.pathname || "";
+  if (pathname.startsWith("/user")) return true;
+  // Allow end/current from anywhere when a session exists
+  if (/^\/auth\/impersonate\/(end|current)(\/|$)/.test(urlPath)) return true;
+  return false;
+}
 
 // --- REQUEST INTERCEPTOR ---
 apiClient.interceptors.request.use(async (config) => {
@@ -146,6 +164,11 @@ apiClient.interceptors.request.use(async (config) => {
         // 3. Get the token (forceRefresh = false)
         const token = await user.getIdToken();
         config.headers.Authorization = `Bearer ${token}`;
+      }
+
+      const impersonationId = getImpersonationSessionId();
+      if (impersonationId && shouldAttachImpersonationHeader(pathOnly)) {
+        config.headers["X-Impersonate-Session"] = impersonationId;
       }
     } catch (error) {
       console.error("Error attaching token:", error);
@@ -189,12 +212,19 @@ async function handleSessionExpired(message?: string) {
     localStorage.removeItem("authToken");
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
+    clearImpersonationSession();
 
     toast.error(message || "Session expired. Please login again.");
     window.location.href = "/auth/sign-in";
   } finally {
     // keep flag true until navigation completes to avoid toast spam
   }
+}
+
+function isImpersonationExpiredError(error: AxiosError) {
+  const data = error.response?.data as { message?: string } | undefined;
+  const msg = String(data?.message || "").toLowerCase();
+  return msg.includes("impersonation session");
 }
 
 function isAccountDisabledError(error: AxiosError) {
@@ -214,6 +244,16 @@ apiClient.interceptors.response.use(
       /^\/auth\/(login|register|refresh-token|forgot-password|reset-password|verify-otp|verify-signup-otp|resend-otp|google|facebook|logout|admin-invite)(\/|$)/.test(
         pathOnly
       );
+
+    // Impersonation expired while staff Firebase session is still valid — exit to admin
+    if (status === 401 && isImpersonationExpiredError(error) && !isAuthEndpoint) {
+      clearImpersonationSession();
+      toast.error("Login-as session expired. Returning to admin.");
+      if (typeof window !== "undefined" && window.location.pathname.startsWith("/user")) {
+        window.location.href = "/admin/landlords";
+      }
+      return Promise.reject(error);
+    }
 
     // Expired / invalid / disabled session — clear auth and go to login
     if ((status === 401 || (status === 403 && isAccountDisabledError(error))) && !isAuthEndpoint) {
