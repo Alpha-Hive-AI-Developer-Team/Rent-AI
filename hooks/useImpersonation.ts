@@ -159,6 +159,6 @@ export function useImpersonationAudit(
         limit: filters.limit,
       }),
     enabled: Boolean(filters.enabled),
-    placeholderData: (prev) => prev,
+    placeholderData: (previousData) => previousData,
   });
 }

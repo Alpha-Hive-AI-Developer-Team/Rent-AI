@@ -75,6 +75,8 @@ function statusLabel(code?: number | null) {
   return { text: `HTTP ${code}`, className: "text-gray-400" };
 }
 
+type Option = { id: string; label: string; email?: string; role?: string };
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -125,8 +127,8 @@ export default function ImpersonationActivityModal({
   });
   const { data: adminsResp } = useAdmins({ page: 1, limit: 100 });
 
-  const landlordOptions = useMemo(() => {
-    const rows = Array.isArray(landlordsResp?.data) ? landlordsResp.data : [];
+  const landlordOptions = useMemo((): Option[] => {
+    const rows: any[] = Array.isArray(landlordsResp?.data) ? landlordsResp.data : [];
     return rows.map((l: any) => ({
       id: String(l.id || l._id),
       label:
@@ -134,12 +136,12 @@ export default function ImpersonationActivityModal({
         `${l.firstName || ""} ${l.lastName || ""}`.trim() ||
         l.email ||
         "Landlord",
-      email: l.email,
+      email: l.email ? String(l.email) : undefined,
     }));
   }, [landlordsResp]);
 
-  const actorOptions = useMemo(() => {
-    const rows = Array.isArray(adminsResp?.data) ? adminsResp.data : [];
+  const actorOptions = useMemo((): Option[] => {
+    const rows: any[] = Array.isArray(adminsResp?.data) ? adminsResp.data : [];
     return rows.map((a: any) => ({
       id: String(a.id || a._id),
       label:
@@ -147,8 +149,8 @@ export default function ImpersonationActivityModal({
         `${a.firstName || ""} ${a.lastName || ""}`.trim() ||
         a.email ||
         "Admin",
-      email: a.email,
-      role: a.role,
+      email: a.email ? String(a.email) : undefined,
+      role: a.role ? String(a.role) : undefined,
     }));
   }, [adminsResp]);
 
@@ -201,7 +203,7 @@ export default function ImpersonationActivityModal({
 
   const titleLandlord =
     initialLandlordName ||
-    landlordOptions.find((l) => l.id === landlordId)?.label ||
+    landlordOptions.find((l: Option) => l.id === landlordId)?.label ||
     null;
 
   return (
