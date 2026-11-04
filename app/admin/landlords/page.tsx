@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import CustomTable from "@/components/admin/custom-table";
 import TenantRentHistoryTable from "@/components/tenants/TenantRentHistoryTable";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatPropertyAddress } from "@/lib/utils";
 import { useAuthUser } from "@/redux/useAuthUser";
 import { useStartImpersonation } from "@/hooks/useImpersonation";
 import ImpersonationActivityModal from "@/components/admin/ImpersonationActivityModal";
@@ -331,7 +331,11 @@ export default function LandlordManagement() {
 
   const modalAddresses: any[] = (tenantsResp && Array.isArray(tenantsResp.data)) ? tenantsResp.data : (selectedLandlord?.addresses || []);
   const currentTenants = modalAddresses[selectedAddressIndex || 0]?.tenants || [];
-  const currentAddress: string = (modalAddresses[selectedAddressIndex || 0]?.address || modalAddresses[selectedAddressIndex || 0]?.property || "");
+  const currentAddressRaw: string = (modalAddresses[selectedAddressIndex || 0]?.address || modalAddresses[selectedAddressIndex || 0]?.property || "");
+  const currentAddressPostcode: string = modalAddresses[selectedAddressIndex || 0]?.postcode || "";
+  const currentAddressDisplay: string = formatPropertyAddress(currentAddressRaw, currentAddressPostcode) || currentAddressRaw;
+  /** Street-only key used for expense/income API filters (stored against property street). */
+  const currentAddress: string = currentAddressRaw;
 
   // Tenant modal state (rendered inside same modal)
   const [modalView, setModalView] = useState<"landlord" | "tenant">("landlord");
@@ -740,7 +744,9 @@ export default function LandlordManagement() {
                           }`}
                         >
                           <div className="text-xs sm:text-sm font-medium truncate">
-                            {addr.address || addr.property}
+                            {formatPropertyAddress(addr.address || addr.property, addr.postcode) ||
+                              addr.address ||
+                              addr.property}
                           </div>
                           <div className="mt-1 text-[11px] text-gray-400">
                             {(addr.tenants || []).length} tenant
@@ -763,7 +769,7 @@ export default function LandlordManagement() {
                     <div className="flex items-center justify-between pb-3 border-b border-gray-800/60">
                       <div>
                         <h4 className="text-sm sm:text-base font-semibold text-white truncate max-w-[400px]">
-                          {currentAddress || "Tenants"}
+                          {currentAddressDisplay || "Tenants"}
                         </h4>
                         <p className="text-xs text-gray-400 mt-0.5">
                           Click a tenant row to inspect their rent transaction ledger (read-only audit)

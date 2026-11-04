@@ -19,7 +19,7 @@ import DueOnScheduleFields, {
   type DueOnAdjustmentRow,
 } from "@/components/user/due-on-schedule-fields";
 import DateInput from "@/components/ui/date-input";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatPropertyAddress } from "@/lib/utils";
 
 interface NewTenantModalProps {
   open: boolean;
@@ -283,9 +283,8 @@ function buildExistingRoomsForProperty(address: string, tenants: any[]): RoomTen
 }
 
 function roomsForExistingProperty(address: string, tenants: any[]): RoomTenant[] {
-  const existing = buildExistingRoomsForProperty(address, tenants);
-  // New draft room first so it's visible without scrolling past existing rooms.
-  return [newRoom(nextRoomIndex(existing)), ...existing];
+  // Only existing rooms on open — draft room appears when user clicks Add room.
+  return buildExistingRoomsForProperty(address, tenants);
 }
 
 export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
@@ -294,6 +293,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
   const [property, setProperty] = useState("");
   const [propertyName, setPropertyName] = useState("");
   const [postcode, setPostcode] = useState("");
+  const [existingPropertySearch, setExistingPropertySearch] = useState("");
   const [tenancyType, setTenancyType] = useState<TenancyType>("single");
   const [singleTenant, setSingleTenant] = useState({
     tenantNames: [] as string[],
@@ -391,6 +391,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     setProperty("");
     setPropertyName("");
     setPostcode("");
+    setExistingPropertySearch("");
     setTenancyType("single");
     setSingleTenant({
       tenantNames: [],
@@ -424,6 +425,22 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
   };
 
   const filteredSuggestions = useMemo(() => payerSuggestions.slice(0, 30), [payerSuggestions]);
+
+  const filteredExistingAddresses = useMemo(() => {
+    const q = existingPropertySearch.trim().toLowerCase();
+    if (!q) return existingAddresses;
+    return existingAddresses.filter((addr) => {
+      const meta = propertyMeta.get(String(addr || "").trim().toLowerCase());
+      const hay = formatPropertyAddress(addr, meta?.postcode).toLowerCase();
+      const pc = String(meta?.postcode || "").toLowerCase();
+      return hay.includes(q) || pc.includes(q) || String(addr).toLowerCase().includes(q);
+    });
+  }, [existingAddresses, existingPropertySearch, propertyMeta]);
+
+  const propertyDisplayLabel = useMemo(
+    () => formatPropertyAddress(property, postcode) || property,
+    [property, postcode]
+  );
 
   const canContinueStep1 =
     propertyMode === "existing"
@@ -537,7 +554,8 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
       const target = prev.find((r) => r.id === id);
       if (!target || target.isExisting) return prev;
       const next = prev.filter((r) => r.id !== id);
-      if (next.filter((r) => !r.isExisting).length === 0) return prev;
+      // Brand-new HMO setup must keep at least one draft; add-to-existing may clear all drafts.
+      if (!addingToExisting && next.filter((r) => !r.isExisting).length === 0) return prev;
       return next;
     });
   };
@@ -568,12 +586,16 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
               assigning: true,
               tenantNames: [],
               nameDraft: "",
-              moveInDate: new Date().toISOString().slice(0, 10),
+              moveInDate: r.moveInDate || new Date().toISOString().slice(0, 10),
               rent: r.rent && Number(r.rent) > 0 ? r.rent : "",
             }
           : { ...r, assigning: false }
       )
     );
+    setActiveRoomNavId(room.id);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => scrollToRoom(room.id));
+    });
   };
 
   const cancelAssignExistingVacant = (roomId: string) => {
@@ -690,7 +712,9 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     if (propertyMode === "existing") {
       setAddingToExisting(true);
       setTenancyType("hmo");
-      setRooms(roomsForExistingProperty(property, allTenants));
+      const existingOnly = roomsForExistingProperty(property, allTenants);
+      setRooms(existingOnly);
+      setActiveRoomNavId(existingOnly[0]?.id ?? null);
       setStep(3);
       return;
     }
@@ -907,6 +931,9 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                     onClick={() => {
                           setPropertyMode("existing");
                           setProperty("");
+                          setPropertyName("");
+                          setPostcode("");
+                          setExistingPropertySearch("");
                         }}
                         disabled={existingAddresses.length === 0}
                         className={`rounded-lg border px-3 py-2.5 text-sm transition disabled:cursor-not-allowed disabled:opacity-40 ${
@@ -932,60 +959,72 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                               No existing properties yet.
                             </p>
                           ) : (
-                            <div className="max-h-64 space-y-2 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
-                              {existingAddresses.map((addr) => {
-                                const meta = propertyMeta.get(addr.trim().toLowerCase());
-                                const selected =
-                                  property.trim().toLowerCase() === addr.trim().toLowerCase();
-                                const isHmo = meta?.tenancyType === "hmo";
-                                const vacant = meta?.vacantCount || 0;
-                                const occupied = meta?.occupiedCount || 0;
+                            <div className="space-y-2">
+                              <input
+                                type="text"
+                                value={existingPropertySearch}
+                                onChange={(e) => setExistingPropertySearch(e.target.value)}
+                                placeholder="Search address or postcode..."
+                                className="w-full rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:border-emerald-700 focus:outline-none"
+                              />
+                              <div className="max-h-64 space-y-2 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
+                                {filteredExistingAddresses.length === 0 ? (
+                                  <p className="rounded-lg border border-[#222] bg-[#0c0c0c] px-3 py-3 text-sm text-gray-500">
+                                    No properties match that search.
+                                  </p>
+                                ) : (
+                                  filteredExistingAddresses.map((addr) => {
+                                    const meta = propertyMeta.get(addr.trim().toLowerCase());
+                                    const selected =
+                                      property.trim().toLowerCase() === addr.trim().toLowerCase();
+                                    const isHmo = meta?.tenancyType === "hmo";
+                                    const vacant = meta?.vacantCount || 0;
+                                    const occupied = meta?.occupiedCount || 0;
+                                    const addressLabel =
+                                      formatPropertyAddress(addr, meta?.postcode) || addr;
 
-                                const occupancyLabel = !isHmo
-                                  ? occupied > 0
-                                    ? "Single let · occupied"
-                                    : vacant > 0
-                                      ? "Single let · vacant"
-                                      : "Single let"
-                                  : `${occupied} occupied · ${vacant} vacant`;
+                                    const occupancyLabel = !isHmo
+                                      ? occupied > 0
+                                        ? "Single let · occupied"
+                                        : vacant > 0
+                                          ? "Single let · vacant"
+                                          : "Single let"
+                                      : `${occupied} occupied · ${vacant} vacant`;
 
-                                return (
-                                  <button
-                                    key={addr}
-                                    type="button"
-                                    onClick={() => selectExistingProperty(addr)}
-                                    className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
-                                      selected
-                                        ? "border-emerald-700 bg-emerald-950/30"
-                                        : "border-[#2a2a2a] bg-[#0a0a0a] hover:border-[#3a3a3a]"
-                                    }`}
-                                  >
-                                    <p className="min-w-0 truncate text-sm text-gray-200">
-                                      {addr}
-                                      <span className="text-gray-500"> · {occupancyLabel}</span>
-                                    </p>
-                                    {selected && (
-                                      <Check className="h-4 w-4 shrink-0 text-emerald-400" />
-                                    )}
-                                  </button>
-                                );
-                              })}
+                                    return (
+                                      <button
+                                        key={addr}
+                                        type="button"
+                                        onClick={() => selectExistingProperty(addr)}
+                                        className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
+                                          selected
+                                            ? "border-emerald-700 bg-emerald-950/30"
+                                            : "border-[#2a2a2a] bg-[#0a0a0a] hover:border-[#3a3a3a]"
+                                        }`}
+                                      >
+                                        <p className="min-w-0 truncate text-sm text-gray-200">
+                                          {addressLabel}
+                                          <span className="text-gray-500"> · {occupancyLabel}</span>
+                                        </p>
+                                        {selected && (
+                                          <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+                                        )}
+                                      </button>
+                                    );
+                                  })
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>
                         {property && (
                           <div className="rounded-lg border border-[#222] bg-[#0c0c0c] px-3 py-2 text-xs text-gray-400">
-                            Address locked: <span className="text-gray-200">{property}</span>
+                            Address locked:{" "}
+                            <span className="text-gray-200">{propertyDisplayLabel}</span>
                             {propertyName ? (
                               <>
                                 {" "}
                                 · <span className="text-gray-200">{propertyName}</span>
-                              </>
-                            ) : null}
-                            {postcode ? (
-                              <>
-                                {" "}
-                                · <span className="text-gray-200">{postcode}</span>
                               </>
                             ) : null}
                           </div>
@@ -1112,7 +1151,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                           )}
                           <h3 className="font-medium">
                             {addingToExisting
-                              ? "New room tenant"
+                              ? "Rooms on this property"
                               : tenancyType === "single"
                                 ? "Single let"
                                 : "HMO"}
@@ -1132,12 +1171,15 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
 
                     {addingToExisting && (
                       <p className="mb-4 rounded-lg border border-[#222] bg-[#0c0c0c] px-3 py-2 text-sm text-gray-400">
-                        Adding to <span className="text-white">{property}</span>
-                        {" — "}new rooms appear at the top. Existing rooms follow in order (Room 1, 2, 3…). Vacant ones can be assigned or removed. Only new rooms are saved with Add room.
+                        Adding to <span className="text-white">{propertyDisplayLabel}</span>
+                        {" — "}existing rooms are listed below. Click{" "}
+                        <span className="text-gray-200">Add room</span> only when you need a new unit.
+                        For a vacant room, click <span className="text-emerald-300">Assign tenant</span>{" "}
+                        to fill details and save — no need to delete and recreate.
                       </p>
                     )}
 
-                    {(tenancyType === "hmo" || addingToExisting) && displayRooms.length > 1 && (
+                    {(tenancyType === "hmo" || addingToExisting) && displayRooms.length > 0 && (
                       <div className="mb-4">
                         <p className="mb-2 text-xs text-gray-500">
                           Jump to room
@@ -1156,7 +1198,13 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                               <button
                                 key={`nav-${room.id}`}
                                 type="button"
-                                onClick={() => scrollToRoom(room.id)}
+                                onClick={() => {
+                                  if (room.isExisting && room.vacant && !room.assigning) {
+                                    startAssignExistingVacant(room);
+                                    return;
+                                  }
+                                  scrollToRoom(room.id);
+                                }}
                                 className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                                   isActive
                                     ? "border-emerald-600 bg-emerald-950/50 text-emerald-300"
@@ -1465,12 +1513,26 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                       </div>
                     ) : (
                       <div ref={roomsListRef} className="space-y-3">
+                        {addingToExisting && displayRooms.length === 0 && (
+                          <div className="rounded-xl border border-dashed border-[#333] bg-[#0c0c0c] px-4 py-8 text-center">
+                            <p className="text-sm text-gray-400">
+                              No rooms on this property yet.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={addRoom}
+                              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-700 px-3 py-1.5 text-sm text-emerald-300 transition hover:bg-emerald-950/40"
+                            >
+                              <Plus className="h-4 w-4" /> Add room
+                            </button>
+                          </div>
+                        )}
                         {displayRooms.map((room) => {
                           const isExisting = Boolean(room.isExisting);
                           const isVacant = Boolean(room.vacant);
                           const isAssigning = Boolean(room.assigning);
                           const canRemoveNew =
-                            !isExisting && newRooms.length > 1;
+                            !isExisting && (addingToExisting || newRooms.length > 1);
                           const canRemoveVacant =
                             isExisting && isVacant && Boolean(room.tenantId);
                           const fieldsLocked =
@@ -1484,9 +1546,16 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                               roomCardRefs.current[room.id] = el;
                             }}
                             id={`room-card-${room.id}`}
+                            onClick={() => {
+                              if (isExisting && isVacant && !isAssigning) {
+                                startAssignExistingVacant(room);
+                              }
+                            }}
                             className={`scroll-mt-3 rounded-xl border p-4 ${
                               isExisting && !isAssigning
-                                ? "border-[#2a2a2a] bg-[#111] opacity-90"
+                                ? isVacant
+                                  ? "border-amber-900/50 bg-[#0c0c0c] cursor-pointer hover:border-emerald-800/60"
+                                  : "border-[#2a2a2a] bg-[#111] opacity-90"
                                 : isVacant || isAssigning
                                   ? "border-amber-900/50 bg-[#0c0c0c]"
                                   : "border-[#222] bg-[#0c0c0c]"
@@ -1600,8 +1669,11 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                 {canRemoveVacant && !isAssigning && (
                                   <button
                                     type="button"
-                                    onClick={() => startAssignExistingVacant(room)}
-                                    className="rounded-full border border-emerald-800 px-2.5 py-0.5 text-[11px] text-emerald-300 hover:bg-emerald-950/40"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      startAssignExistingVacant(room);
+                                    }}
+                                    className="rounded-full border border-emerald-700 bg-emerald-950/30 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300 hover:bg-emerald-950/50"
                                   >
                                     Assign tenant
                                   </button>
@@ -1612,29 +1684,35 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                   <>
                                     <button
                                       type="button"
-                                      onClick={() => cancelAssignExistingVacant(room.id)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        cancelAssignExistingVacant(room.id);
+                                      }}
                                       className="rounded-full border border-[#333] px-2.5 py-1 text-[11px] text-gray-400 hover:bg-white/5"
                                     >
                                       Cancel
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => saveAssignExistingVacant(room)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        saveAssignExistingVacant(room);
+                                      }}
                                       disabled={assigningRoomId === room.id}
-                                      className="rounded-full border border-emerald-700 px-2.5 py-1 text-[11px] text-emerald-300 hover:bg-emerald-950/40 disabled:opacity-50"
+                                      className="rounded-full border border-emerald-700 bg-emerald-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
                                     >
-                                      {assigningRoomId === room.id ? "Saving..." : "Save"}
+                                      {assigningRoomId === room.id ? "Saving..." : "Save tenant"}
                                     </button>
                                   </>
                                 )}
                                 {(canRemoveNew || canRemoveVacant) && !isAssigning && (
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      canRemoveVacant
-                                        ? removeExistingVacantRoom(room)
-                                        : removeRoom(room.id)
-                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (canRemoveVacant) removeExistingVacantRoom(room);
+                                      else removeRoom(room.id);
+                                    }}
                                     disabled={removingRoomId === room.id}
                                     className="rounded-md p-1.5 text-rose-400 transition hover:bg-rose-950/40 disabled:opacity-50"
                                     aria-label={`Remove ${room.room || "room"}`}

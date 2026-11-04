@@ -2225,7 +2225,7 @@ export default function TenantsPage() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
-            placeholder={showAddress ? "Search tenants or address..." : "Search tenants..."}
+            placeholder={showAddress ? "Search tenants, address or postcode..." : "Search tenants..."}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-xl border border-gray-800 bg-[#161616] py-2.5 pl-10 pr-9 text-xs sm:text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"

@@ -14,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatPropertyAddress } from "@/lib/utils";
 
 function getInitials(name?: string): string {
   if (!name || !name.trim()) return "TN";
@@ -130,7 +130,15 @@ export default function TenantManagement() {
       },
     },
     { key: "landlordName", label: "Landlord" },
-    { key: "property", label: "Property" },
+    {
+      key: "property",
+      label: "Property",
+      render: (row: any) => (
+        <span className="text-sm text-gray-200">
+          {formatPropertyAddress(row.property, row.postcode) || row.property || "—"}
+        </span>
+      ),
+    },
     {
       key: "status",
       label: "Status",
@@ -210,7 +218,7 @@ export default function TenantManagement() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
           <input
             type="text"
-            placeholder="Search by landlord name or tenant..."
+            placeholder="Search by landlord, tenant, property or postcode..."
             value={searchQuery}
             onChange={(e: any) => setSearchQuery(e.target.value)}
             className="w-full bg-[#161616] border border-gray-800 text-xs sm:text-sm text-gray-200 placeholder-gray-500 rounded-xl pl-10 pr-8 py-2.5 focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"

@@ -3,9 +3,9 @@ import { isDueDayChangeLineItem } from "@/lib/dueDayChange";
 export type PaymentPieceRole = "payment" | "credit" | "cover";
 
 export const RENT_STATUS_COLORS: Record<string, string> = {
-  Paid: "bg-green-900/40 text-green-400 border-green-700/60",
-  Unpaid: "bg-red-900/40 text-red-400 border-red-700/60",
-  Partial: "bg-yellow-900/40 text-yellow-400 border-yellow-700/60",
+  Paid: "bg-emerald-950/40 text-emerald-400 border-emerald-700/40",
+  Unpaid: "bg-rose-950/40 text-rose-400 border-rose-800/40",
+  Partial: "bg-amber-950/40 text-amber-400 border-amber-700/40",
   Applied: "bg-violet-900/40 text-violet-300 border-violet-700/60",
   Vacant: "bg-amber-900/40 text-amber-300 border-amber-700/60",
   Archived: "bg-gray-800/60 text-gray-300 border-gray-600",

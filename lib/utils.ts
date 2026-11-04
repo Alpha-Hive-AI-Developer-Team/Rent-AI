@@ -139,3 +139,24 @@ export function parsePositiveMoney(
   }
   return n;
 }
+
+/**
+ * Street address + postcode (skips duplicate if postcode is already in the address).
+ * Optionally appends room with a middot separator.
+ */
+export function formatPropertyAddress(
+  property?: string | null,
+  postcode?: string | null,
+  room?: string | null
+): string {
+  const address = String(property || "").trim();
+  const pc = String(postcode || "").trim();
+  let line = address;
+  if (pc) {
+    if (!address) line = pc;
+    else if (!address.toLowerCase().includes(pc.toLowerCase())) line = `${address}, ${pc}`;
+  }
+  const r = String(room || "").trim();
+  if (line && r) return `${line} · ${r}`;
+  return line || r || "";
+}

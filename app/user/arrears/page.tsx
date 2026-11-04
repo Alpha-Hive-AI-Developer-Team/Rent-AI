@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getArrears } from "@/lib/api/tenantsApi";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatPropertyAddress } from "@/lib/utils";
 import StatCard from "@/components/admin/analytics-card";
 import {
   AlertTriangle,
@@ -99,8 +99,9 @@ export default function ArrearsPage() {
     const matches = (t: any) => {
       if (!q) return true;
       const name = tenantLabel(t).toLowerCase();
-      const prop = String(t.property || "").toLowerCase();
-      return name.includes(q) || prop.includes(q);
+      const prop = formatPropertyAddress(t.property, t.postcode).toLowerCase();
+      const postcode = String(t.postcode || "").toLowerCase();
+      return name.includes(q) || prop.includes(q) || postcode.includes(q);
     };
 
     if (isSearching) {
@@ -189,7 +190,7 @@ export default function ArrearsPage() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Search tenants or property…"
+            placeholder="Search tenants, property or postcode…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-xl border border-gray-800 bg-[#161616] py-2.5 pl-10 pr-9 text-xs sm:text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-[#027A48] focus:ring-1 focus:ring-[#027A48] transition"
@@ -301,7 +302,7 @@ export default function ArrearsPage() {
                       <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5 truncate">
                         <Home className="w-3 h-3 shrink-0 text-gray-500" />
                         <span className="truncate">
-                          {t.property || "No property"}
+                          {formatPropertyAddress(t.property, t.postcode) || "No property"}
                         </span>
                       </p>
                     </div>
