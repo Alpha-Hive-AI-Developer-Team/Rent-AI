@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import useAdminLandlords, { useAllTenants, useTenantTransactions, useTenantStats } from "@/hooks/useAdmin";
+import { useAllTenants, useTenantStats } from "@/hooks/useAdmin";
 import StatCard from "@/components/admin/analytics-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, ChevronDown, X } from "lucide-react";
+import { Search, ChevronDown, X } from "lucide-react";
 import CustomTable from "@/components/admin/custom-table";
-import TenantRentHistoryTable from "@/components/tenants/TenantRentHistoryTable";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,19 +100,6 @@ export default function TenantManagement() {
     ? `Showing ${totalTenants} results`
     : `Showing ${startIndex} to ${endIndex} of ${totalTenants} results`;
 
-  const [tenantModalOpen, setTenantModalOpen] = useState(false);
-  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
-  const [selectedTenantName, setSelectedTenantName] = useState<string | null>(null);
-
-  const { data: tenantDetails, isLoading: tenantLoading, error: tenantError } = useTenantTransactions(selectedTenantId || undefined);
-
-  function openTenantModal(tenant: any) {
-    const name = Array.isArray(tenant.tenantName) ? tenant.tenantName.join(" ") : tenant.tenantName || tenant.tenantName;
-    setSelectedTenantName(name || "Tenant");
-    setSelectedTenantId(tenant._id || tenant.id || null);
-    setTenantModalOpen(true);
-  }
-
   const columns = [
     {
       key: "tenant",
@@ -123,8 +109,10 @@ export default function TenantManagement() {
         const initials = getInitials(name);
         return (
           <div className="flex items-center gap-2">
-            <button onClick={() => openTenantModal(row)} className="w-7 h-7 rounded-full bg-[#1a1a1a] text-xs flex items-center justify-center text-white hover:brightness-110">{initials}</button>
-            <button onClick={() => openTenantModal(row)} className="text-left hover:underline text-sm text-gray-200">{name}</button>
+            <span className="w-7 h-7 rounded-full bg-[#1a1a1a] text-xs flex items-center justify-center text-white">
+              {initials}
+            </span>
+            <span className="text-sm text-gray-200">{name}</span>
           </div>
         );
       },
@@ -284,63 +272,6 @@ export default function TenantManagement() {
           },
         }}
       />
-
-      {/* Rent History Modal */}
-      {tenantModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-6 animate-in fade-in">
-          <div className="w-full max-w-6xl bg-[#111] border border-gray-800 rounded-2xl p-4 sm:p-6 text-white shadow-2xl max-h-[88vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex items-start justify-between pb-4 border-b border-gray-800/80 mb-4">
-              <div>
-                <h3 className="text-base sm:text-lg font-semibold text-white">
-                  {selectedTenantName} — Rent History
-                </h3>
-                <p className="text-xs sm:text-sm text-gray-400 mt-0.5">
-                  Same payment ledger view as the landlord portal (read-only audit)
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setTenantModalOpen(false);
-                  setSelectedTenantId(null);
-                  setSelectedTenantName(null);
-                }}
-                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {tenantError ? (
-              <div className="p-8 text-center text-rose-400 text-xs sm:text-sm">
-                Failed to load rent history ledger.
-              </div>
-            ) : (
-              <div className="overflow-x-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                <TenantRentHistoryTable
-                  tenantId={selectedTenantId}
-                  tenant={tenantDetails}
-                  rentHistory={tenantDetails?.rentHistory}
-                  loading={tenantLoading}
-                  readOnly
-                />
-              </div>
-            )}
-
-            <div className="mt-5 pt-3 border-t border-gray-800/80 flex items-center justify-end">
-              <button
-                onClick={() => {
-                  setTenantModalOpen(false);
-                  setSelectedTenantId(null);
-                  setSelectedTenantName(null);
-                }}
-                className="px-5 py-2 rounded-xl border border-gray-800 text-xs sm:text-sm text-gray-300 hover:bg-white/5 hover:text-white transition"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -34,6 +34,7 @@ import usePayByCash, {
   useUpdateTenant,
   useChangeTenantDueDate,
 } from "@/hooks/usetenants";
+import { useCreateExpense, useDeleteExpense, useExpenses, useIncomeSummary } from "@/hooks/useAdmin";
 import { getDepositPayment, getRentEntryPayment, getTenantById } from "@/lib/api/tenantsApi";
 import { autoMatchTransactionsForTenant, getTransactionsMatchingTenant } from "@/lib/api/transactionApi";
 import toast from "react-hot-toast";
@@ -692,6 +693,59 @@ export default function TenantsPage() {
     const start = (safeAddressPage - 1) * listPageSize;
     return addressTenantsAll.slice(start, start + listPageSize);
   }, [addressTenantsAll, safeAddressPage, listPageSize]);
+
+  const expenseAddress = selectedAddressGroup?.address || "";
+  const [newExpenseDesc, setNewExpenseDesc] = useState("");
+  const [newExpenseAmount, setNewExpenseAmount] = useState("");
+  const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
+  const createExpenseMutation = useCreateExpense();
+  const deleteExpenseMutation = useDeleteExpense();
+  const { data: expensesResp } = useExpenses({
+    address: showAddress && expenseAddress ? expenseAddress : undefined,
+    page: 1,
+    limit: 100,
+  });
+  const { data: incomeSummaryResp } = useIncomeSummary({
+    address: showAddress ? expenseAddress : "",
+  });
+
+  const addExpense = () => {
+    const amt = Number(String(newExpenseAmount).replace(/[^0-9.-]+/g, "")) || 0;
+    const desc = String(newExpenseDesc || "").trim();
+    if (!desc || amt <= 0) {
+      toast.error("Provide a description and positive amount.");
+      return;
+    }
+    if (!expenseAddress) {
+      toast.error("Select an address before adding an expense.");
+      return;
+    }
+    createExpenseMutation.mutate(
+      { address: expenseAddress, description: desc, amount: amt },
+      {
+        onSuccess: () => {
+          setNewExpenseDesc("");
+          setNewExpenseAmount("");
+          toast.success("Expense saved and totals updated.");
+        },
+        onError: (err: any) => {
+          toast.error(err?.response?.data?.message || "Failed to add expense");
+        },
+      }
+    );
+  };
+
+  const removeExpense = (id: string) => {
+    if (!id) return;
+    setDeletingExpenseId(id);
+    deleteExpenseMutation.mutate(id, {
+      onSuccess: () => toast.success("Expense removed."),
+      onError: (err: any) => {
+        toast.error(err?.response?.data?.message || "Failed to remove expense");
+      },
+      onSettled: () => setDeletingExpenseId(null),
+    });
+  };
 
   const renderTenantListPagination = (
     total: number,
@@ -2449,6 +2503,111 @@ export default function TenantsPage() {
                 )}
               </>
             )}
+
+            {selectedAddressGroup && !showArchived ? (
+              <div className="mt-4 rounded-xl border border-gray-800/80 bg-[#161616] p-4 space-y-4">
+                {(() => {
+                  const gross = Number(incomeSummaryResp?.data?.grossIncome || 0);
+                  const totalExpenses = Number(incomeSummaryResp?.data?.totalExpenses || 0);
+                  const net = Number(
+                    incomeSummaryResp?.data?.netIncome || gross - totalExpenses
+                  );
+                  return (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                        <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] px-3.5 py-3">
+                          <div className="text-[11px] text-gray-400 font-medium">Total Gross Income</div>
+                          <div className="mt-1 text-sm sm:text-base font-bold text-white tabular-nums">
+                            {formatMoney(gross)}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] px-3.5 py-3">
+                          <div className="text-[11px] text-gray-400 font-medium">Total Expenses</div>
+                          <div className="mt-1 text-sm sm:text-base font-bold text-rose-400 tabular-nums">
+                            {formatMoney(totalExpenses)}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-gray-800 bg-[#0c0c0c] px-3.5 py-3">
+                          <div className="text-[11px] text-gray-400 font-medium">Net Income</div>
+                          <div className="mt-1 text-sm sm:text-base font-bold text-emerald-400 tabular-nums">
+                            {formatMoney(net)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-gray-800/80 pt-4 space-y-3">
+                        <div className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                          Record Property Expense
+                        </div>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <input
+                            type="text"
+                            placeholder="Expense description..."
+                            value={newExpenseDesc}
+                            onChange={(e) => setNewExpenseDesc(e.target.value)}
+                            className="flex-1 bg-[#0c0c0c] border border-gray-800 text-xs sm:text-sm text-white rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#027A48]"
+                          />
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="Amount (e.g. 120.00)"
+                            value={newExpenseAmount}
+                            onChange={(e) => setNewExpenseAmount(e.target.value)}
+                            className="w-full bg-[#0c0c0c] border border-gray-800 text-xs sm:text-sm text-white sm:w-44 rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#027A48]"
+                          />
+                          <button
+                            type="button"
+                            onClick={addExpense}
+                            disabled={createExpenseMutation.isPending}
+                            className="bg-[#027A48] hover:bg-[#02653d] disabled:opacity-60 text-white text-xs sm:text-sm font-medium rounded-xl px-5 py-2.5 transition active:scale-95"
+                          >
+                            {createExpenseMutation.isPending ? "Adding…" : "Add"}
+                          </button>
+                        </div>
+
+                        {Array.isArray(expensesResp?.data) && expensesResp!.data.length > 0 && (
+                          <div className="space-y-2 pt-2">
+                            <div className="text-xs text-gray-400 font-medium">Manual Expenses Log</div>
+                            <div className="space-y-1.5 max-h-40 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                              {expensesResp!.data.map((ex: any, i: number) => {
+                                const id = String(ex._id || "");
+                                const busy =
+                                  deletingExpenseId === id && deleteExpenseMutation.isPending;
+                                return (
+                                  <div
+                                    key={id || i}
+                                    className="flex items-center justify-between gap-3 rounded-lg border border-gray-800/70 bg-[#0c0c0c] px-3 py-2 text-xs"
+                                  >
+                                    <div className="min-w-0 truncate text-gray-200">
+                                      {ex.description}
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <div className="tabular-nums font-semibold text-rose-400">
+                                        {formatMoney(Number(ex.amount || 0))}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        title="Remove expense"
+                                        aria-label="Remove expense"
+                                        disabled={!id || busy}
+                                        onClick={() => removeExpense(id)}
+                                        className="rounded-lg border border-gray-800 p-1.5 text-gray-400 hover:text-rose-400 hover:border-rose-800/60 disabled:opacity-50 transition"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : (
