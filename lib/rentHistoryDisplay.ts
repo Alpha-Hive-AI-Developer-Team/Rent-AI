@@ -435,6 +435,15 @@ export type BankStatementTx = {
 
 type BankStatementRentRow = { index: number; monthKey: string; dueMs: number };
 
+export type BuildPaymentHistoryOptions = {
+  /**
+   * When true, also include manual cash (and other non-bank) linked payments so
+   * the Payment history column shows recorded date/amount. Leave false for the
+   * balance engine (cash is applied separately there to avoid double-counting).
+   */
+  includeManualCash?: boolean;
+};
+
 /**
  * Display-only map: rentHistory index → unique bank txs shown like a bank app
  * (full statement amount + paid date), bucketed by calendar month of `paidOn` as stored in DB.
@@ -445,17 +454,21 @@ type BankStatementRentRow = { index: number; monthKey: string; dueMs: number };
  * - Pay before the first rent month (e.g. 31 Mar when move-in is 1 Apr) → first rent row
  * - Each bank payment appears once (deduped by transaction / payment group)
  * - Dates are shown as stored — no last-day-of-month → next-month rewriting
+ * - With `includeManualCash`, manual cash/bank record-payment pieces are included the same way
  */
 export function buildBankStatementTxsByHistoryIndex(
-  rentHistory: any[]
+  rentHistory: any[],
+  options?: BuildPaymentHistoryOptions
 ): Map<number, BankStatementTx[]> {
   const history = Array.isArray(rentHistory) ? rentHistory : [];
+  const includeManualCash = options?.includeManualCash === true;
 
   const unique = new Map<string, { amount: number; paidOn: any }>();
   history.forEach((entry: any, historyIndex: number) => {
     const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
     pieces.forEach((piece: any, pieceIndex: number) => {
-      if (!isBankStatementPiece(piece)) return;
+      const isBank = isBankStatementPiece(piece);
+      if (!isBank && !includeManualCash) return;
       const amt = Number(piece?.amount) || 0;
       const depositPart = Number(piece?.depositAllocated) || 0;
       const bankAmt = Number(piece?.bankAmount) || 0;
@@ -573,6 +586,9 @@ function depositAllocatedByPaymentKey(rentHistory: any[]): Map<string, number> {
  *
  * Example: due £500 / paid £1500 → £1000 credit; next month due £500 / no payment
  * → Payment history empty, Balance £500 credit.
+ *
+ * Manual cash with `bankAmount` + `paymentGroupId` (record payment) credits the
+ * full recorded amount once, same as bank — not just the first month's slice.
  */
 export function buildRunningBalancesFromPaymentHistory(
   rentHistory: any[],
@@ -617,7 +633,10 @@ export function buildRunningBalancesFromPaymentHistory(
       }
     }
 
-    // Cash / non-bank money for this month (rent only — deposit is not credit)
+    // Cash / non-bank money. Manual record-payment stores the full amount on
+    // `bankAmount` across FIFO months (same paymentGroupId). Credit that full
+    // amount once — same as bank statement — so overpay rolls into later months.
+    // Legacy cash without bankAmount still counts each piece's rent `amount`.
     const pieces = Array.isArray(entry?.linkedPayments) ? entry.linkedPayments : [];
     pieces.forEach((piece: any, pieceIndex: number) => {
       if (isBankStatementPiece(piece)) return;
@@ -627,8 +646,14 @@ export function buildRunningBalancesFromPaymentHistory(
       if (countedCashKeys.has(key)) return;
       countedCashKeys.add(key);
       const amt = Number(piece?.amount) || 0;
-      // amount is rent applied; do not add depositAllocated into credit
-      received = Math.round((received + Math.max(0, amt)) * 100) / 100;
+      const bankAmt = Number(piece?.bankAmount) || 0;
+      let add = bankAmt > 0 ? bankAmt : Math.max(0, amt);
+      const depositPart = depositByKey.get(key) || 0;
+      if (depositPart > 0 && !depositSubtractedKeys.has(key)) {
+        add = Math.round((add - depositPart) * 100) / 100;
+        depositSubtractedKeys.add(key);
+      }
+      received = Math.round((received + Math.max(0, add)) * 100) / 100;
     });
 
     if (received < 0) received = 0;

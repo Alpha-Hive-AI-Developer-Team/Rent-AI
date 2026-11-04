@@ -1669,11 +1669,15 @@ export default function TenantsPage() {
 
   const paymentPieceRoles = buildPaymentPieceRoleMap(selectedTenant?.rentHistory || []);
   const paymentTotalsByGroup = buildPaymentTotalsByGroup(selectedTenant?.rentHistory || []);
-  const bankStatementByIndex = buildBankStatementTxsByHistoryIndex(
-    selectedTenant?.rentHistory || []
-  );
+  const rentHistoryForDisplay = selectedTenant?.rentHistory || [];
+  // Bank-only map feeds balance (cash is applied separately there).
+  const bankStatementByIndex = buildBankStatementTxsByHistoryIndex(rentHistoryForDisplay);
+  // Payment history column also shows manual cash/bank recorded dates.
+  const paymentHistoryByIndex = buildBankStatementTxsByHistoryIndex(rentHistoryForDisplay, {
+    includeManualCash: true,
+  });
   const runningBalancesByIndex = buildRunningBalancesFromPaymentHistory(
-    selectedTenant?.rentHistory || [],
+    rentHistoryForDisplay,
     bankStatementByIndex,
     paymentPieceRoles
   );
@@ -3263,7 +3267,7 @@ export default function TenantsPage() {
                             <span className="text-sm text-gray-500">—</span>
                           ) : (
                             <BankStatementCell
-                              txs={bankStatementByIndex.get(index) || []}
+                              txs={paymentHistoryByIndex.get(index) || []}
                               formatMoney={formatMoney}
                             />
                           )}

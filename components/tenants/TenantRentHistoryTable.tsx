@@ -48,6 +48,10 @@ export default function TenantRentHistoryTable({
     () => buildBankStatementTxsByHistoryIndex(history),
     [history]
   );
+  const paymentHistoryByIndex = useMemo(
+    () => buildBankStatementTxsByHistoryIndex(history, { includeManualCash: true }),
+    [history]
+  );
   const runningBalancesByIndex = useMemo(
     () => buildRunningBalancesFromPaymentHistory(history, bankStatementByIndex, paymentPieceRoles),
     [history, bankStatementByIndex, paymentPieceRoles]
@@ -369,7 +373,7 @@ export default function TenantRentHistoryTable({
                         {isAdjustment ? (
                           <span className="text-sm text-gray-500">—</span>
                         ) : (
-                          <BankStatementCell txs={bankStatementByIndex.get(index) || []} />
+                          <BankStatementCell txs={paymentHistoryByIndex.get(index) || []} />
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-300">
