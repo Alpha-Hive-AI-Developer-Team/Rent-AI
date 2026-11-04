@@ -118,6 +118,11 @@ export async function createExpense(payload: { landlordId?: string; address: str
 	return res.data;
 }
 
+export async function deleteExpense(id: string) {
+	const res = await apiClient.delete(`/expenses/${id}`);
+	return res.data;
+}
+
 export async function getExpenses(filters: { landlordId?: string; address?: string; from?: string; to?: string; page?: number; limit?: number } = {}) {
 	const params: Record<string, any> = {};
 	if (filters.landlordId) params.landlordId = filters.landlordId;

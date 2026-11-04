@@ -7,7 +7,7 @@ import { usePlaidLink } from "react-plaid-link";
 import { useConnectedAccounts, useUnreconciledTransactions, useReconciledTransactions, useConnectedInstitution, useReconcileTransaction, useAutoMatchTransactions, useClassifyTransaction, useClassifiedTransactions } from "@/hooks/useTransactions";
 import { createPlaidLinkToken, exchangePlaidPublicToken, getPlaidTransactions, simulatePlaidIncoming } from "@/lib/api/transactionApi";
 import { getTenantById } from "@/lib/api/tenantsApi";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatPropertyAddress } from "@/lib/utils";
 import toast from "react-hot-toast";
 import TenantRentHistoryTable from "@/components/tenants/TenantRentHistoryTable";
 import { useIsImpersonating } from "@/hooks/useImpersonation";
@@ -365,8 +365,11 @@ export default function TransactionsPage() {
           if (v === "partial") return "Partial";
           return "Unpaid";
         };
-        const room = c.room ? String(c.room).trim() : "";
-        const propertyLabel = room && c.property ? `${c.property} · ${room}` : c.property || c.propertyAddress || "";
+        const propertyLabel = formatPropertyAddress(
+          c.property || c.propertyAddress,
+          c.postcode,
+          c.room
+        );
 
         const visibleHistory = history.filter((rh: any) => {
           const due = Number(rh?.amountDue ?? rh?.amount ?? 0) || 0;
@@ -505,7 +508,16 @@ export default function TransactionsPage() {
   // Derived list for display in the modal, with filters and sorting (UI-only)
   const filteredCandidates = effectiveCandidates.filter((c) => {
     const nameOk = c.name.toLowerCase().includes(candidateNameFilter.toLowerCase());
-    const propOk = c.property.toLowerCase().includes(candidatePropertyFilter.toLowerCase());
+    const propQ = candidatePropertyFilter.toLowerCase().trim();
+    const propHay = [
+      c.property,
+      c.rawTenant?.postcode,
+      c.rawTenant?.property,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const propOk = !propQ || propHay.includes(propQ);
     return nameOk && propOk;
   });
 
@@ -728,7 +740,7 @@ export default function TransactionsPage() {
                 <input
                   value={candidatePropertyFilter}
                   onChange={(e) => { setCandidatePropertyFilter(e.target.value); setCandidatePage(1); }}
-                  placeholder="Search property..."
+                  placeholder="Search property or postcode..."
                   className="w-full sm:w-56 bg-[#0c0c0c] border border-gray-800 rounded-xl py-2 px-3 text-xs sm:text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-gray-700"
                 />
               </div>
@@ -1418,8 +1430,14 @@ export default function TransactionsPage() {
                   <div className="p-2.5 rounded-xl bg-[#0a0a0a] border border-gray-800/60 text-xs text-gray-300">
                     <span className="text-gray-500 block">Assigned Tenant:</span>
                     <span className="font-medium text-white">{tenant?.tenantName || "—"}</span>
-                    {tenant?.property && (
-                      <span className="block text-gray-400 text-[11px] mt-0.5">{tenant.property}</span>
+                    {(tenant?.address || tenant?.property) && (
+                      <span className="block text-gray-400 text-[11px] mt-0.5">
+                        {formatPropertyAddress(
+                          tenant.address || tenant.property,
+                          tenant.address ? null : tenant.postcode,
+                          tenant.room
+                        )}
+                      </span>
                     )}
                   </div>
 
@@ -1487,7 +1505,11 @@ export default function TransactionsPage() {
                     <span className="font-medium text-white">{tenant?.tenantName || "—"}</span>
                     {(tenant?.address || tenant?.property) && (
                       <span className="block text-gray-400 text-[11px] mt-0.5">
-                        {[tenant.address || tenant.property, tenant.room].filter(Boolean).join(" · ")}
+                        {formatPropertyAddress(
+                          tenant.address || tenant.property,
+                          tenant.address ? null : tenant.postcode,
+                          tenant.room
+                        )}
                       </span>
                     )}
                     {months ? (
@@ -1587,8 +1609,14 @@ export default function TransactionsPage() {
                       </td>
                       <td className="py-4 px-6 text-gray-300 text-sm">
                         <span className="font-medium text-white">{tenant?.tenantName || "—"}</span>
-                        {tenant?.property ? (
-                          <span className="block text-xs text-gray-500 mt-0.5">{tenant.property}</span>
+                        {(tenant?.address || tenant?.property) ? (
+                          <span className="block text-xs text-gray-500 mt-0.5">
+                            {formatPropertyAddress(
+                              tenant.address || tenant.property,
+                              tenant.address ? null : tenant.postcode,
+                              tenant.room
+                            )}
+                          </span>
                         ) : null}
                       </td>
                       <td className="py-4 px-6 text-right">
@@ -1700,9 +1728,11 @@ export default function TransactionsPage() {
                         </span>
                         {(tenant?.address || tenant?.property) && (
                           <span className="block text-xs text-gray-500 mt-0.5">
-                            {[tenant.address || tenant.property, tenant.room]
-                              .filter(Boolean)
-                              .join(" · ")}
+                            {formatPropertyAddress(
+                              tenant.address || tenant.property,
+                              tenant.address ? null : tenant.postcode,
+                              tenant.room
+                            )}
                           </span>
                         )}
                       </td>

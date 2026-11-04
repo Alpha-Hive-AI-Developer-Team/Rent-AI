@@ -59,6 +59,66 @@ test("resolveRowDisplayBalance no longer parks overall on last row", () => {
   assert.equal(resolveRowDisplayBalance(500), 500);
 });
 
+test("manual cash overpay uses full bankAmount once and rolls credit", () => {
+  const history = [
+    {
+      kind: "rent",
+      amountDue: 345.2,
+      amountPaid: 345.2,
+      dueDate: "2022-10-17",
+      linkedPayments: [
+        {
+          amount: 345.2,
+          bankAmount: 10000,
+          paymentGroupId: "cash-grp-1",
+          paidOn: "2022-10-18",
+          method: "cash",
+        },
+      ],
+    },
+    {
+      kind: "rent",
+      amountDue: 700,
+      amountPaid: 700,
+      dueDate: "2022-11-01",
+      linkedPayments: [
+        {
+          amount: 700,
+          bankAmount: 10000,
+          paymentGroupId: "cash-grp-1",
+          paidOn: "2022-10-18",
+          method: "cash",
+        },
+      ],
+    },
+    {
+      kind: "rent",
+      amountDue: 700,
+      amountPaid: 700,
+      dueDate: "2022-12-01",
+      linkedPayments: [
+        {
+          amount: 700,
+          bankAmount: 10000,
+          paymentGroupId: "cash-grp-1",
+          paidOn: "2022-10-18",
+          method: "cash",
+        },
+      ],
+    },
+  ];
+
+  const roles = buildPaymentPieceRoleMap(history);
+  const bankByIndex = buildBankStatementTxsByHistoryIndex(history);
+  const balances = buildRunningBalancesFromPaymentHistory(history, bankByIndex, roles);
+
+  // £10000 − £345.20 = £9654.80 credit after first month
+  assert.equal(balances.get(0), 9654.8);
+  // Credit rolls: 9654.80 − 700 = 8954.80 (not arrears)
+  assert.equal(balances.get(1), 8954.8);
+  assert.equal(balances.get(2), 8254.8);
+});
+
 test("deposit portion is not counted as rent credit", () => {
   const history = [
     {

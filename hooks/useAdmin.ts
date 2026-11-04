@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAdminLandlords, getAdminReferralsTrend, getAdminTopReferrers } from "@/lib/api/adminApi";
-import { createExpense, getExpenses, getIncomeSummary } from "@/lib/api/adminApi";
+import { createExpense, deleteExpense, getExpenses, getIncomeSummary } from "@/lib/api/adminApi";
 
 import { getLandlordTenants, getTenantTransactions, getAllTenants, getTenantStats, getAdminSummary, getAdminReferralsSummary } from "@/lib/api/adminApi";
 import { getPaidUnpaidSeries, getArrearsTrend, getSubscriptionRevenue } from "@/lib/api/adminApi";
@@ -168,10 +168,22 @@ export function useCreateExpense() {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (payload: { landlordId?: string; address: string; description: string; amount: number; date?: string }) => createExpense(payload),
-		onSuccess: (_res, variables) => {
+		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["expenses"] });
 			qc.invalidateQueries({ queryKey: ["incomeSummary"] });
-			// also invalidate by specific paramized keys
+			qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "expenses" });
+			qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "incomeSummary" });
+		},
+	});
+}
+
+export function useDeleteExpense() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (id: string) => deleteExpense(id),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["expenses"] });
+			qc.invalidateQueries({ queryKey: ["incomeSummary"] });
 			qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "expenses" });
 			qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "incomeSummary" });
 		},

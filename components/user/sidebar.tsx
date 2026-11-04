@@ -18,6 +18,7 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  Wallet,
 } from "lucide-react";
 import { useCustomerLogout } from "@/hooks/useAuth";
 import { signOut } from "firebase/auth";
@@ -51,8 +52,8 @@ export default function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   ];
 
   // Main items shown by default for less distraction for older users
-  const mainItems = menuItems.slice(0, 3);
-  const extraItems = menuItems.slice(3);
+  const mainItems = menuItems.slice(0, 4);
+  const extraItems = menuItems.slice(4);
 
   // Detect screen size (lg breakpoint)
   useEffect(() => {

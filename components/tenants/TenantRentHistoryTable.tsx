@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { X } from "lucide-react";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime, formatPropertyAddress } from "@/lib/utils";
 import { getDepositPayment, getRentEntryPayment } from "@/lib/api/tenantsApi";
 import BankStatementCell from "@/components/tenants/BankStatementCell";
 import {
@@ -48,6 +48,10 @@ export default function TenantRentHistoryTable({
     () => buildBankStatementTxsByHistoryIndex(history),
     [history]
   );
+  const paymentHistoryByIndex = useMemo(
+    () => buildBankStatementTxsByHistoryIndex(history, { includeManualCash: true }),
+    [history]
+  );
   const runningBalancesByIndex = useMemo(
     () => buildRunningBalancesFromPaymentHistory(history, bankStatementByIndex, paymentPieceRoles),
     [history, bankStatementByIndex, paymentPieceRoles]
@@ -60,8 +64,7 @@ export default function TenantRentHistoryTable({
   const moveInDate = tenant?.moveInDate || null;
   const moveOutDate = tenant?.moveOutDate || null;
   const isArchived = Boolean(tenant?.archived);
-  const room = tenant?.room ? String(tenant.room).trim() : "";
-  const propertyLabel = [tenant?.property, room].filter(Boolean).join(" · ");
+  const propertyLabel = formatPropertyAddress(tenant?.property, tenant?.postcode, tenant?.room);
   const displayBalance = computeLandlordDisplayBalance(tenant || { rentHistory: history });
   const balanceLabel =
     Math.abs(displayBalance) < 0.005
@@ -267,24 +270,23 @@ export default function TenantRentHistoryTable({
         </div>
       )}
 
-      <div className="w-full overflow-x-auto rounded-xl border border-gray-800/80 bg-[#0c0c0c] no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      <div className="w-full overflow-x-auto rounded-lg border border-[#1a1a1a] bg-[#0B0B0B]">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-[#151515] bg-[#0f0f0f] text-left text-gray-400">
-              <th className="whitespace-nowrap px-4 py-3 text-xs">Amount Due</th>
-              <th className="whitespace-nowrap px-4 py-3 text-xs">Amount Paid</th>
-              <th className="whitespace-nowrap px-4 py-3 text-xs">Payment history</th>
-              <th className="whitespace-nowrap px-4 py-3 text-xs">Due Date</th>
-              <th className="whitespace-nowrap px-4 py-3 text-xs">Status</th>
-              <th className="whitespace-nowrap px-4 py-3 text-xs">Balance</th>
-              <th className="whitespace-nowrap px-4 py-3 text-xs">Actions</th>
-              <th className="whitespace-nowrap px-4 py-3 text-xs">Details</th>
+              <th className="px-4 py-3 text-xs">Amount Due</th>
+              <th className="px-4 py-3 text-xs">Payment history</th>
+              <th className="px-4 py-3 text-xs">Due Date</th>
+              <th className="px-4 py-3 text-xs">Status</th>
+              <th className="px-4 py-3 text-xs">Balance</th>
+              <th className="px-4 py-3 text-xs">Actions</th>
+              <th className="px-4 py-3 text-xs">Details</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="py-8 text-center text-gray-400">
+                <td colSpan={7} className="py-8 text-center text-gray-400">
                   Loading rent history…
                 </td>
               </tr>
@@ -294,7 +296,7 @@ export default function TenantRentHistoryTable({
                 if (!visibleHistory.length) {
                   return (
                     <tr>
-                      <td colSpan={8} className="py-8 text-center text-gray-400">
+                      <td colSpan={7} className="py-8 text-center text-gray-400">
                         No rent history found for this tenant.
                       </td>
                     </tr>
@@ -307,8 +309,6 @@ export default function TenantRentHistoryTable({
                   const isChargeLike = kind === "charge" || kind === "transition";
                   const isFirstPayment = !isAdjustment && isFirstMoveInPaymentEntry(entry, tenant);
                   const lineItems = Array.isArray(entry?.lineItems) ? entry.lineItems : [];
-                  const remaining =
-                    (Number(entry.amountDue ?? entry.rent) || 0) - (Number(entry.amountPaid) || 0);
                   const recorded = !isAdjustment && hasRecordedPayment(entry);
                   const statusLabel = String(entry.status || "unpaid");
                   const statusKey =
@@ -325,7 +325,7 @@ export default function TenantRentHistoryTable({
                         if (recorded) openPaymentReview(index, entry);
                       }}
                     >
-                      <td className="whitespace-nowrap px-4 py-3 text-gray-300">
+                      <td className="px-4 py-3 text-gray-300">
                         <div className="tabular-nums">{formatRentMoney(dueDisplay)}</div>
                         {(() => {
                           const dueDayExtras = lineItems.filter(isDueDayChangeLineItem);
@@ -369,24 +369,17 @@ export default function TenantRentHistoryTable({
                             </div>
                           )}
                       </td>
-                      <td
-                        className={`whitespace-nowrap px-4 py-3 ${
-                          !isAdjustment && remaining > 0 ? "text-rose-400" : "text-gray-300"
-                        }`}
-                      >
-                        {isAdjustment ? "—" : formatRentMoney(Number(entry.amountPaid) || 0)}
-                      </td>
                       <td className="min-w-[7rem] px-4 py-3 align-top">
                         {isAdjustment ? (
                           <span className="text-sm text-gray-500">—</span>
                         ) : (
-                          <BankStatementCell txs={bankStatementByIndex.get(index) || []} />
+                          <BankStatementCell txs={paymentHistoryByIndex.get(index) || []} />
                         )}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-gray-300">
+                      <td className="px-4 py-3 text-gray-300">
                         {formatDate(entry.dueDate || entry.month)}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3">
+                      <td className="px-4 py-3">
                         <span
                           className={`rounded-full border px-2 py-1 text-xs ${
                             RENT_STATUS_COLORS[statusKey] || "bg-gray-800 text-gray-400"
@@ -395,7 +388,7 @@ export default function TenantRentHistoryTable({
                           {statusKey}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 align-top">
+                      <td className="px-4 py-3 align-top">
                         {(() => {
                           if (isAdjustment) {
                             return <span className="text-sm text-gray-500">—</span>;
@@ -430,7 +423,7 @@ export default function TenantRentHistoryTable({
                           );
                         })()}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3">
+                      <td className="px-4 py-3">
                         {isAdjustment ? (
                           <span className="text-xs text-gray-500">—</span>
                         ) : recorded &&
