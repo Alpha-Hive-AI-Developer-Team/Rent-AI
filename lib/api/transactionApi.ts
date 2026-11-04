@@ -122,11 +122,29 @@ export async function createPlaidLinkToken() {
   return res.data;
 }
 
+/** Link update-mode token to re-auth an existing bank Item. */
+export async function createPlaidUpdateLinkToken(itemId: string) {
+  const res = await apiClient.post(`/plaid/items/${encodeURIComponent(itemId)}/link-token`);
+  return res.data;
+}
+
 export async function exchangePlaidPublicToken(payload: {
   public_token: string;
   institution?: { institution_id?: string; name?: string } | null;
+  /** When fixing an existing connection, pass that Item's id */
+  update_item_id?: string | null;
 }) {
   const res = await apiClient.post(`/plaid/exchange`, payload);
+  return res.data;
+}
+
+export async function getPlaidItems() {
+  const res = await apiClient.get(`/plaid/items`);
+  return res.data;
+}
+
+export async function unlinkPlaidItem(itemId: string) {
+  const res = await apiClient.post(`/plaid/items/${encodeURIComponent(itemId)}/unlink`);
   return res.data;
 }
 
@@ -147,7 +165,11 @@ export async function getConnectedBank() {
   return res.data;
 }
 
-export async function simulatePlaidIncoming(payload: { amount?: number; description?: string } = {}) {
+export async function simulatePlaidIncoming(payload: {
+  amount?: number;
+  description?: string;
+  itemId?: string;
+} = {}) {
   const res = await apiClient.post(`/plaid/sandbox/simulate-incoming`, payload);
   return res.data;
 }
@@ -156,7 +178,10 @@ export default {
   getUnreconciledTransactions,
   createTransaction,
   createPlaidLinkToken,
+  createPlaidUpdateLinkToken,
   exchangePlaidPublicToken,
+  getPlaidItems,
+  unlinkPlaidItem,
   getPlaidTransactions,
   getConnectedAccounts,
 };

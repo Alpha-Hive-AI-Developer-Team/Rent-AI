@@ -5,7 +5,14 @@ import { Plus, Search, Check, X, Bell, ChevronDown, Info, CheckCircle2, AlertCir
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { useConnectedAccounts, useUnreconciledTransactions, useReconciledTransactions, useConnectedInstitution, useReconcileTransaction, useAutoMatchTransactions, useClassifyTransaction, useClassifiedTransactions } from "@/hooks/useTransactions";
-import { createPlaidLinkToken, exchangePlaidPublicToken, getPlaidTransactions, simulatePlaidIncoming } from "@/lib/api/transactionApi";
+import {
+  createPlaidLinkToken,
+  createPlaidUpdateLinkToken,
+  exchangePlaidPublicToken,
+  getPlaidTransactions,
+  simulatePlaidIncoming,
+  unlinkPlaidItem,
+} from "@/lib/api/transactionApi";
 import { getTenantById } from "@/lib/api/tenantsApi";
 import { formatDate, formatPropertyAddress } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -213,8 +220,12 @@ export default function TransactionsPage() {
   const [showAccountsModal, setShowAccountsModal] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [linkToken, setLinkToken] = useState<string | null>(null);
+  /** When set, Plaid Link runs in update-mode for this Item (re-auth), not add-bank */
+  const [updateItemId, setUpdateItemId] = useState<string | null>(null);
+  const [unlinkingItemId, setUnlinkingItemId] = useState<string | null>(null);
   const [connectedInstitution, setConnectedInstitution] = useState<string | null>(null);
   const [connectedInstitutionId, setConnectedInstitutionId] = useState<string | null>(null);
+  const [connectedBankCount, setConnectedBankCount] = useState(0);
   const [syncingAccounts, setSyncingAccounts] = useState<string[]>([]);
   const [simulating, setSimulating] = useState(false);
   const connectedInstitutionQuery = useConnectedInstitution(true);
@@ -258,11 +269,13 @@ export default function TransactionsPage() {
   const onPlaidSuccess = useCallback(
     async (public_token: string | null, metadata: any) => {
       if (!public_token) return;
+      const fixingItemId = updateItemId;
       try {
         setConnecting(true);
         const res = await exchangePlaidPublicToken({
           public_token,
           institution: metadata?.institution || null,
+          ...(fixingItemId ? { update_item_id: fixingItemId } : {}),
         });
         try {
           await connectedInstitutionQuery.refetch();
@@ -277,10 +290,12 @@ export default function TransactionsPage() {
         const detail =
           typeof inserted === "number" && inserted > 0
             ? `${inserted} incoming payment${inserted === 1 ? "" : "s"} imported for reconcile.`
-            : "Bank connected. Use Sync Bank Feed if transactions are still loading.";
+            : fixingItemId
+              ? "Bank connection updated. Use Sync Bank Feed if transactions are still loading."
+              : "Bank connected. Use Sync Bank Feed if transactions are still loading.";
         setSyncFeedback({
           type: "success",
-          title: "Bank connected",
+          title: fixingItemId ? "Bank reconnected" : "Bank connected",
           message: detail,
           accountName: metadata?.institution?.name,
         });
@@ -294,9 +309,10 @@ export default function TransactionsPage() {
       } finally {
         setConnecting(false);
         setLinkToken(null);
+        setUpdateItemId(null);
       }
     },
-    [connectedAccountsQuery, connectedInstitutionQuery, unreconciledQuery]
+    [connectedAccountsQuery, connectedInstitutionQuery, unreconciledQuery, reconciledQuery, updateItemId]
   );
 
   const { open, ready } = usePlaidLink({
@@ -304,6 +320,7 @@ export default function TransactionsPage() {
     onSuccess: onPlaidSuccess,
     onExit: () => {
       setConnecting(false);
+      setUpdateItemId(null);
     },
   });
 
@@ -316,6 +333,7 @@ export default function TransactionsPage() {
   async function startPlaidConnect() {
     try {
       setConnecting(true);
+      setUpdateItemId(null);
       const res = await createPlaidLinkToken();
       const token = res?.data?.link_token;
       if (!token) {
@@ -329,14 +347,71 @@ export default function TransactionsPage() {
     }
   }
 
+  async function startPlaidUpdate(itemId: string) {
+    try {
+      setConnecting(true);
+      setUpdateItemId(itemId);
+      const res = await createPlaidUpdateLinkToken(itemId);
+      const token = res?.data?.link_token;
+      if (!token) {
+        throw new Error("No link_token returned");
+      }
+      setLinkToken(token);
+    } catch (err: any) {
+      console.error(err);
+      setConnecting(false);
+      setUpdateItemId(null);
+      setSyncFeedback({
+        type: "error",
+        title: "Reconnect failed",
+        message: err?.response?.data?.message || err?.message || "Could not start bank re-authentication.",
+      });
+    }
+  }
+
+  async function handleUnlinkBank(itemId: string, institutionName?: string) {
+    if (!itemId) return;
+    const label = institutionName || "this bank";
+    if (!window.confirm(`Unlink ${label}? Historical transactions stay in RentAi; new syncs for this bank will stop.`)) {
+      return;
+    }
+    try {
+      setUnlinkingItemId(itemId);
+      await unlinkPlaidItem(itemId);
+      await Promise.all([
+        connectedInstitutionQuery.refetch(),
+        connectedAccountsQuery.refetch(),
+      ]);
+      setSyncFeedback({
+        type: "success",
+        title: "Bank unlinked",
+        message: `${label} was removed. Other connected banks are unchanged.`,
+        accountName: institutionName,
+      });
+    } catch (err: any) {
+      setSyncFeedback({
+        type: "error",
+        title: "Unlink failed",
+        message: err?.response?.data?.message || err?.message || "Could not unlink this bank.",
+      });
+    } finally {
+      setUnlinkingItemId(null);
+    }
+  }
+
   // when backend returns connected institution, update local state
   useEffect(() => {
     try {
       const payload = connectedInstitutionQuery.data;
       const inst = payload?.data || null;
+      const count = Number(payload?.count) || (Array.isArray(payload?.items) ? payload.items.length : 0);
+      setConnectedBankCount(count);
       if (inst) {
         setConnectedInstitutionId(inst.id || inst._id || null);
         setConnectedInstitution(inst.name || inst.id || null);
+      } else {
+        setConnectedInstitutionId(null);
+        setConnectedInstitution(null);
       }
     } catch (e) {
       // ignore
@@ -688,7 +763,9 @@ export default function TransactionsPage() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span className="text-gray-400">Bank connected:</span>
+            <span className="text-gray-400">
+              {connectedBankCount > 1 ? "Banks connected:" : "Bank connected:"}
+            </span>
             <span className="font-semibold text-emerald-300">{connectedInstitution}</span>
           </div>
         )}
@@ -1113,14 +1190,43 @@ export default function TransactionsPage() {
         </div>
       )}
 
-      {/* Connected Accounts Modal */}
-      {showAccountsModal && (
+      {/* Connected Accounts Modal — grouped by bank (Plaid Item) */}
+      {showAccountsModal && (() => {
+        const accounts: any[] = connectedAccountsQuery.data?.data ?? [];
+        const bankItems: any[] = connectedInstitutionQuery.data?.items ?? [];
+        const groups = new Map<string, { itemId: string; institutionName: string; accounts: any[] }>();
+        for (const bank of bankItems) {
+          const key = String(bank.itemId || bank.id);
+          if (!key) continue;
+          groups.set(key, {
+            itemId: bank.itemId || key,
+            institutionName: bank.name || "Connected bank",
+            accounts: [],
+          });
+        }
+        for (const acc of accounts) {
+          const key = String(acc.itemId || acc.institutionId || acc.institutionName || "unknown");
+          if (!groups.has(key)) {
+            groups.set(key, {
+              itemId: acc.itemId || key,
+              institutionName: acc.institutionName || connectedInstitution || "Connected bank",
+              accounts: [],
+            });
+          }
+          groups.get(key)!.accounts.push(acc);
+        }
+        const groupList = Array.from(groups.values());
+
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="my-auto max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-800 bg-[#111111] p-5 sm:p-6 text-white shadow-2xl no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-gray-800/80">
               <div>
                 <h3 className="text-base sm:text-lg font-semibold text-white">Connected Bank Accounts</h3>
-                <p className="text-xs sm:text-sm text-gray-400">Accounts synced from your Open Banking feed</p>
+                <p className="text-xs sm:text-sm text-gray-400">
+                  Accounts synced from your Open Banking feed
+                  {connectedBankCount > 1 ? ` · ${connectedBankCount} banks` : ""}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 {connectedAccountsQuery.isFetching && (
@@ -1136,7 +1242,7 @@ export default function TransactionsPage() {
               </div>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-4">
               {connectedAccountsQuery.isError && (
                 <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">
                   Failed to load connected accounts.
@@ -1145,36 +1251,89 @@ export default function TransactionsPage() {
 
               {!connectedAccountsQuery.isFetching &&
                 !connectedAccountsQuery.isError &&
-                (connectedAccountsQuery.data?.data ?? []).length === 0 && (
+                groupList.length === 0 && (
                 <div className="text-xs sm:text-sm text-gray-400 py-6 text-center">
                   {connectedInstitution
-                    ? `No accounts found for ${connectedInstitution}. Try Reconnect bank, then open Sync Bank Feed again.`
+                    ? `No accounts found. Try Fix connection on the bank, or Add bank again.`
                     : "No accounts found. Connect a bank first."}
                 </div>
               )}
 
-              {(connectedAccountsQuery.data?.data ?? []).map((acc: any) => (
-                <div key={acc.accountId} className="flex items-center justify-between gap-3 p-3.5 bg-[#0c0c0c] border border-gray-800/80 rounded-xl hover:border-gray-700/80 transition">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium text-sm text-white truncate">{acc.name || acc.accountId}</div>
-                    <div className="text-xs text-gray-500 truncate mt-0.5">{acc.accountId}</div>
-                    <div className="text-[11px] text-gray-400 mt-1 uppercase tracking-wider">{acc.currency || acc.type || acc.accountType}</div>
+              {groupList.map((group) => (
+                <div key={group.itemId} className="space-y-2">
+                  <div className="flex items-center justify-between gap-2 px-0.5">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-white truncate">{group.institutionName}</div>
+                      <div className="text-[11px] text-gray-500 truncate">{group.itemId}</div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (impersonating) {
+                            toast.error("Bank linking is locked while acting as this landlord");
+                            return;
+                          }
+                          startPlaidUpdate(group.itemId);
+                        }}
+                        disabled={connecting || impersonating || !group.itemId}
+                        className="px-2.5 py-1 rounded-full border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 text-[11px] font-medium transition disabled:opacity-50"
+                      >
+                        Fix connection
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleUnlinkBank(group.itemId, group.institutionName)}
+                        disabled={unlinkingItemId === group.itemId || impersonating}
+                        className="px-2.5 py-1 rounded-full border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 text-[11px] font-medium transition disabled:opacity-50"
+                      >
+                        {unlinkingItemId === group.itemId ? "Unlinking…" : "Unlink"}
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleAccountSync(acc)}
-                      disabled={syncingAccounts.includes(acc.accountId)}
-                      className="px-3.5 py-1.5 rounded-full bg-[#027A48] hover:bg-emerald-600 text-white text-xs font-medium transition disabled:opacity-60 shadow-sm"
+                  {group.accounts.map((acc: any) => (
+                    <div
+                      key={`${group.itemId}-${acc.accountId}`}
+                      className="flex items-center justify-between gap-3 p-3.5 bg-[#0c0c0c] border border-gray-800/80 rounded-xl hover:border-gray-700/80 transition"
                     >
-                      {syncingAccounts.includes(acc.accountId) ? 'Syncing…' : 'Sync Now'}
-                    </button>
-                  </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-sm text-white truncate">{acc.name || acc.accountId}</div>
+                        <div className="text-xs text-gray-500 truncate mt-0.5">{acc.accountId}</div>
+                        <div className="text-[11px] text-gray-400 mt-1 uppercase tracking-wider">
+                          {acc.currency || acc.type || acc.accountType}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleAccountSync(acc)}
+                          disabled={syncingAccounts.includes(acc.accountId)}
+                          className="px-3.5 py-1.5 rounded-full bg-[#027A48] hover:bg-emerald-600 text-white text-xs font-medium transition disabled:opacity-60 shadow-sm"
+                        >
+                          {syncingAccounts.includes(acc.accountId) ? "Syncing…" : "Sync Now"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex flex-wrap justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (impersonating) {
+                    toast.error("Bank linking is locked while acting as this landlord");
+                    return;
+                  }
+                  startPlaidConnect();
+                }}
+                disabled={connecting || impersonating}
+                className="px-5 py-2 rounded-full bg-[#027A48] hover:bg-emerald-600 text-xs sm:text-sm text-white font-medium transition disabled:opacity-50"
+              >
+                {connecting && !updateItemId ? "Connecting…" : "Add bank"}
+              </button>
               <button
                 type="button"
                 onClick={() => setShowAccountsModal(false)}
@@ -1185,7 +1344,8 @@ export default function TransactionsPage() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Search (Left) + Actions (Right) */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 w-full">
@@ -1220,10 +1380,10 @@ export default function TransactionsPage() {
             <span>
               {impersonating
                 ? "Bank link locked"
-                : connecting
+                : connecting && !updateItemId
                   ? "Connecting…"
                   : connectedInstitution
-                    ? "Reconnect bank"
+                    ? "Add bank"
                     : "Connect bank"}
             </span>
           </button>
