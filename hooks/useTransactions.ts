@@ -4,6 +4,7 @@ import {
 	getReconciledTransactions,
 	getConnectedBank,
 	getConnectedAccounts,
+	getPlaidItems,
 	autoMatchUnreconciledTransactions,
 	classifyTransaction,
 	getClassifiedTransactions,
@@ -62,6 +63,18 @@ export function useConnectedInstitution(enabled = false) {
 	return useQuery<any, Error, any>({
 		queryKey: ["connectedBank", userId],
 		queryFn: () => getConnectedBank(),
+		enabled: !!userId && enabled,
+		staleTime: 0,
+	});
+}
+
+export function usePlaidItems(enabled = false) {
+	const authUser = useAuthUser();
+	const userId = authUser?.id || authUser?._id || authUser?.userId;
+
+	return useQuery<any, Error, any>({
+		queryKey: ["plaidItems", userId],
+		queryFn: () => getPlaidItems(),
 		enabled: !!userId && enabled,
 		staleTime: 0,
 	});
