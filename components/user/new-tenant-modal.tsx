@@ -315,8 +315,29 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
 
   const createMutation = useCreatePropertySetup();
   const { data: existingAddresses = [] } = useTenantAddresses(open);
-  const { data: tenantsRes } = useTenants();
+  // Include archived — they still consume plan slots until tenancy is ended.
+  const { data: tenantsRes } = useTenants({ archived: "include" });
   const allTenants = tenantsRes?.data ?? [];
+  const planAllowed = useMemo(() => {
+    const first = (allTenants || []).find((t: any) => t?.planAllowed != null);
+    return Number(first?.planAllowed) || 3;
+  }, [allTenants]);
+  const usedSlots = useMemo(
+    () =>
+      (allTenants || []).filter(
+        (t: any) => t?.tenancyStatus !== "ended" && t?.tenancyStatus !== "vacant"
+      ).length,
+    [allTenants]
+  );
+  const slotsLeft = Math.max(0, planAllowed - usedSlots);
+  /** Only occupied creations consume slots; vacant draft rooms do not. */
+  const pendingNewSlots = useMemo(() => {
+    if (addingToExisting) {
+      return rooms.filter((r) => !r.isExisting && !r.vacant).length;
+    }
+    if (tenancyType === "single") return 1;
+    return rooms.filter((r) => !r.isExisting && !r.vacant).length;
+  }, [addingToExisting, tenancyType, rooms]);
   const qc = useQueryClient();
   const authUser = useAuthUser();
   const userId = authUser?.id || authUser?._id || authUser?.userId;
@@ -478,12 +499,16 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
     }
   };
 
+  const isValidMoveInDate = (value: string) =>
+    Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(String(value).trim()));
+
   const validateStep3 = () => {
     if (tenancyType === "single" && !addingToExisting) {
       const names = finalizeTenantNames(singleTenant.tenantNames, singleTenant.nameDraft);
       if (!(names.length > 0 && names.every(isValidTenantName) && Number(singleTenant.rent) > 0)) {
         return false;
       }
+      if (!isValidMoveInDate(singleTenant.moveInDate)) return false;
       if (validateDepositFields(singleTenant)) return false;
       return true;
     }
@@ -502,6 +527,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
         if (!(names.length > 0 && names.every(isValidTenantName) && Number(r.rent) > 0)) {
           return false;
         }
+        if (!isValidMoveInDate(r.moveInDate)) return false;
         if (validateDepositFields(r)) return false;
         return true;
       })
@@ -541,6 +567,18 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
 
   const addRoom = () => {
     const created = newRoom(nextRoomIndex(rooms));
+    // At plan capacity: still allow empty vacant rooms (they don't use tenant slots).
+    if (pendingNewSlots >= slotsLeft) {
+      created.vacant = true;
+      created.tenantNames = [];
+      created.nameDraft = "";
+      created.moveInDate = "";
+      toast(
+        slotsLeft <= 0
+          ? "Plan full — new room added as vacant. Assign a tenant later or upgrade to add occupied rooms."
+          : `Only ${slotsLeft} occupied slot${slotsLeft === 1 ? "" : "s"} left — room added as vacant.`
+      );
+    }
     setRooms((prev) => [created, ...prev]);
     setActiveRoomNavId(created.id);
     // New card is prepended — scroll to it so the form is immediately visible.
@@ -725,7 +763,20 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
   const handleSubmit = () => {
     if (createMutation.isPending) return;
 
+    if (pendingNewSlots > slotsLeft) {
+      toast.error(
+        slotsLeft <= 0
+          ? `Plan limit of ${planAllowed} tenants reached. Upgrade your subscription to add more.`
+          : `Your plan only has ${slotsLeft} tenant slot${slotsLeft === 1 ? "" : "s"} left (adding ${pendingNewSlots}).`
+      );
+      return;
+    }
+
     if (tenancyType === "single" && !addingToExisting) {
+      if (!isValidMoveInDate(singleTenant.moveInDate)) {
+        toast.error("Move-in date is required.");
+        return;
+      }
       const depositErr = validateDepositFields(singleTenant);
       if (depositErr) {
         toast.error(depositErr);
@@ -735,6 +786,10 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
       const editable = addingToExisting ? newRooms : rooms;
       for (const r of editable) {
         if (r.vacant) continue;
+        if (!isValidMoveInDate(r.moveInDate)) {
+          toast.error(`Move-in date is required for ${r.room || "each occupied room"}.`);
+          return;
+        }
         const depositErr = validateDepositFields(r);
         if (depositErr) {
           toast.error(depositErr);
@@ -846,6 +901,24 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
               <div>
                 <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">{headerTitle}</h2>
                 <p className="mt-1 text-sm text-gray-400">{headerSubtitle}</p>
+                <div className="mt-2.5 inline-flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+                      slotsLeft <= 0
+                        ? "border-amber-600/40 bg-amber-950/40 text-amber-300"
+                        : "border-emerald-700/40 bg-emerald-950/30 text-emerald-300"
+                    }`}
+                  >
+                    {slotsLeft <= 0
+                      ? `Plan full · ${usedSlots}/${planAllowed} tenants`
+                      : `${slotsLeft} of ${planAllowed} tenant slot${planAllowed === 1 ? "" : "s"} left`}
+                  </span>
+                  {pendingNewSlots > 0 && slotsLeft > 0 && (
+                    <span className="rounded-full border border-gray-700 bg-[#0a0a0a] px-2.5 py-1 text-[11px] text-gray-400">
+                      Adding {pendingNewSlots} · {Math.max(0, slotsLeft - pendingNewSlots)} left after save
+                    </span>
+                  )}
+                </div>
               </div>
               <button
                 type="button"
@@ -1162,6 +1235,11 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                         <button
                           type="button"
                           onClick={addRoom}
+                          title={
+                            pendingNewSlots >= slotsLeft
+                              ? `Plan slots full (${usedSlots}/${planAllowed}) — new rooms are added as vacant`
+                              : undefined
+                          }
                           className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700 px-3 py-1.5 text-sm text-emerald-300 transition hover:bg-emerald-950/40"
                         >
                           <Plus className="h-4 w-4" /> Add room
@@ -1343,7 +1421,9 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                           />
                         </div>
                         <div>
-                          <label className={labelClass}>Move-in date</label>
+                          <label className={labelClass}>
+                            Move-in date <span className="text-rose-400">*</span>
+                          </label>
                           <DateInput
                             value={singleTenant.moveInDate}
                             onChange={(moveInDate) => {
@@ -1357,6 +1437,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                 ),
                               }));
                             }}
+                            required
                             className={`${inputClass} [color-scheme:dark]`}
                           />
                         </div>
@@ -1521,6 +1602,11 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                             <button
                               type="button"
                               onClick={addRoom}
+                              title={
+                                pendingNewSlots >= slotsLeft
+                                  ? `Plan slots full (${usedSlots}/${planAllowed}) — new rooms are added as vacant`
+                                  : undefined
+                              }
                               className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-700 px-3 py-1.5 text-sm text-emerald-300 transition hover:bg-emerald-950/40"
                             >
                               <Plus className="h-4 w-4" /> Add room
@@ -1855,7 +1941,12 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                 />
                               </div>
                               <div>
-                                <label className={labelClass}>Move-in date</label>
+                                <label className={labelClass}>
+                                  Move-in date
+                                  {!isVacant || isAssigning ? (
+                                    <span className="text-rose-400"> *</span>
+                                  ) : null}
+                                </label>
                                 <DateInput
                                   value={
                                     isVacant && !isAssigning ? "" : room.moveInDate
@@ -1864,6 +1955,7 @@ export default function NewTenantModal({ open, onClose }: NewTenantModalProps) {
                                     updateRoom(room.id, { moveInDate })
                                   }
                                   disabled={fieldsLocked}
+                                  required={!isVacant || isAssigning}
                                   className={`${inputClass} [color-scheme:dark] disabled:cursor-not-allowed disabled:text-gray-400`}
                                 />
                               </div>

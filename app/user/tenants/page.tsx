@@ -1,6 +1,7 @@
 "use client";
 
-import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, ChevronDown, Archive, ArchiveRestore, CalendarClock, Users } from "lucide-react";
+import { Search, Plus, X, DollarSign, Pencil, Trash2, Link2, Check, Info, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, ChevronDown, Archive, ArchiveRestore, CalendarClock, Users, Lock, ArrowRight } from "lucide-react";
+import Link from "next/link";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import NewTenantModal from "@/components/user/new-tenant-modal";
 import RentScheduleFields, {
@@ -494,6 +495,8 @@ export default function TenantsPage() {
   const { data, isLoading, isError } = useTenants({
     archived: showArchived ? "only" : "exclude",
   });
+  // Slot usage includes archived non-ended tenancies (they still consume plan slots).
+  const { data: planTenantsRes } = useTenants({ archived: "include" });
   const payByCashMutation = usePayByCash();
   const updateTenantMutation = useUpdateTenant();
   const assignTenantMutation = useAssignTenant();
@@ -513,6 +516,90 @@ export default function TenantsPage() {
   const userId = authUser?.id || authUser?._id || authUser?.userId;
 
   const tenantsFromApi = data?.data ?? [];
+
+  const lockedCount = useMemo(() => {
+    return (tenantsFromApi || []).filter((t: any) => t?.isLocked).length;
+  }, [tenantsFromApi]);
+
+  const planTenants = planTenantsRes?.data ?? tenantsFromApi;
+
+  const planAllowed = useMemo(() => {
+    const firstWithAllowed = (planTenants || tenantsFromApi || []).find(
+      (t: any) => t?.planAllowed != null
+    );
+    return firstWithAllowed?.planAllowed ?? 3;
+  }, [planTenants, tenantsFromApi]);
+
+  const usedTenantSlots = useMemo(() => {
+    // Vacant rooms are placeholders and do not consume plan tenant slots.
+    return (planTenants || []).filter(
+      (t: any) => t?.tenancyStatus !== "ended" && t?.tenancyStatus !== "vacant"
+    ).length;
+  }, [planTenants]);
+
+  const tenantSlotsLeft = Math.max(0, Number(planAllowed) - usedTenantSlots);
+
+  const setSelectedTenantPreservingLock = useCallback(
+    (nextVal: any) => {
+      setSelectedTenant((prev: any) => {
+        const resolved = typeof nextVal === "function" ? nextVal(prev) : nextVal;
+        if (!resolved) return null;
+        const tenantId = String(resolved._id || resolved.id || "");
+        const matchInList = (tenantsFromApi || []).find(
+          (t: any) => String(t?._id || t?.id || "") === tenantId
+        );
+        const isLocked =
+          resolved.isLocked !== undefined
+            ? resolved.isLocked
+            : matchInList?.isLocked !== undefined
+            ? matchInList.isLocked
+            : Boolean(prev?.isLocked);
+        const allowed =
+          resolved.planAllowed !== undefined
+            ? resolved.planAllowed
+            : matchInList?.planAllowed !== undefined
+            ? matchInList.planAllowed
+            : prev?.planAllowed;
+        const hasReconciled =
+          resolved.hasReconciledOnce !== undefined
+            ? resolved.hasReconciledOnce
+            : matchInList?.hasReconciledOnce !== undefined
+            ? matchInList.hasReconciledOnce
+            : prev?.hasReconciledOnce;
+        return {
+          ...resolved,
+          isLocked,
+          planAllowed: allowed,
+          hasReconciledOnce: hasReconciled,
+        };
+      });
+    },
+    [tenantsFromApi]
+  );
+
+  useEffect(() => {
+    if (!selectedTenant?._id || !Array.isArray(tenantsFromApi)) return;
+    const current = tenantsFromApi.find(
+      (t: any) => String(t?._id || t?.id) === String(selectedTenant._id || selectedTenant.id)
+    );
+    if (
+      current &&
+      (current.isLocked !== selectedTenant.isLocked ||
+        current.planAllowed !== selectedTenant.planAllowed ||
+        current.hasReconciledOnce !== selectedTenant.hasReconciledOnce)
+    ) {
+      setSelectedTenant((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              isLocked: current.isLocked,
+              planAllowed: current.planAllowed,
+              hasReconciledOnce: current.hasReconciledOnce ?? prev.hasReconciledOnce,
+            }
+          : prev
+      );
+    }
+  }, [tenantsFromApi, selectedTenant?._id, selectedTenant?.isLocked, selectedTenant?.planAllowed, selectedTenant?.hasReconciledOnce]);
 
   const statusColors: Record<string, string> = {
     Paid: "bg-emerald-950/40 text-emerald-400 border-emerald-700/40",
@@ -808,8 +895,13 @@ export default function TenantsPage() {
   };
 
   const openTenantDetails = async (tenant: any) => {
+    // Locked under plan limit — do not open ledger / details modal
+    if (tenant?.isLocked) {
+      toast.error("This tenant is locked under your current plan. Upgrade to open details.");
+      return;
+    }
     const id = tenant?._id || tenant?.id;
-    setSelectedTenant(tenant);
+    setSelectedTenantPreservingLock(tenant);
     setPendingCash(null);
     setTransactionModalOpen(true);
     if (!id || tenant?.tenancyStatus === "vacant") return;
@@ -819,7 +911,7 @@ export default function TenantsPage() {
       const res = await getTenantById(String(id));
       const full = res?.data ?? res;
       if (full) {
-        setSelectedTenant(full);
+        setSelectedTenantPreservingLock(full);
         // Keep list red-tag in sync with landlord-facing balance from detail
         qc.setQueryData(["tenants", userId], (prev: any) => {
           if (!prev?.data || !Array.isArray(prev.data)) return prev;
@@ -1022,7 +1114,7 @@ export default function TenantsPage() {
           const updated = res?.data || null;
           setAssignOpen(false);
           if (updated) {
-            setSelectedTenant(updated);
+            setSelectedTenantPreservingLock(updated);
             setTransactionModalOpen(true);
           } else {
             setSelectedTenant(null);
@@ -1299,7 +1391,7 @@ export default function TenantsPage() {
       {
         onSuccess: (res) => {
           const updatedTenant = res?.data ?? selectedTenant;
-          setSelectedTenant(updatedTenant);
+          setSelectedTenantPreservingLock(updatedTenant);
           closeEditTenantModal({ reopenDetails: false });
           setTransactionModalOpen(true);
         },
@@ -1354,7 +1446,7 @@ export default function TenantsPage() {
       },
       {
         onSuccess: (res) => {
-          if (res?.data) setSelectedTenant(res.data);
+          if (res?.data) setSelectedTenantPreservingLock(res.data);
           setRemoveLineItemConfirm(null);
         },
       }
@@ -1368,9 +1460,9 @@ export default function TenantsPage() {
       {
         onSuccess: (res) => {
           const updated = res?.data;
-          if (updated) setSelectedTenant(updated);
+          if (updated) setSelectedTenantPreservingLock(updated);
           else
-            setSelectedTenant((prev: any) =>
+            setSelectedTenantPreservingLock((prev: any) =>
               prev ? { ...prev, archived: false, archivedAt: null, moveOutDate: null } : prev
             );
         },
@@ -1747,7 +1839,7 @@ export default function TenantsPage() {
   };
 
   const confirmReversePayment = () => {
-    if (!selectedTenant || !paymentReview) return;
+    if (!selectedTenant || !paymentReview || selectedTenant?.isLocked) return;
     const tenantId = selectedTenant._id;
     unreconcileMutation.mutate(
       {
@@ -1759,7 +1851,7 @@ export default function TenantsPage() {
           setPaymentReview(null);
           const updatedTenant = res?.data?.tenant || null;
           if (updatedTenant) {
-            setSelectedTenant(updatedTenant);
+            setSelectedTenantPreservingLock(updatedTenant);
             qc.setQueryData(["tenants", userId], (prev: any) => {
               if (!prev?.data || !Array.isArray(prev.data)) return prev;
               return {
@@ -1780,7 +1872,7 @@ export default function TenantsPage() {
           try {
             const fresh = await getTenantById(String(tenantId));
             const full = fresh?.data ?? fresh;
-            if (full) setSelectedTenant(full);
+            if (full) setSelectedTenantPreservingLock(full);
           } catch {
             /* keep mutation response */
           }
@@ -1790,7 +1882,7 @@ export default function TenantsPage() {
   };
 
   const confirmReverseAllPayments = () => {
-    if (!selectedTenant?._id || unreconcileAllMutation.isPending) return;
+    if (!selectedTenant?._id || unreconcileAllMutation.isPending || selectedTenant?.isLocked) return;
     const tenantId = selectedTenant._id;
     unreconcileAllMutation.mutate(
       { tenantId },
@@ -1801,7 +1893,7 @@ export default function TenantsPage() {
           setDepositReview(null);
           const updatedTenant = res?.data?.tenant || null;
           if (updatedTenant) {
-            setSelectedTenant(updatedTenant);
+            setSelectedTenantPreservingLock(updatedTenant);
             qc.setQueryData(["tenants", userId], (prev: any) => {
               if (!prev?.data || !Array.isArray(prev.data)) return prev;
               return {
@@ -1824,7 +1916,7 @@ export default function TenantsPage() {
           try {
             const fresh = await getTenantById(String(tenantId));
             const full = fresh?.data ?? fresh;
-            if (full) setSelectedTenant(full);
+            if (full) setSelectedTenantPreservingLock(full);
           } catch {
             /* keep mutation response */
           }
@@ -1993,7 +2085,7 @@ export default function TenantsPage() {
   }, [getApplyMatchedMonthOptions]);
 
   const openApplyMatchedModal = useCallback(() => {
-    if (!selectedTenant?._id || applyingLinkedPayers) return;
+    if (!selectedTenant?._id || applyingLinkedPayers || selectedTenant?.isLocked) return;
     // Empty = default (first Payment history month). Landlord may optionally pick a month.
     setApplyMatchedFromMonth("");
     setApplyMatchedMonthMenuOpen(false);
@@ -2026,7 +2118,7 @@ export default function TenantsPage() {
           try {
             const fresh = await getTenantById(tenantId);
             const tenant = fresh?.data || fresh;
-            if (tenant) setSelectedTenant(tenant);
+            if (tenant) setSelectedTenantPreservingLock(tenant);
           } catch {
             /* ignore refresh errors */
           }
@@ -2106,7 +2198,7 @@ export default function TenantsPage() {
       try {
         const fresh = await getTenantById(tenantId);
         const tenant = fresh?.data || fresh;
-        if (tenant) setSelectedTenant(tenant);
+        if (tenant) setSelectedTenantPreservingLock(tenant);
       } catch {
         /* ignore */
       }
@@ -2181,7 +2273,7 @@ export default function TenantsPage() {
         try {
           const fresh = await getTenantById(selectedTenant._id);
           const tenant = fresh?.data || fresh;
-          if (tenant) setSelectedTenant(tenant);
+          if (tenant) setSelectedTenantPreservingLock(tenant);
         } catch {
           /* ignore */
         }
@@ -2223,15 +2315,66 @@ export default function TenantsPage() {
         </div>
 
         {!showArchived && (
-          <button
-            onClick={() => setNewTenantOpen(true)}
-            className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-[#027A48] hover:bg-[#02653d] px-4 py-2.5 text-white font-medium text-xs sm:text-sm shadow-sm transition active:scale-95"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Tenant</span>
-          </button>
+          <div className="flex w-full sm:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+            <div
+              className={`inline-flex items-center justify-center rounded-xl border px-3 py-2 text-[11px] sm:text-xs font-medium ${
+                tenantSlotsLeft <= 0
+                  ? "border-amber-600/40 bg-amber-950/40 text-amber-300"
+                  : "border-emerald-700/40 bg-emerald-950/30 text-emerald-300"
+              }`}
+              title={`Your plan allows ${planAllowed} active tenancies`}
+            >
+              {tenantSlotsLeft <= 0
+                ? `Plan full · ${usedTenantSlots}/${planAllowed}`
+                : `${tenantSlotsLeft} tenant${tenantSlotsLeft === 1 ? "" : "s"} left · ${usedTenantSlots}/${planAllowed} used`}
+            </div>
+            <button
+              onClick={() => {
+                if (lockedCount > 0 || tenantSlotsLeft <= 0) {
+                  toast.error(`Plan limit of ${planAllowed} tenants reached. Upgrade your subscription to add more tenants.`);
+                  return;
+                }
+                setNewTenantOpen(true);
+              }}
+              className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-[#027A48] hover:bg-[#02653d] px-4 py-2.5 text-white font-medium text-xs sm:text-sm shadow-sm transition active:scale-95"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Tenant</span>
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Locked Tenants Warning Banner */}
+      {lockedCount > 0 && !showArchived && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl border border-amber-600/30 bg-gradient-to-r from-amber-950/40 via-amber-900/15 to-transparent p-4 sm:p-5 text-white shadow-lg">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="rounded-xl bg-amber-500/10 p-2.5 text-amber-400 border border-amber-500/20 shrink-0">
+              <Lock className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-semibold text-amber-200">
+                  Plan limit reached — {lockedCount} {lockedCount === 1 ? "tenant is" : "tenants are"} locked
+                </h3>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-950/60 border border-amber-600/40 text-amber-300 font-medium">
+                  Limit: {planAllowed} active
+                </span>
+              </div>
+              <p className="text-xs text-gray-300 mt-1 max-w-2xl leading-relaxed">
+                Your current plan allows {planAllowed} active tenancies. Locked tenants continue to auto-reconcile in the background if previously matched with bank transactions, but manual edits and manual payments are disabled. Upgrade your plan or remove tenancies to unlock them.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/user/payment"
+            className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs sm:text-sm px-4 py-2.5 transition shadow-md shadow-amber-950/50"
+          >
+            <span>Upgrade Plan</span>
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
 
       {/* Search & Controls Row */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#111] border border-gray-800/80 rounded-2xl p-3 sm:p-4 shadow-md">
@@ -2375,8 +2518,15 @@ export default function TenantsPage() {
                   {paginatedAddressTenants.map((tenant: any) => (
                     <div
                       key={tenant._id}
-                      onClick={() => openTenantDetails(tenant)}
-                      className="bg-[#161616] border border-gray-800/80 hover:border-gray-700/80 rounded-xl p-3.5 transition-all active:scale-[0.99] cursor-pointer shadow-sm space-y-2.5"
+                      onClick={() => {
+                        if (tenant.isLocked) return;
+                        openTenantDetails(tenant);
+                      }}
+                      className={`bg-[#161616] border border-gray-800/80 rounded-xl p-3.5 shadow-sm space-y-2.5 ${
+                        tenant.isLocked
+                          ? "cursor-not-allowed opacity-80"
+                          : "hover:border-gray-700/80 transition-all active:scale-[0.99] cursor-pointer"
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -2389,15 +2539,23 @@ export default function TenantsPage() {
                             </div>
                           ) : null}
                         </div>
-                        <span
-                          className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium inline-flex items-center gap-1.5 ${
-                            statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] ||
-                            "bg-gray-800 text-gray-400"
-                          }`}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                          {getStatusLabel(tenant)}
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {tenant.isLocked && (
+                            <span className="shrink-0 rounded-full border border-amber-600/40 bg-amber-950/40 px-2 py-0.5 text-[11px] font-medium text-amber-300 inline-flex items-center gap-1">
+                              <Lock className="w-3 h-3 text-amber-400" />
+                              Locked
+                            </span>
+                          )}
+                          <span
+                            className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium inline-flex items-center gap-1.5 ${
+                              statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] ||
+                              "bg-gray-800 text-gray-400"
+                            }`}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                            {getStatusLabel(tenant)}
+                          </span>
+                        </div>
                       </div>
                       <div className="flex items-center justify-between text-xs pt-2 border-t border-gray-800/60 text-gray-400">
                         <div>Rent: <span className="font-semibold text-white">{formatMoney(effectiveRentAmount(tenant))}</span></div>
@@ -2464,8 +2622,15 @@ export default function TenantsPage() {
                       {paginatedAddressTenants.map((tenant: any) => (
                         <tr
                           key={tenant._id}
-                          onClick={() => openTenantDetails(tenant)}
-                          className="cursor-pointer border-t border-gray-800/60 transition hover:bg-[#141414]"
+                          onClick={() => {
+                            if (tenant.isLocked) return;
+                            openTenantDetails(tenant);
+                          }}
+                          className={`border-t border-gray-800/60 ${
+                            tenant.isLocked
+                              ? "cursor-not-allowed opacity-80"
+                              : "cursor-pointer transition hover:bg-[#141414]"
+                          }`}
                         >
                           <td className="px-4 py-3.5 text-xs sm:text-sm text-gray-200">
                             {getTenantDisplayName(tenant)}
@@ -2479,15 +2644,23 @@ export default function TenantsPage() {
                             {formatMoney(effectiveRentAmount(tenant))}
                           </td>
                           <td className="px-4 py-3.5 text-xs sm:text-sm">
-                            <span
-                              className={`rounded-full border px-2.5 py-1 text-xs inline-flex items-center gap-1.5 ${
-                                statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] ||
-                                "bg-gray-800 text-gray-400"
-                              }`}
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                              {getStatusLabel(tenant)}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {tenant.isLocked && (
+                                <span className="rounded-full border border-amber-600/40 bg-amber-950/40 px-2 py-0.5 text-[11px] font-medium text-amber-300 inline-flex items-center gap-1">
+                                  <Lock className="w-3 h-3 text-amber-400" />
+                                  Locked
+                                </span>
+                              )}
+                              <span
+                                className={`rounded-full border px-2.5 py-1 text-xs inline-flex items-center gap-1.5 ${
+                                  statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] ||
+                                  "bg-gray-800 text-gray-400"
+                                }`}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                {getStatusLabel(tenant)}
+                              </span>
+                            </div>
                           </td>
                           <td className="px-4 py-3.5 text-xs sm:text-sm text-gray-400">
                             {showArchived
@@ -2639,8 +2812,15 @@ export default function TenantsPage() {
             {!isLoading && !isError && paginatedFiltered.map((tenant: any) => (
               <div
                 key={tenant._id}
-                onClick={() => openTenantDetails(tenant)}
-                className="bg-[#111] border border-gray-800/80 hover:border-gray-700/80 rounded-2xl p-4 transition-all active:scale-[0.99] cursor-pointer shadow-md space-y-3"
+                onClick={() => {
+                  if (tenant.isLocked) return;
+                  openTenantDetails(tenant);
+                }}
+                className={`bg-[#111] border border-gray-800/80 rounded-2xl p-4 shadow-md space-y-3 ${
+                  tenant.isLocked
+                    ? "cursor-not-allowed opacity-80"
+                    : "hover:border-gray-700/80 transition-all active:scale-[0.99] cursor-pointer"
+                }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -2653,15 +2833,23 @@ export default function TenantsPage() {
                       </div>
                     ) : null}
                   </div>
-                  <span
-                    className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium inline-flex items-center gap-1.5 ${
-                      statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] ||
-                      "bg-gray-800 text-gray-400"
-                    }`}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                    {getStatusLabel(tenant)}
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {tenant.isLocked && (
+                      <span className="shrink-0 rounded-full border border-amber-600/40 bg-amber-950/40 px-2 py-0.5 text-[11px] font-medium text-amber-300 inline-flex items-center gap-1">
+                        <Lock className="w-3 h-3 text-amber-400" />
+                        Locked
+                      </span>
+                    )}
+                    <span
+                      className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium inline-flex items-center gap-1.5 ${
+                        statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] ||
+                        "bg-gray-800 text-gray-400"
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                      {getStatusLabel(tenant)}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex items-center justify-between text-xs pt-2 border-t border-gray-800/60 text-gray-400">
                   <div>Rent: <span className="font-semibold text-white">{formatMoney(effectiveRentAmount(tenant))}</span></div>
@@ -2752,16 +2940,31 @@ export default function TenantsPage() {
                 {!isLoading && !isError && paginatedFiltered.map((tenant: any) => (
                   <tr
                     key={tenant._id}
-                    onClick={() => openTenantDetails(tenant)}
-                    className="cursor-pointer transition hover:bg-[#151515]"
+                    onClick={() => {
+                      if (tenant.isLocked) return;
+                      openTenantDetails(tenant);
+                    }}
+                    className={
+                      tenant.isLocked
+                        ? "cursor-not-allowed opacity-80"
+                        : "cursor-pointer transition hover:bg-[#151515]"
+                    }
                   >
                     <td className="px-6 py-4 text-xs sm:text-sm text-gray-200">{getTenantDisplayName(tenant)}</td>
                     <td className="px-6 py-4 text-xs sm:text-sm text-gray-300 tabular-nums">{formatMoney(effectiveRentAmount(tenant))}</td>
                     <td className="px-6 py-4 text-xs sm:text-sm">
-                      <span className={`rounded-full border px-2.5 py-1 text-xs inline-flex items-center gap-1.5 ${statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                        {getStatusLabel(tenant)}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {tenant.isLocked && (
+                          <span className="rounded-full border border-amber-600/40 bg-amber-950/40 px-2.5 py-1 text-xs font-medium text-amber-300 inline-flex items-center gap-1">
+                            <Lock className="w-3 h-3 text-amber-400" />
+                            Locked
+                          </span>
+                        )}
+                        <span className={`rounded-full border px-2.5 py-1 text-xs inline-flex items-center gap-1.5 ${statusColors[getStatusColorKey(tenant) as keyof typeof statusColors] || "bg-gray-800 text-gray-400"}`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                          {getStatusLabel(tenant)}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-xs sm:text-sm text-gray-400">
                       {showArchived
@@ -2808,6 +3011,23 @@ export default function TenantsPage() {
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            {selectedTenant.isLocked && (
+              <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-amber-600/40 bg-amber-950/30 p-3.5 text-xs sm:text-sm text-amber-200">
+                <div className="flex items-center gap-2.5">
+                  <Lock className="h-4 w-4 shrink-0 text-amber-400" />
+                  <span>
+                    This tenant is <strong>locked</strong> under your current plan. Manual edits, cash payments, and adjustments are disabled.
+                  </span>
+                </div>
+                <Link
+                  href="/user/payment"
+                  className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 font-medium text-black hover:bg-amber-400 transition shadow-sm"
+                >
+                  Upgrade plan
+                </Link>
+              </div>
+            )}
 
             {selectedTenant.archived && (
               <div className="mb-4 rounded-xl border border-gray-700 bg-gray-900/50 px-4 py-3 text-sm text-gray-300">
@@ -2897,15 +3117,15 @@ export default function TenantsPage() {
                           {
                             onSuccess: (res) => {
                               const updated = res?.data;
-                              if (updated) setSelectedTenant(updated);
+                              if (updated) setSelectedTenantPreservingLock(updated);
                               setDepositReview(null);
                               toast.success("Deposit cleared — linked bank tx restored to rent queue if any");
                             },
                           }
                         );
                       }}
-                      disabled={updateTenantMutation.isPending}
-                      className="rounded-full border border-[#333] px-2 py-0.5 text-[11px] text-gray-400 hover:border-rose-800 hover:text-rose-300 disabled:opacity-50"
+                      disabled={updateTenantMutation.isPending || selectedTenant.isLocked}
+                      className="rounded-full border border-[#333] px-2 py-0.5 text-[11px] text-gray-400 hover:border-rose-800 hover:text-rose-300 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       Clear deposit
                     </button>
@@ -2916,7 +3136,9 @@ export default function TenantsPage() {
                 <button
                   type="button"
                   onClick={openReconcilePanel}
-                  className="inline-flex items-center gap-2 rounded-full border border-sky-800 px-4 py-2 text-sm text-sky-300 hover:bg-sky-950/40"
+                  disabled={selectedTenant.isLocked}
+                  className="inline-flex items-center gap-2 rounded-full border border-sky-800 px-4 py-2 text-sm text-sky-300 hover:bg-sky-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={selectedTenant.isLocked ? "Tenant is locked under current plan" : undefined}
                 >
                   <Link2 className="h-4 w-4" />
                   Reconcile
@@ -2936,7 +3158,9 @@ export default function TenantsPage() {
                     setAdjustmentMonthLink("");
                     setAdjustmentOpen(true);
                   }}
-                  className="inline-flex items-center gap-2 rounded-full border border-violet-800 px-4 py-2 text-sm text-violet-300 hover:bg-violet-950/40"
+                  disabled={selectedTenant.isLocked}
+                  className="inline-flex items-center gap-2 rounded-full border border-violet-800 px-4 py-2 text-sm text-violet-300 hover:bg-violet-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={selectedTenant.isLocked ? "Tenant is locked under current plan" : undefined}
                 >
                   <Plus className="h-4 w-4" />
                   Add charge / discount
@@ -2945,9 +3169,9 @@ export default function TenantsPage() {
                   <button
                     type="button"
                     onClick={() => setReverseAllConfirmOpen(true)}
-                    disabled={unreconcileAllMutation.isPending}
-                    className="inline-flex items-center gap-2 rounded-full border border-rose-800 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
-                    title="Reverse all rent payments and unlink bank txs; deposit record is kept for re-apply"
+                    disabled={unreconcileAllMutation.isPending || selectedTenant.isLocked}
+                    className="inline-flex items-center gap-2 rounded-full border border-rose-800 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={selectedTenant.isLocked ? "Tenant is locked under current plan" : "Reverse all rent payments and unlink bank txs; deposit record is kept for re-apply"}
                   >
                     Reverse all payments
                   </button>
@@ -2966,7 +3190,9 @@ export default function TenantsPage() {
                     // No payments yet — open edit tenant where due day adjustments work like rent adjustments
                     openEditTenantModal();
                   }}
-                  className="inline-flex items-center gap-2 rounded-full border border-amber-800 px-4 py-2 text-sm text-amber-300 hover:bg-amber-950/40"
+                  disabled={selectedTenant.isLocked}
+                  className="inline-flex items-center gap-2 rounded-full border border-amber-800 px-4 py-2 text-sm text-amber-300 hover:bg-amber-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={selectedTenant.isLocked ? "Tenant is locked under current plan" : undefined}
                 >
                   <CalendarClock className="h-4 w-4" />
                   Change due day
@@ -2986,10 +3212,10 @@ export default function TenantsPage() {
                   </div>
                   <button
                     type="button"
-                    disabled={applyingLinkedPayers}
+                    disabled={applyingLinkedPayers || selectedTenant.isLocked}
                     onClick={openApplyMatchedModal}
-                    className="shrink-0 rounded-full border border-sky-800 px-3 py-1 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
-                    title="Apply matched bank payments (optionally choose a start month)"
+                    className="shrink-0 rounded-full border border-sky-800 px-3 py-1 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={selectedTenant.isLocked ? "Tenant is locked under current plan" : "Apply matched bank payments (optionally choose a start month)"}
                   >
                     {applyingLinkedPayers ? "Applying…" : "Apply matched (oldest first)"}
                   </button>
@@ -3027,17 +3253,18 @@ export default function TenantsPage() {
                         </div>
                         <button
                           type="button"
-                          disabled={!payerId || unlinkPayerMutation.isPending}
+                          disabled={!payerId || unlinkPayerMutation.isPending || selectedTenant.isLocked}
+                          title={selectedTenant.isLocked ? "Tenant is locked under current plan" : undefined}
                           onClick={() => {
-                            if (!payerId || !selectedTenant?._id) return;
+                            if (!payerId || !selectedTenant?._id || selectedTenant.isLocked) return;
                             unlinkPayerMutation.mutate(
                               { tenantId: selectedTenant._id, payerId },
                               {
                                 onSuccess: (res) => {
                                   const updated = res?.data;
-                                  if (updated) setSelectedTenant(updated);
+                                  if (updated) setSelectedTenantPreservingLock(updated);
                                   else {
-                                    setSelectedTenant((prev: any) =>
+                                    setSelectedTenantPreservingLock((prev: any) =>
                                       prev
                                         ? {
                                             ...prev,
@@ -3052,7 +3279,7 @@ export default function TenantsPage() {
                               }
                             );
                           }}
-                          className="shrink-0 rounded-full border border-rose-800/70 px-3 py-1 text-xs text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
+                          className="shrink-0 rounded-full border border-rose-800/70 px-3 py-1 text-xs text-rose-300 hover:bg-rose-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           Unlink
                         </button>
@@ -3193,10 +3420,12 @@ export default function TenantsPage() {
                                   <span className="inline-flex items-center gap-0.5">
                                     <button
                                       type="button"
-                                      title="Edit"
-                                      className="rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-sky-300"
+                                      disabled={selectedTenant.isLocked}
+                                      title={selectedTenant.isLocked ? "Tenant is locked under current plan" : "Edit"}
+                                      className="rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-sky-300 disabled:opacity-40 disabled:cursor-not-allowed"
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        if (selectedTenant.isLocked) return;
                                         const t = (["charge", "discount", "refund"].includes(itemType)
                                           ? itemType
                                           : "charge") as "charge" | "discount" | "refund";
@@ -3231,11 +3460,12 @@ export default function TenantsPage() {
                                     </button>
                                     <button
                                       type="button"
-                                      title="Remove"
-                                      disabled={removeLineItemMutation.isPending}
-                                      className="rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-rose-400 disabled:opacity-50"
+                                      disabled={removeLineItemMutation.isPending || selectedTenant.isLocked}
+                                      title={selectedTenant.isLocked ? "Tenant is locked under current plan" : "Remove"}
+                                      className="rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-rose-400 disabled:opacity-40 disabled:cursor-not-allowed"
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        if (selectedTenant.isLocked) return;
                                         setRemoveLineItemConfirm({
                                           rentEntryId,
                                           lineItemId,
@@ -3332,28 +3562,41 @@ export default function TenantsPage() {
                                   {entry.paymentMethod} · view
                                 </button>
                               )}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const rem = Math.max(
-                                    0,
-                                    (Number(entry.amountDue) || 0) - (Number(entry.amountPaid) || 0)
-                                  );
-                                  const depositOpen = getUnallocatedDepositAmount(selectedTenant);
-                                  const suggested = Math.round((rem + depositOpen) * 100) / 100;
-                                  setPendingCash({
-                                    index,
-                                    entry,
-                                    cashAmount: String(suggested),
-                                    paidOn: new Date().toISOString().slice(0, 10),
-                                    paymentMethod: "cash",
-                                  });
-                                }}
-                                className="flex items-center gap-2 rounded-full border border-amber-700 px-3 py-1 text-xs text-amber-400 hover:bg-amber-900/5"
-                              >
-                                <DollarSign className="h-4 w-4" />
-                                Record payment
-                              </button>
+                              {selectedTenant.isLocked ? (
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-full border border-amber-800/40 bg-amber-950/30 px-2.5 py-1 text-xs text-amber-300/70"
+                                  title="Tenant is locked under current plan"
+                                >
+                                  <Lock className="h-3 w-3" />
+                                  Locked
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (selectedTenant.isLocked) return;
+                                    const rem = Math.max(
+                                      0,
+                                      (Number(entry.amountDue) || 0) - (Number(entry.amountPaid) || 0)
+                                    );
+                                    const depositOpen = getUnallocatedDepositAmount(selectedTenant);
+                                    const suggested = Math.round((rem + depositOpen) * 100) / 100;
+                                    setPendingCash({
+                                      index,
+                                      entry,
+                                      cashAmount: String(suggested),
+                                      paidOn: new Date().toISOString().slice(0, 10),
+                                      paymentMethod: "cash",
+                                    });
+                                  }}
+                                  disabled={selectedTenant.isLocked}
+                                  title={selectedTenant.isLocked ? "Tenant is locked under current plan" : undefined}
+                                  className="flex items-center gap-2 rounded-full border border-amber-700 px-3 py-1 text-xs text-amber-400 hover:bg-amber-900/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  <DollarSign className="h-4 w-4" />
+                                  Record payment
+                                </button>
+                              )}
                             </div>
                           ) : recorded && entry.paymentMethod && entry.paymentMethod !== "none" ? (
                             <button
@@ -3422,14 +3665,18 @@ export default function TenantsPage() {
                   <>
                     <button
                       onClick={openAssignModal}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510]"
+                      disabled={selectedTenant.isLocked}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510] disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={selectedTenant.isLocked ? "Tenant is locked under current plan" : undefined}
                     >
                       <Plus className="h-4 w-4" />
                       Assign tenant
                     </button>
                     <button
                       onClick={openEditTenantModal}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510]"
+                      disabled={selectedTenant.isLocked}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510] disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={selectedTenant.isLocked ? "Tenant is locked under current plan" : undefined}
                     >
                       <Pencil className="h-4 w-4" />
                       Edit room
@@ -3438,7 +3685,9 @@ export default function TenantsPage() {
                 ) : (
                   <button
                     onClick={openEditTenantModal}
-                    className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510]"
+                    disabled={selectedTenant.isLocked}
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:bg-[#0b1510] disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={selectedTenant.isLocked ? "Tenant is locked under current plan" : undefined}
                   >
                     <Pencil className="h-4 w-4" />
                     Edit tenant
@@ -3449,8 +3698,9 @@ export default function TenantsPage() {
                     <button
                       type="button"
                       onClick={confirmUnarchiveTenant}
-                      disabled={unarchiveTenantMutation.isPending}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-800 px-4 py-2 text-sm text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
+                      disabled={unarchiveTenantMutation.isPending || selectedTenant.isLocked}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-800 px-4 py-2 text-sm text-sky-300 hover:bg-sky-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={selectedTenant.isLocked ? "Tenant is locked under current plan" : undefined}
                     >
                       <ArchiveRestore className="h-4 w-4" />
                       {unarchiveTenantMutation.isPending ? "Restoring…" : "Unarchive"}
@@ -3459,7 +3709,9 @@ export default function TenantsPage() {
                     <button
                       type="button"
                       onClick={openArchiveConfirm}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-600 px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
+                      disabled={selectedTenant.isLocked}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-600 px-4 py-2 text-sm text-gray-300 hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={selectedTenant.isLocked ? "Tenant is locked under current plan" : undefined}
                     >
                       <Archive className="h-4 w-4" />
                       End tenancy and archive
@@ -3506,10 +3758,10 @@ export default function TenantsPage() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={applyingLinkedPayers || reconcileLoading}
+                  disabled={applyingLinkedPayers || reconcileLoading || selectedTenant?.isLocked}
                   onClick={openApplyMatchedModal}
-                  className="rounded-full border border-sky-800 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-50"
-                  title="Apply matched bank payments (optionally choose a start month)"
+                  className="rounded-full border border-sky-800 px-3 py-1.5 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={selectedTenant?.isLocked ? "Tenant is locked under current plan" : "Apply matched bank payments (optionally choose a start month)"}
                 >
                   {applyingLinkedPayers ? "Applying…" : "Apply matched (oldest first)"}
                 </button>
@@ -3898,6 +4150,12 @@ export default function TenantsPage() {
               </p>
             )}
 
+            {selectedTenant?.isLocked && (
+              <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300">
+                This tenant is locked under your current plan. Clearing deposit is disabled.
+              </div>
+            )}
+
             <div className="flex flex-wrap justify-end gap-3">
               <button
                 type="button"
@@ -3909,7 +4167,7 @@ export default function TenantsPage() {
               <button
                 type="button"
                 onClick={() => {
-                  if (!selectedTenant?._id) return;
+                  if (!selectedTenant?._id || selectedTenant?.isLocked) return;
                   updateTenantMutation.mutate(
                     {
                       tenantId: selectedTenant._id,
@@ -3918,7 +4176,7 @@ export default function TenantsPage() {
                     {
                       onSuccess: (res) => {
                         const updated = res?.data;
-                        if (updated) setSelectedTenant(updated);
+                        if (updated) setSelectedTenantPreservingLock(updated);
                         setDepositReview(null);
                         toast.success(
                           "Deposit cleared — linked bank tx restored to rent queue if any"
@@ -3927,8 +4185,9 @@ export default function TenantsPage() {
                     }
                   );
                 }}
-                disabled={updateTenantMutation.isPending}
-                className="rounded-full border border-rose-900/70 bg-rose-950/40 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/70 disabled:opacity-50"
+                disabled={updateTenantMutation.isPending || selectedTenant?.isLocked}
+                title={selectedTenant?.isLocked ? "Tenant is locked under current plan" : undefined}
+                className="rounded-full border border-rose-900/70 bg-rose-950/40 px-4 py-2 text-sm text-rose-300 hover:bg-rose-950/70 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Clear deposit
               </button>
@@ -4185,6 +4444,12 @@ export default function TenantsPage() {
               rent or cash is cleared on this month only, and the balance is recalculated.
             </p>
 
+            {selectedTenant?.isLocked && (
+              <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300">
+                This tenant is locked under your current plan. Reversing payments is disabled.
+              </div>
+            )}
+
             <div className="flex flex-wrap justify-end gap-3">
               <button
                 type="button"
@@ -4197,8 +4462,9 @@ export default function TenantsPage() {
               <button
                 type="button"
                 onClick={confirmReversePayment}
-                disabled={unreconcileMutation.isPending}
-                className="rounded-full border border-rose-700 bg-rose-900/40 px-4 py-2 text-sm text-rose-200 hover:bg-rose-900/60 disabled:opacity-60"
+                disabled={unreconcileMutation.isPending || selectedTenant?.isLocked}
+                className="rounded-full border border-rose-700 bg-rose-900/40 px-4 py-2 text-sm text-rose-200 hover:bg-rose-900/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={selectedTenant?.isLocked ? "Tenant is locked under current plan" : undefined}
               >
                 {unreconcileMutation.isPending ? "Reversing..." : "Reverse payment"}
               </button>
@@ -4345,9 +4611,10 @@ export default function TenantsPage() {
               </button>
               <button
                 type="button"
-                disabled={payByCashMutation.isPending}
+                disabled={payByCashMutation.isPending || selectedTenant?.isLocked}
+                title={selectedTenant?.isLocked ? "Tenant is locked under current plan" : undefined}
                 onClick={() => {
-                  if (payByCashMutation.isPending) return;
+                  if (payByCashMutation.isPending || selectedTenant?.isLocked) return;
                   const amount = Number(pendingCash.cashAmount);
                   if (!Number.isFinite(amount) || amount <= 0) {
                     toast.error("Enter a valid payment amount");
@@ -4380,12 +4647,12 @@ export default function TenantsPage() {
                       onSuccess: (res) => {
                         setPendingCash(null);
                         const updatedTenant = res?.data?.tenant || res?.tenant || null;
-                        if (updatedTenant) setSelectedTenant(updatedTenant);
+                        if (updatedTenant) setSelectedTenantPreservingLock(updatedTenant);
                       },
                     }
                   );
                 }}
-                className="inline-flex min-w-[8.5rem] items-center justify-center rounded-full bg-amber-600 px-4 py-2 text-sm text-black hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-w-[8.5rem] items-center justify-center rounded-full bg-amber-600 px-4 py-2 text-sm text-black hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {payByCashMutation.isPending
                   ? "Recording…"
@@ -4549,8 +4816,10 @@ export default function TenantsPage() {
               </button>
               <button
                 type="button"
-                disabled={applyingLinkedPayers}
+                disabled={applyingLinkedPayers || selectedTenant?.isLocked}
+                title={selectedTenant?.isLocked ? "Tenant is locked under current plan" : undefined}
                 onClick={async () => {
+                  if (selectedTenant?.isLocked) return;
                   const tenantId = selectedTenant._id;
                   const from = applyMatchedFromMonth.trim() || undefined;
                   setApplyMatchedMonthMenuOpen(false);
@@ -4567,7 +4836,7 @@ export default function TenantsPage() {
                     }).catch(() => {});
                   }
                 }}
-                className="rounded-full border border-sky-800 bg-sky-950/40 px-4 py-2 text-sm text-sky-200 hover:bg-sky-950/60 disabled:opacity-60"
+                className="rounded-full border border-sky-800 bg-sky-950/40 px-4 py-2 text-sm text-sky-200 hover:bg-sky-950/60 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {applyingLinkedPayers ? "Applying…" : "Apply matched"}
               </button>
@@ -4724,7 +4993,9 @@ export default function TenantsPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-gray-200">Move-in date</label>
+                <label className="mb-1 block text-sm text-gray-200">
+                  Move-in date <span className="text-rose-400">*</span>
+                </label>
                 <DateInput
                   value={assignMoveIn}
                   onChange={(moveIn) => {
@@ -4735,6 +5006,7 @@ export default function TenantsPage() {
                       setAssignDueOn((d) => Math.min(d, maxDay));
                     }
                   }}
+                  required
                   className="w-full rounded-lg border border-[#2A2A2A] bg-transparent px-3 py-2 text-sm text-gray-200 [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-gray-700"
                 />
               </div>
@@ -5482,7 +5754,7 @@ export default function TenantsPage() {
                       },
                       {
                         onSuccess: (res) => {
-                          if (res?.data) setSelectedTenant(res.data);
+                          if (res?.data) setSelectedTenantPreservingLock(res.data);
                           setAdjustmentOpen(false);
                           setEditingLineItem(null);
                         },
@@ -5508,7 +5780,7 @@ export default function TenantsPage() {
                     },
                     {
                       onSuccess: (res) => {
-                        if (res?.data) setSelectedTenant(res.data);
+                        if (res?.data) setSelectedTenantPreservingLock(res.data);
                         setAdjustmentOpen(false);
                         setEditingLineItem(null);
                       },
@@ -5677,7 +5949,7 @@ export default function TenantsPage() {
                     },
                     {
                       onSuccess: (res) => {
-                        if (res?.data) setSelectedTenant(res.data);
+                        if (res?.data) setSelectedTenantPreservingLock(res.data);
                         setDueDayChangeOpen(false);
                       },
                     }
