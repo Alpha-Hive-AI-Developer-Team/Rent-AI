@@ -204,6 +204,18 @@ export async function updateAdminPlan(
 		data: {
 			plan: AdminPlan;
 			migration?: { migrated: number; failed: number; skipped: number; errors: any[] } | null;
+			disableCancellation?: {
+				canceled: number;
+				failed: number;
+				skipped: number;
+				errors: any[];
+			} | null;
+			enableResume?: {
+				resumed: number;
+				failed: number;
+				skipped: number;
+				errors: any[];
+			} | null;
 			activeSubscribers?: number;
 		};
 	};

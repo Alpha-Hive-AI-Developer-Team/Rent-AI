@@ -39,6 +39,7 @@ function AdminPlansPage() {
   const [editing, setEditing] = useState<AdminPlan | null>(null);
   const [form, setForm] = useState<EditForm | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmKind, setConfirmKind] = useState<"price" | "disable" | null>(null);
 
   useEffect(() => {
     if (editing) setForm(planToForm(editing));
@@ -52,15 +53,22 @@ function AdminPlansPage() {
     return nextCents !== Number(editing.priceCents || 0);
   }, [editing, form]);
 
+  const disablingPlan = useMemo(() => {
+    if (!editing || !form || editing.isFree || editing.key === "free") return false;
+    return editing.enabled === true && form.enabled === false;
+  }, [editing, form]);
+
   const openEdit = (plan: AdminPlan) => {
     setEditing(plan);
     setConfirmOpen(false);
+    setConfirmKind(null);
   };
 
   const closeEdit = () => {
     if (updateMutation.isPending) return;
     setEditing(null);
     setConfirmOpen(false);
+    setConfirmKind(null);
   };
 
   const buildPayload = () => {
@@ -100,7 +108,21 @@ function AdminPlansPage() {
     try {
       const res = await updateMutation.mutateAsync({ id: editing.id, payload });
       const mig = res.data?.migration;
-      if (mig) {
+      const disableCancel = res.data?.disableCancellation;
+      const enableResume = res.data?.enableResume;
+      if (disableCancel) {
+        toast.success(
+          res.message ||
+            `Plan disabled. ${disableCancel.canceled} subscriber(s) cancel at period end` +
+              (disableCancel.failed ? `, ${disableCancel.failed} failed` : "")
+        );
+      } else if (enableResume) {
+        toast.success(
+          res.message ||
+            `Plan re-enabled. Resumed ${enableResume.resumed} subscription(s)` +
+              (enableResume.failed ? `, ${enableResume.failed} failed` : "")
+        );
+      } else if (mig) {
         toast.success(
           `Plan updated. Migrated ${mig.migrated} subscriber(s)` +
             (mig.failed ? `, ${mig.failed} failed` : "") +
@@ -111,6 +133,7 @@ function AdminPlansPage() {
       }
       setEditing(null);
       setConfirmOpen(false);
+      setConfirmKind(null);
       refetch();
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || "Failed to update plan");
@@ -123,7 +146,13 @@ function AdminPlansPage() {
       toast.error("Title is required");
       return;
     }
+    if (disablingPlan) {
+      setConfirmKind("disable");
+      setConfirmOpen(true);
+      return;
+    }
     if (priceChanging) {
+      setConfirmKind("price");
       setConfirmOpen(true);
       return;
     }
@@ -441,17 +470,27 @@ function AdminPlansPage() {
                 </div>
               </div>
 
-              <label className="flex items-center gap-3 p-3 rounded-xl bg-[#161616] border border-gray-800 cursor-pointer">
+              <label className="flex items-start gap-3 p-3 rounded-xl bg-[#161616] border border-gray-800 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={form.enabled}
                   onChange={(e) =>
                     setForm({ ...form, enabled: e.target.checked })
                   }
-                  className="h-4 w-4 rounded border-gray-600 accent-[#027A48]"
+                  disabled={!!editing?.isFree || editing?.key === "free"}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-600 accent-[#027A48] disabled:opacity-50"
                 />
                 <span className="text-xs sm:text-sm text-gray-200">
-                  Enable plan for landlords (visible in pricing tier picker)
+                  <span className="block">
+                    Enable plan for landlords (visible in pricing tier picker)
+                  </span>
+                  {!editing?.isFree && editing?.key !== "free" && (
+                    <span className="mt-1 block text-[11px] text-amber-300/90 leading-relaxed">
+                      Disabling schedules all active subscribers to cancel at period end.
+                      They keep access until then, then move to Free. Re-enabling resumes
+                      those disable-scheduled cancellations.
+                    </span>
+                  )}
                 </span>
               </label>
 
@@ -484,34 +523,58 @@ function AdminPlansPage() {
         </div>
       )}
 
-      {/* Price Change Confirmation */}
+      {/* Confirm price change or plan disable */}
       {confirmOpen && editing && form && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="w-full max-w-md rounded-2xl border border-amber-900/60 bg-[#14100c] p-6 text-white shadow-2xl relative">
-            <h3 className="text-base sm:text-lg font-semibold text-amber-300">
-              Confirm Subscription Price Change
-            </h3>
-            <p className="mt-3 text-xs sm:text-sm text-gray-300 leading-relaxed">
-              You are updating the base monthly price of{" "}
-              <strong className="text-white">{editing.title}</strong> from{" "}
-              <span className="text-white font-mono">
-                £{((editing.priceCents || 0) / 100).toFixed(2)}
-              </span>{" "}
-              to{" "}
-              <span className="text-emerald-400 font-mono font-semibold">
-                £{Number(form.pricePounds).toFixed(2)}
-              </span>
-              .
-            </p>
-            <p className="mt-2 text-xs sm:text-sm text-amber-200/90 bg-amber-950/30 p-3 rounded-xl border border-amber-900/40 leading-relaxed">
-              All {editing.activeSubscribers ?? 0} active subscribers on this tier
-              will be billed the new rate on their next renewal cycle. Locked partner
-              referral commissions remain unchanged.
-            </p>
+            {confirmKind === "disable" ? (
+              <>
+                <h3 className="text-base sm:text-lg font-semibold text-amber-300">
+                  Confirm Disable Plan
+                </h3>
+                <p className="mt-3 text-xs sm:text-sm text-gray-300 leading-relaxed">
+                  You are disabling{" "}
+                  <strong className="text-white">{editing.title}</strong>. New landlords
+                  will no longer see or buy this plan.
+                </p>
+                <p className="mt-2 text-xs sm:text-sm text-amber-200/90 bg-amber-950/30 p-3 rounded-xl border border-amber-900/40 leading-relaxed">
+                  All {editing.activeSubscribers ?? 0} active subscriber(s) will be
+                  scheduled to <strong>cancel at period end</strong>. They keep access
+                  until then, then move to Free. Re-enabling this plan later will resume
+                  subscriptions that were canceled only because of this disable.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 className="text-base sm:text-lg font-semibold text-amber-300">
+                  Confirm Subscription Price Change
+                </h3>
+                <p className="mt-3 text-xs sm:text-sm text-gray-300 leading-relaxed">
+                  You are updating the base monthly price of{" "}
+                  <strong className="text-white">{editing.title}</strong> from{" "}
+                  <span className="text-white font-mono">
+                    £{((editing.priceCents || 0) / 100).toFixed(2)}
+                  </span>{" "}
+                  to{" "}
+                  <span className="text-emerald-400 font-mono font-semibold">
+                    £{Number(form.pricePounds).toFixed(2)}
+                  </span>
+                  .
+                </p>
+                <p className="mt-2 text-xs sm:text-sm text-amber-200/90 bg-amber-950/30 p-3 rounded-xl border border-amber-900/40 leading-relaxed">
+                  All {editing.activeSubscribers ?? 0} active subscribers on this tier
+                  will be billed the new rate on their next renewal cycle. Locked partner
+                  referral commissions remain unchanged.
+                </p>
+              </>
+            )}
             <div className="mt-5 flex items-center justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setConfirmOpen(false)}
+                onClick={() => {
+                  setConfirmOpen(false);
+                  setConfirmKind(null);
+                }}
                 disabled={updateMutation.isPending}
                 className="px-4 py-2 rounded-xl border border-gray-800 text-xs sm:text-sm text-gray-300 hover:bg-white/5 transition"
               >
@@ -523,7 +586,11 @@ function AdminPlansPage() {
                 disabled={updateMutation.isPending}
                 className="px-5 py-2 rounded-xl bg-amber-700 hover:bg-amber-600 text-xs sm:text-sm font-medium text-white active:scale-95 transition disabled:opacity-50"
               >
-                {updateMutation.isPending ? "Updating…" : "Confirm & Update Price"}
+                {updateMutation.isPending
+                  ? "Updating…"
+                  : confirmKind === "disable"
+                    ? "Confirm & Disable Plan"
+                    : "Confirm & Update Price"}
               </button>
             </div>
           </div>

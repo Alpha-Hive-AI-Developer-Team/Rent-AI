@@ -6,7 +6,7 @@ import {
   buildPaymentPieceRoleMap,
   buildRunningBalancesFromPaymentHistory,
   resolveRowDisplayBalance,
-} from "./rentHistoryDisplay.ts";
+} from "./rentHistoryDisplay";
 
 test("overpay then empty month rolls credit down by rent due", () => {
   const history = [
