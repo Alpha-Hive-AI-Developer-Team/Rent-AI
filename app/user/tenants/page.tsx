@@ -233,22 +233,30 @@ export default function TenantsPage() {
     };
   };
 
-  /** Remaining unpaid on months due today or earlier (future dues excluded from “owes now”). */
+  /**
+   * Net amount still owed now: unpaid months due today/earlier, minus prepaid on upcoming months.
+   * Matches the Underpaid banner (e.g. £18,562 arrears − £900 Dec prepaid → £17,662).
+   */
   const getRemainingAmount = (tenant: any) => {
     if (tenant?.tenancyStatus === "vacant") return 0;
     const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
     if (history.length > 0) {
       const now = new Date();
       const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-      return history.reduce((sum: number, entry: any) => {
+      let pastUnpaid = 0;
+      let futurePrepaid = 0;
+      for (const entry of history) {
         const due = Number(entry?.amountDue) || 0;
         const paid = Number(entry?.amountPaid) || 0;
-        const rem = Math.max(0, due - paid);
-        if (rem <= 0) return sum;
         const dueMs = toUtcDayMs(entry?.dueDate ?? entry?.month);
-        if (dueMs != null && dueMs > todayMs) return sum;
-        return sum + rem;
-      }, 0);
+        const isFuture = dueMs != null && dueMs > todayMs;
+        if (isFuture) {
+          futurePrepaid += paid;
+          continue;
+        }
+        pastUnpaid += Math.max(0, due - paid);
+      }
+      return Math.max(0, Math.round((pastUnpaid - futurePrepaid) * 100) / 100);
     }
 
     if (typeof tenant?.currentBalance === "number" && tenant.currentBalance < 0) {
@@ -3581,11 +3589,16 @@ export default function TenantsPage() {
                                     );
                                     const depositOpen = getUnallocatedDepositAmount(selectedTenant);
                                     const suggested = Math.round((rem + depositOpen) * 100) / 100;
+                                    const dueSrc = entry?.dueDate ?? entry?.month;
+                                    const dueMs = toUtcDayMs(dueSrc);
+                                    const paidOnDefault = dueMs
+                                      ? new Date(dueMs).toISOString().slice(0, 10)
+                                      : new Date().toISOString().slice(0, 10);
                                     setPendingCash({
                                       index,
                                       entry,
                                       cashAmount: String(suggested),
-                                      paidOn: new Date().toISOString().slice(0, 10),
+                                      paidOn: paidOnDefault,
                                       paymentMethod: "cash",
                                     });
                                   }}
